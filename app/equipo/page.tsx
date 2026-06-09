@@ -1,5 +1,5 @@
-import { WorkspacePage } from '@/components/workspace-page'
+import { TeamScreen } from '@/components/team-screen'
 
 export default function TeamPage() {
-  return <WorkspacePage page="equipo" />
+  return <TeamScreen />
 }

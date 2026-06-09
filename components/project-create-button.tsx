@@ -1,19 +1,18 @@
 'use client'
 
-import type { DashboardProject } from '@/lib/dashboard-data'
+import { useAuth } from '@/context/AuthContext'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
 import { Plus, X } from 'lucide-react'
 import { useState } from 'react'
 
 export function ProjectCreateButton({
   onCreated,
-  onDemoCreated,
   isDark = false,
 }: {
   onCreated?: () => void
-  onDemoCreated?: (project: DashboardProject) => void
   isDark?: boolean
 }) {
+  const { authConfigured } = useAuth()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -23,12 +22,13 @@ export function ProjectCreateButton({
     requester_area: '',
     stack: '',
     repository_url: '',
-    status: 'En desarrollo',
+    repository_url_secondary: '',
+    status: 'Planificación',
     priority: 'Media',
+    progress: '0',
     estimated_delivery: '',
   })
 
-  const canCreate = true
   const inputClass = `h-10 rounded-md border px-3 text-sm outline-none ${
     isDark ? 'border-slate-700 bg-slate-950 text-slate-100 placeholder:text-slate-500' : 'border-slate-200 bg-white text-slate-950'
   }`
@@ -42,18 +42,7 @@ export function ProjectCreateButton({
 
     const supabase = getSupabaseBrowserClient()
     if (!supabase) {
-      onDemoCreated?.({
-        name: form.name,
-        area: form.requester_area || 'Sin area',
-        stack: form.stack || 'Sin stack',
-        status: form.status,
-        priority: form.priority,
-        progress: 0,
-        delivery: form.estimated_delivery || null,
-        repositoryUrl: form.repository_url || null,
-      })
-      setOpen(false)
-      setForm({ name: '', description: '', requester_area: '', stack: '', repository_url: '', status: 'En desarrollo', priority: 'Media', estimated_delivery: '' })
+      setError('Supabase no esta configurado. Completa .env.local para guardar proyectos reales.')
       return
     }
 
@@ -67,21 +56,40 @@ export function ProjectCreateButton({
         throw new Error('No hay una sesion activa. Volve a iniciar sesion para guardar en Supabase.')
       }
 
-      const { error: insertError } = await supabase.from('projects').insert({
+      const insertPayload = {
         name: form.name,
         description: form.description || null,
         requester_area: form.requester_area || null,
         stack: form.stack || null,
         repository_url: form.repository_url || null,
+        repository_url_secondary: form.repository_url_secondary || null,
         priority: form.priority,
+        progress: Number(form.progress),
         estimated_delivery: form.estimated_delivery || null,
         status: form.status,
-      })
+      }
 
-      if (insertError) throw insertError
+      const fallbackPayload = {
+        name: insertPayload.name,
+        description: insertPayload.description,
+        requester_area: insertPayload.requester_area,
+        stack: insertPayload.stack,
+        repository_url: insertPayload.repository_url,
+        priority: insertPayload.priority,
+        progress: insertPayload.progress,
+        estimated_delivery: insertPayload.estimated_delivery,
+        status: insertPayload.status,
+      }
+      const { error: insertError } = await supabase.from('projects').insert(insertPayload)
+
+      if (insertError) {
+        const { error: fallbackError } = await supabase.from('projects').insert(fallbackPayload)
+        if (fallbackError) throw insertError
+        setError('Proyecto creado. Para guardar el Repo 2 ejecuta supabase/add_project_repository_secondary.sql.')
+      }
 
       setOpen(false)
-      setForm({ name: '', description: '', requester_area: '', stack: '', repository_url: '', status: 'En desarrollo', priority: 'Media', estimated_delivery: '' })
+      setForm({ name: '', description: '', requester_area: '', stack: '', repository_url: '', repository_url_secondary: '', status: 'Planificación', priority: 'Media', progress: '0', estimated_delivery: '' })
       onCreated?.()
     } catch (err) {
       const message =
@@ -99,8 +107,7 @@ export function ProjectCreateButton({
   return (
     <>
       <button
-        className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#10b981] px-4 text-sm font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
-        disabled={!canCreate}
+        className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#10b981] px-4 text-sm font-semibold text-white shadow-sm"
         onClick={() => setOpen(true)}
         title="Nuevo proyecto"
       >
@@ -127,6 +134,11 @@ export function ProjectCreateButton({
             </div>
 
             {error && <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+            {!authConfigured && (
+              <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                Para crear proyectos reales falta configurar Supabase en <a className="font-semibold underline" href="/supabase">/supabase</a>.
+              </div>
+            )}
 
             <div className="mt-5 grid gap-4">
               <input className={inputClass} placeholder="Nombre del proyecto" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
@@ -135,16 +147,32 @@ export function ProjectCreateButton({
                 <input className={inputClass} placeholder="Area solicitante" value={form.requester_area} onChange={(e) => setForm({ ...form, requester_area: e.target.value })} />
                 <input className={inputClass} placeholder="Stack tecnico" value={form.stack} onChange={(e) => setForm({ ...form, stack: e.target.value })} />
               </div>
-              <input className={inputClass} placeholder="Link de GitHub / repositorio" value={form.repository_url} onChange={(e) => setForm({ ...form, repository_url: e.target.value })} />
+              <div className="grid gap-4 md:grid-cols-2">
+                <input className={inputClass} placeholder="Repo 1 / Frontend" value={form.repository_url} onChange={(e) => setForm({ ...form, repository_url: e.target.value })} />
+                <input className={inputClass} placeholder="Repo 2 / Backend" value={form.repository_url_secondary} onChange={(e) => setForm({ ...form, repository_url_secondary: e.target.value })} />
+              </div>
+              <label className={`rounded-md border p-3 ${isDark ? 'border-slate-700 bg-slate-950' : 'border-slate-200 bg-slate-50'}`}>
+                <div className="flex items-center justify-between gap-4">
+                  <span className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Progreso</span>
+                  <span className={`text-sm font-bold ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>{form.progress}%</span>
+                </div>
+                <input
+                  className="mt-3 w-full accent-[#10b981]"
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="5"
+                  value={form.progress}
+                  onChange={(e) => setForm({ ...form, progress: e.target.value })}
+                />
+              </label>
               <div className="grid gap-4 md:grid-cols-2">
                 <select className={inputClass} value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-                  <option value="Backlog">Backlog</option>
-                  <option value="Planificacion">Planificacion</option>
-                  <option value="En desarrollo">Proyecto activo</option>
-                  <option value="En aprobacion">En aprobacion</option>
-                  <option value="QA">Para testear</option>
-                  <option value="Deployado">Deployado</option>
-                  <option value="Mantenimiento">Mantenimiento</option>
+                  <option value="Planificación">Planificación</option>
+                  <option value="En desarrollo">En desarrollo</option>
+                  <option value="MVP aprobado">MVP aprobado</option>
+                  <option value="QA">QA</option>
+                  <option value="En Producción">En Producción</option>
                   <option value="Pausado">Pausado</option>
                 </select>
                 <select className={inputClass} value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
@@ -157,7 +185,7 @@ export function ProjectCreateButton({
               <input className={inputClass} type="date" value={form.estimated_delivery} onChange={(e) => setForm({ ...form, estimated_delivery: e.target.value })} />
             </div>
 
-            <button className="mt-5 h-10 w-full rounded-md bg-[#10b981] text-sm font-semibold text-white disabled:opacity-60" disabled={loading}>
+            <button className="mt-5 h-10 w-full rounded-md bg-[#10b981] text-sm font-semibold text-white disabled:opacity-60" disabled={loading || !authConfigured}>
               {loading ? 'Guardando...' : 'Crear proyecto'}
             </button>
           </form>

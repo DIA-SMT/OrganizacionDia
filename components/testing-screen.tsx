@@ -20,6 +20,7 @@ type TestingProject = {
   name: string
   requester_area: string | null
   repository_url: string | null
+  repository_url_secondary: string | null
   priority: string
   estimated_delivery: string | null
 }
@@ -43,13 +44,17 @@ export function TestingScreen() {
         return
       }
 
-      const [{ data: taskRows }, { data: projectRows }] = await Promise.all([
+      const [{ data: taskRows }, projectQuery] = await Promise.all([
         supabase.from('tasks').select('id, title, priority, status, projects(name)').eq('active', true).eq('status', 'QA'),
-        supabase.from('projects').select('id, name, requester_area, repository_url, priority, estimated_delivery').eq('active', true).eq('status', 'QA'),
+        supabase.from('projects').select('id, name, requester_area, repository_url, repository_url_secondary, priority, estimated_delivery').eq('active', true).eq('status', 'QA'),
       ])
 
+      const projectRowsResult = projectQuery.error
+        ? await supabase.from('projects').select('id, name, requester_area, repository_url, priority, estimated_delivery').eq('active', true).eq('status', 'QA')
+        : projectQuery
+
       setTasks((taskRows ?? []) as unknown as TestingTask[])
-      setProjects((projectRows ?? []) as TestingProject[])
+      setProjects(((projectRowsResult.data ?? []) as Partial<TestingProject>[]).map((project) => ({ ...project, repository_url_secondary: project.repository_url_secondary ?? null })) as TestingProject[])
       setLoading(false)
     }
 
@@ -89,13 +94,20 @@ export function TestingScreen() {
                       </div>
                       <span className="rounded-md bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700 dark:bg-amber-400/15 dark:text-amber-200">{project.priority}</span>
                     </div>
-                    <div className="mt-3 flex items-center justify-between gap-3 text-sm">
+                    <div className="mt-3 grid gap-3 text-sm sm:grid-cols-[auto_1fr]">
                       <span className="text-slate-500 dark:text-slate-400">Entrega: {project.estimated_delivery ?? 'Sin fecha'}</span>
-                      {project.repository_url && (
-                        <a className="inline-flex items-center gap-1 font-semibold text-[#0d8f62] dark:text-emerald-300" href={project.repository_url} target="_blank" rel="noreferrer">
-                          GitHub <ExternalLink className="h-3 w-3" />
-                        </a>
-                      )}
+                      <div className="grid gap-1.5 sm:justify-items-end">
+                        {[
+                          [project.repository_url, 'Repo 1'],
+                          [project.repository_url_secondary, 'Repo 2'],
+                        ].map(([url, label]) =>
+                          url ? (
+                            <a key={label} className="inline-flex max-w-full items-start gap-1 break-all text-right font-semibold text-[#0d8f62] dark:text-emerald-300" href={url} target="_blank" rel="noreferrer">
+                              <span>{label}: {url}</span> <ExternalLink className="mt-0.5 h-3 w-3 shrink-0" />
+                            </a>
+                          ) : null,
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))

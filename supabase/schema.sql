@@ -23,12 +23,15 @@ create table public.projects (
   technical_owner_id uuid references public.members(id) on delete set null,
   stack text,
   repository_url text,
+  repository_url_secondary text,
   staging_url text,
   production_url text,
-  status text not null default 'Backlog' check (
-    status in ('Backlog', 'Planificacion', 'En desarrollo', 'En aprobacion', 'QA', 'Deployado', 'Mantenimiento', 'Pausado')
+  note text,
+  status text not null default 'Planificación' check (
+    status in ('Planificación', 'En desarrollo', 'MVP aprobado', 'QA', 'En Producción', 'Pausado')
   ),
   priority text not null default 'Media' check (priority in ('Baja', 'Media', 'Alta', 'Critica')),
+  progress integer not null default 0 check (progress >= 0 and progress <= 100),
   start_date date,
   estimated_delivery date,
   active boolean not null default true,

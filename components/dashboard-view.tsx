@@ -1,19 +1,20 @@
 'use client'
 
 import { useAuth } from '@/context/AuthContext'
+import { CursorAiBackground } from '@/components/cursor-ai-background'
 import { ProjectCreateButton } from '@/components/project-create-button'
 import { TaskCreateButton } from '@/components/task-create-button'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
-import { mockActivity, mockPipeline, mockProjects, type DashboardProject, type DashboardTask, type PipelineColumn } from '@/lib/dashboard-data'
+import { type DashboardProject, type PipelineColumn } from '@/lib/dashboard-data'
 import Link from 'next/link'
 import {
   Bell,
-  CalendarClock,
   CheckCircle2,
   ChevronDown,
   CircleDot,
   Code2,
   FlaskConical,
+  FolderOpen,
   GitPullRequest,
   LayoutDashboard,
   LogOut,
@@ -22,6 +23,8 @@ import {
   Settings,
   Sun,
   TrendingUp,
+  Rocket,
+  Trash2,
   Users,
   X,
 } from 'lucide-react'
@@ -33,14 +36,11 @@ type ProjectRow = {
   requester_area: string | null
   stack: string | null
   repository_url: string | null
+  repository_url_secondary: string | null
   status: string
   priority: string
+  progress: number | null
   estimated_delivery: string | null
-}
-
-type TaskProgressRow = {
-  project_id: string | null
-  status: string
 }
 
 type JoinedTaskRow = {
@@ -53,11 +53,31 @@ type JoinedTaskRow = {
 }
 
 const pipelineConfig = [
-  { title: 'Pendiente', statuses: ['Backlog', 'Pendiente'], tone: 'bg-slate-100 text-slate-700' },
+  { title: 'Planificación', statuses: ['Backlog', 'Pendiente', 'Planificacion', 'Planificación'], tone: 'bg-slate-100 text-slate-700' },
   { title: 'En desarrollo', statuses: ['En desarrollo'], tone: 'bg-blue-50 text-blue-700' },
-  { title: 'En aprobacion', statuses: ['En aprobacion', 'En revision'], tone: 'bg-violet-50 text-violet-700' },
+  { title: 'MVP aprobado', statuses: ['En aprobacion', 'En aprobación', 'En revision', 'En revisión', 'MVP aprobado'], tone: 'bg-violet-50 text-violet-700' },
   { title: 'Para testear', statuses: ['QA'], tone: 'bg-emerald-50 text-emerald-700' },
 ]
+
+const projectStatusOrder = ['Planificación', 'En desarrollo', 'MVP aprobado', 'QA', 'En Producción', 'Pausado'] as const
+
+function normalizeText(value: string) {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+function normalizeProjectStatus(status: string) {
+  const normalized = normalizeText(status)
+  if (normalized === 'backlog' || normalized === 'pendiente' || normalized === 'planificacion') return 'Planificación'
+  if (normalized === 'en desarrollo') return 'En desarrollo'
+  if (normalized === 'mvp aprobado' || normalized === 'en aprobacion' || normalized === 'en revision') return 'MVP aprobado'
+  if (normalized === 'qa' || normalized === 'testing') return 'QA'
+  if (normalized === 'en produccion' || normalized === 'deployado' || normalized === 'produccion') return 'En Producción'
+  if (normalized === 'pausado' || normalized === 'mantenimiento') return 'Pausado'
+  return status
+}
 
 function firstName(value: JoinedTaskRow['projects']) {
   if (!value) return null
@@ -169,10 +189,9 @@ function SidebarItem({ icon, label, href, active }: { icon: React.ReactNode; lab
 
 export function DashboardView() {
   const { user, role, loading, authConfigured, signOut } = useAuth()
-  const [projects, setProjects] = useState<DashboardProject[]>(mockProjects)
-  const [pipeline, setPipeline] = useState<PipelineColumn[]>(mockPipeline)
-  const [activity, setActivity] = useState<string[]>(mockActivity)
-  const [usingMockData, setUsingMockData] = useState(true)
+  const [projects, setProjects] = useState<DashboardProject[]>([])
+  const [pipeline, setPipeline] = useState<PipelineColumn[]>(pipelineConfig.map((column) => ({ title: column.title, tone: column.tone, tasks: [] })))
+  const [activity, setActivity] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
@@ -204,13 +223,21 @@ export function DashboardView() {
       const supabase = getSupabaseBrowserClient()
       if (!supabase) return
 
-      const [{ data: projectRows }, { data: taskProgressRows }, { data: joinedTaskRows }] = await Promise.all([
-        supabase
+      const projectQuery = await supabase
           .from('projects')
-          .select('id, name, requester_area, stack, repository_url, status, priority, estimated_delivery')
+        .select('id, name, requester_area, stack, repository_url, repository_url_secondary, status, priority, progress, estimated_delivery')
           .eq('active', true)
-          .order('estimated_delivery', { ascending: true }),
-        supabase.from('tasks').select('project_id, status').eq('active', true),
+        .order('estimated_delivery', { ascending: true })
+
+      const projectRowsResult = projectQuery.error
+        ? await supabase
+            .from('projects')
+            .select('id, name, requester_area, stack, repository_url, status, priority, progress, estimated_delivery')
+            .eq('active', true)
+            .order('estimated_delivery', { ascending: true })
+        : projectQuery
+
+      const [{ data: joinedTaskRows }] = await Promise.all([
         supabase
           .from('tasks')
           .select('title, status, projects(name), task_assignees(members(full_name))')
@@ -220,26 +247,17 @@ export function DashboardView() {
           .limit(20),
       ])
 
-      const progressByProject = new Map<string, { total: number; done: number }>()
-      ;((taskProgressRows ?? []) as TaskProgressRow[]).forEach((task) => {
-        if (!task.project_id) return
-        const current = progressByProject.get(task.project_id) ?? { total: 0, done: 0 }
-        current.total += 1
-        if (task.status === 'Terminada') current.done += 1
-        progressByProject.set(task.project_id, current)
-      })
-
-      const nextProjects = ((projectRows ?? []) as ProjectRow[]).map((project) => {
-        const progress = progressByProject.get(project.id)
+      const nextProjects = ((projectRowsResult.data ?? []) as Partial<ProjectRow>[]).map((project) => {
         return {
-          name: project.name,
+          name: project.name ?? 'Sin nombre',
           area: project.requester_area ?? 'Sin area',
           stack: project.stack ?? 'Sin stack',
-          status: project.status,
-          priority: project.priority,
-          progress: progress && progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0,
-          delivery: project.estimated_delivery,
+          status: normalizeProjectStatus(project.status ?? 'Planificación'),
+          priority: project.priority ?? 'Media',
+          progress: project.progress ?? 0,
+          delivery: project.estimated_delivery ?? null,
           repositoryUrl: project.repository_url,
+          repositoryUrlSecondary: project.repository_url_secondary,
         }
       })
 
@@ -263,12 +281,11 @@ export function DashboardView() {
         `${nextProjects.length} proyectos activos cargados`,
         `${tasks.length} tareas tecnicas en seguimiento`,
       ])
-      setUsingMockData(false)
     }
 
     fetchDashboard().catch((error) => {
       console.error('Error loading dashboard:', error)
-      setUsingMockData(true)
+      setActivity(['No se pudieron cargar datos desde Supabase'])
     })
   }, [authConfigured, loading, user])
 
@@ -285,16 +302,14 @@ export function DashboardView() {
         }
 
         if (payload.projects && payload.projects.length > 0) {
-          setProjects(payload.projects)
-          setUsingMockData(false)
           setGithubStatus(`${payload.projects.length} proyectos cargados desde GitHub`)
           setActivity((current) => [`${payload.projects?.length ?? 0} repositorios sincronizados desde GitHub`, ...current].slice(0, 5))
           return
         }
 
-        if (payload.error) setGithubStatus(payload.error)
+        if (payload.error) setGithubStatus(null)
       } catch {
-        setGithubStatus('No se pudo conectar con GitHub')
+        setGithubStatus(null)
       }
     }
 
@@ -302,16 +317,30 @@ export function DashboardView() {
   }, [])
 
   const metrics = useMemo(() => {
-    const activeProjects = projects.filter((project) => project.status === 'En desarrollo').length
-    const approvalCount = projects.filter((project) => project.status === 'En aprobacion').length
-    const testingCount = projects.filter((project) => project.status === 'QA').length
-    const upcomingCount = projects.filter((project) => project.delivery).length
+    const statusCounts = Object.fromEntries(projectStatusOrder.map((status) => [status, 0])) as Record<(typeof projectStatusOrder)[number], number>
+
+    projects.forEach((project) => {
+      const status = normalizeProjectStatus(project.status)
+      if (projectStatusOrder.includes(status as (typeof projectStatusOrder)[number])) {
+        statusCounts[status as (typeof projectStatusOrder)[number]] += 1
+      }
+    })
+
+    const totalProjects = projects.length
+    const developmentCount = statusCounts['En desarrollo']
+    const approvalCount = statusCounts['MVP aprobado']
+    const testingCount = statusCounts.QA
+    const productionCount = statusCounts['En Producción']
+    const pausedCount = statusCounts.Pausado
 
     return {
-      activeProjects,
+      totalProjects,
+      developmentCount,
       approvalCount,
       testingCount,
-      upcomingCount,
+      productionCount,
+      pausedCount,
+      statusCounts,
     }
   }, [projects])
 
@@ -341,35 +370,6 @@ export function DashboardView() {
     return activity.filter((item) => item.toLowerCase().includes(normalizedSearch))
   }, [activity, normalizedSearch])
 
-  function handleDemoProjectCreated(project: DashboardProject) {
-    setProjects((current) => [project, ...current])
-    setActivity((current) => [`Proyecto creado: ${project.name}`, ...current].slice(0, 5))
-    setUsingMockData(true)
-  }
-
-  function statusToColumn(status: string) {
-    if (status === 'En desarrollo') return 'En desarrollo'
-    if (status === 'En revision') return 'En aprobacion'
-    if (status === 'QA') return 'Para testear'
-    return 'Pendiente'
-  }
-
-  function handleDemoTaskCreated(task: DashboardTask & { status: string }) {
-    const columnTitle = statusToColumn(task.status)
-    setPipeline((current) =>
-      current.map((column) =>
-        column.title === columnTitle
-          ? {
-              ...column,
-              tasks: [{ title: task.title, project: task.project, owner: task.owner }, ...column.tasks],
-            }
-          : column
-      )
-    )
-    setActivity((current) => [`Tarea creada: ${task.title}`, ...current].slice(0, 5))
-    setUsingMockData(true)
-  }
-
   const isDark = theme === 'dark'
   const shellClass = isDark ? 'bg-slate-950 text-slate-100' : 'bg-[#f6f8fb] text-slate-950'
   const surfaceClass = isDark ? 'border-slate-800 bg-slate-900 shadow-slate-950/20' : 'border-slate-200 bg-white shadow-sm'
@@ -379,9 +379,10 @@ export function DashboardView() {
   const dividerClass = isDark ? 'border-slate-800' : 'border-slate-100'
 
   return (
-    <main className={`min-h-screen transition-colors ${shellClass}`}>
-      <div className="flex min-h-screen">
-        <aside className={`hidden w-64 border-r px-4 py-5 lg:block ${isDark ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-white'}`}>
+    <main className={`relative isolate min-h-screen overflow-hidden transition-colors ${shellClass}`}>
+      <CursorAiBackground isDark={isDark} />
+      <div className="relative z-10 flex min-h-screen">
+        <aside className={`hidden w-64 border-r px-4 py-5 lg:block ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-white/95'}`}>
           <div className="mb-8 flex items-center gap-3 px-2">
             <div className="flex h-10 w-10 items-center justify-center rounded-md bg-[#103b3a] text-white">
               <Code2 className="h-5 w-5" />
@@ -396,22 +397,14 @@ export function DashboardView() {
             <SidebarItem icon={<LayoutDashboard className="h-4 w-4" />} label="Dashboard" href="/" active />
             <SidebarItem icon={<Code2 className="h-4 w-4" />} label="Proyectos" href="/proyectos" />
             <SidebarItem icon={<GitPullRequest className="h-4 w-4" />} label="Tareas" href="/tareas" />
-            <SidebarItem icon={<FlaskConical className="h-4 w-4" />} label="Impedimentos" href="/impedimentos" />
+            <SidebarItem icon={<FlaskConical className="h-4 w-4" />} label="Testing" href="/testing" />
             <SidebarItem icon={<Users className="h-4 w-4" />} label="Equipo" href="/equipo" />
+            <SidebarItem icon={<Trash2 className="h-4 w-4" />} label="Papelera" href="/papelera" />
           </nav>
-
-          <div className={`mt-8 rounded-lg border p-3 ${mutedSurfaceClass}`}>
-            <p className="text-xs font-semibold uppercase text-slate-400">Sprint actual</p>
-            <p className={`mt-2 text-sm font-semibold ${textStrongClass}`}>Junio - Semana 2</p>
-            <div className="mt-3 h-2 rounded-full bg-slate-100">
-              <div className="h-2 w-[62%] rounded-full bg-[#10b981]" />
-            </div>
-            <p className="mt-2 text-xs text-slate-500">62% de avance planificado</p>
-          </div>
         </aside>
 
         <section className="flex min-w-0 flex-1 flex-col">
-          <header className={`border-b ${isDark ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-white'}`}>
+          <header className={`border-b backdrop-blur ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-white/90'}`}>
             <div className="flex items-center justify-between gap-4 px-5 py-4">
               <div>
                 <h1 className={`text-xl font-bold ${textStrongClass}`}>Gestion de proyectos</h1>
@@ -476,12 +469,7 @@ export function DashboardView() {
                   Una vista compacta para entender que se esta desarrollando, que espera aprobacion y que necesita testeo antes de entregar.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {!authConfigured && <span className="rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">Demo sin Supabase</span>}
-                  {usingMockData && (
-                    <span className={`rounded-md px-2 py-1 text-xs font-semibold ${isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>
-                      Datos de ejemplo
-                    </span>
-                  )}
+                  {!authConfigured && <span className="rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">Supabase sin configurar</span>}
                   <Link href="/supabase" className={`rounded-md px-2 py-1 text-xs font-semibold ${isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>
                     Supabase
                   </Link>
@@ -491,38 +479,44 @@ export function DashboardView() {
                 </div>
               </div>
               <div className="flex flex-col gap-2 sm:flex-row">
-                <TaskCreateButton
-                  onCreated={() => window.location.reload()}
-                  onDemoCreated={handleDemoTaskCreated}
-                  demoProjects={projects.map((project) => ({ id: project.name, label: project.name }))}
-                  isDark={isDark}
-                />
-                <ProjectCreateButton onCreated={() => window.location.reload()} onDemoCreated={handleDemoProjectCreated} isDark={isDark} />
+                <TaskCreateButton onCreated={() => window.location.reload()} isDark={isDark} />
+                <ProjectCreateButton onCreated={() => window.location.reload()} isDark={isDark} />
               </div>
             </section>
 
-            <section className="grid gap-4 md:grid-cols-4">
+            <section className="grid gap-4 md:grid-cols-3 2xl:grid-cols-6">
               <MetricCard
-                icon={<Code2 className="h-4 w-4" />}
-                label="Proyectos activos"
-                value={String(metrics.activeProjects)}
-                hint="En seguimiento"
+                icon={<FolderOpen className="h-4 w-4" />}
+                label="Todos los proyectos"
+                value={String(metrics.totalProjects)}
+                hint="Activos en el dashboard"
                 accent="bg-[#10b981]"
-                progress={Math.min(metrics.activeProjects * 24, 96)}
+                progress={Math.min(metrics.totalProjects * 12, 96)}
                 series={[34, 56, 48, 72, 62, 86, 74]}
                 isDark={isDark}
-                href="/projects"
+                href="/projects?estado=Todos"
+              />
+              <MetricCard
+                icon={<Code2 className="h-4 w-4" />}
+                label="En desarrollo"
+                value={String(metrics.developmentCount)}
+                hint="Construccion activa"
+                accent="bg-blue-500"
+                progress={Math.min(metrics.developmentCount * 24, 96)}
+                series={[24, 42, 58, 54, 72, 68, 84]}
+                isDark={isDark}
+                href="/projects?estado=En%20desarrollo"
               />
               <MetricCard
                 icon={<GitPullRequest className="h-4 w-4" />}
-                label="En aprobacion"
+                label="MVP aprobado"
                 value={String(metrics.approvalCount)}
                 hint="Esperando revision interna"
                 accent="bg-violet-500"
                 progress={Math.min(metrics.approvalCount * 35, 100)}
                 series={[22, 34, 58, 46, 64, 38, 52]}
                 isDark={isDark}
-                href="/projects"
+                href="/projects?estado=MVP%20aprobado"
               />
               <MetricCard
                 icon={<FlaskConical className="h-4 w-4" />}
@@ -533,47 +527,33 @@ export function DashboardView() {
                 progress={Math.min(metrics.testingCount * 40, 100)}
                 series={[18, 28, 36, 52, 44, 68, 58]}
                 isDark={isDark}
-                href="/testing"
+                href="/projects?estado=QA"
               />
               <MetricCard
-                icon={<CalendarClock className="h-4 w-4" />}
-                label="Entregas proximas"
-                value={String(metrics.upcomingCount)}
-                hint="Con fecha estimada"
-                accent="bg-amber-500"
-                progress={Math.min(metrics.upcomingCount * 30, 100)}
-                series={[40, 44, 38, 70, 66, 76, 88]}
+                icon={<Rocket className="h-4 w-4" />}
+                label="En Producción"
+                value={String(metrics.productionCount)}
+                hint="Finalizados y online"
+                accent="bg-emerald-600"
+                progress={Math.min(metrics.productionCount * 30, 100)}
+                series={[30, 46, 52, 64, 58, 76, 82]}
                 isDark={isDark}
-                href="/projects"
+                href="/projects?estado=En%20Producci%C3%B3n"
+              />
+              <MetricCard
+                icon={<CircleDot className="h-4 w-4" />}
+                label="Proyectos pausados"
+                value={String(metrics.pausedCount)}
+                hint="Detenidos temporalmente"
+                accent="bg-red-500"
+                progress={Math.min(metrics.pausedCount * 30, 100)}
+                series={[28, 36, 30, 44, 38, 52, 46]}
+                isDark={isDark}
+                href="/projects?estado=Pausado"
               />
             </section>
 
-            <section className="mt-5 grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
-              <div className="rounded-lg border border-slate-200 bg-[#103b3a] p-5 text-white shadow-sm">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-xs font-semibold uppercase text-emerald-100/70">Pulso del sprint</p>
-                    <h2 className="mt-2 text-2xl font-bold">62% encaminado</h2>
-                    <p className="mt-2 text-sm leading-6 text-emerald-50/75">
-                      Vista rapida del trabajo activo, revision interna y testing antes de entrega.
-                    </p>
-                  </div>
-                  <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-white/10 text-2xl font-bold">62</div>
-                </div>
-                <div className="mt-6 grid grid-cols-3 gap-3">
-                  {[
-                    ['Dev', '46%'],
-                    ['Revision', '18%'],
-                    ['QA', '36%'],
-                  ].map(([label, value]) => (
-                    <div key={label} className="rounded-lg bg-white/10 p-3">
-                      <p className="text-xs text-emerald-50/70">{label}</p>
-                      <p className="mt-1 text-lg font-bold">{value}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
+            <section className="mt-5">
               <div className={`rounded-lg border p-5 ${surfaceClass}`}>
                 <div className="flex items-center justify-between">
                   <div>
@@ -584,21 +564,27 @@ export function DashboardView() {
                 </div>
                 <div className="mt-5 space-y-4">
                   {[
-                    ['Desarrollo', 58, 'bg-[#10b981]'],
-                    ['Aprobacion', Math.max(metrics.approvalCount * 22, 16), 'bg-violet-500'],
-                    ['Testing', Math.max(metrics.testingCount * 24, 18), 'bg-sky-500'],
-                    ['Entrega', Math.max(metrics.upcomingCount * 18, 22), 'bg-amber-500'],
-                  ].map(([label, value, color]) => (
+                    ['Planificación', metrics.statusCounts['Planificación'], 'bg-amber-500'],
+                    ['En desarrollo', metrics.statusCounts['En desarrollo'], 'bg-[#10b981]'],
+                    ['MVP aprobado', metrics.statusCounts['MVP aprobado'], 'bg-violet-500'],
+                    ['QA', metrics.statusCounts.QA, 'bg-sky-500'],
+                    ['En Producción', metrics.statusCounts['En Producción'], 'bg-emerald-600'],
+                    ['Pausado', metrics.statusCounts.Pausado, 'bg-red-500'],
+                  ].map(([label, count, color]) => {
+                    const total = Math.max(projects.length, 1)
+                    const value = Math.round((Number(count) / total) * 100)
+                    return (
                     <div key={label as string}>
                       <div className="mb-1 flex justify-between text-xs font-medium text-slate-500">
                         <span>{label}</span>
-                        <span>{value}%</span>
+                        <span>{count} - {value}%</span>
                       </div>
                       <div className="h-3 overflow-hidden rounded-full bg-slate-100">
                         <div className={`h-3 rounded-full ${color}`} style={{ width: `${value}%` }} />
                       </div>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             </section>
@@ -624,15 +610,20 @@ export function DashboardView() {
                           <p className={`mt-1 text-sm ${textMutedClass}`}>
                             {project.area} - {project.stack}
                           </p>
-                          {project.repositoryUrl && (
-                            <a
-                              className="mt-2 inline-flex text-xs font-semibold text-[#0d8f62] hover:underline"
-                              href={project.repositoryUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              Ver repositorio
-                            </a>
+                          {(project.repositoryUrl || project.repositoryUrlSecondary) && (
+                            <div className="mt-2 grid max-w-xl gap-1.5">
+                              {[
+                                [project.repositoryUrl, 'Repo 1'],
+                                [project.repositoryUrlSecondary, 'Repo 2'],
+                              ].map(([url, label]) =>
+                                url ? (
+                                  <a key={label} className="block break-all text-xs font-semibold leading-5 text-[#0d8f62] hover:underline" href={url} target="_blank" rel="noreferrer">
+                                    <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>{label}: </span>
+                                    {url}
+                                  </a>
+                                ) : null,
+                              )}
+                            </div>
                           )}
                         </div>
                         <span className="rounded-md bg-[#eef8ff] px-2 py-1 text-xs font-semibold text-[#1677a8]">{project.status}</span>

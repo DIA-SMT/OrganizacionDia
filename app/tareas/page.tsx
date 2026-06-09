@@ -1,5 +1,5 @@
-import { WorkspacePage } from '@/components/workspace-page'
+import { TasksScreen } from '@/components/tasks-screen'
 
 export default function TasksPage() {
-  return <WorkspacePage page="tareas" />
+  return <TasksScreen />
 }

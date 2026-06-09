@@ -1,7 +1,8 @@
 'use client'
 
 import { useAuth } from '@/context/AuthContext'
-import { Bell, Code2, FlaskConical, GitPullRequest, LayoutDashboard, LogOut, Search, Settings, Sun, Moon, Users } from 'lucide-react'
+import { CursorAiBackground } from '@/components/cursor-ai-background'
+import { Bell, Code2, FlaskConical, GitPullRequest, LayoutDashboard, LogOut, Search, Settings, Sun, Moon, Trash2, Users } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
@@ -20,6 +21,7 @@ const navItems = [
   { href: '/tasks', label: 'Tareas', icon: GitPullRequest },
   { href: '/testing', label: 'Testing', icon: FlaskConical },
   { href: '/team', label: 'Equipo', icon: Users },
+  { href: '/papelera', label: 'Papelera', icon: Trash2 },
 ]
 
 export function AppShell({ title, subtitle, search = '', onSearchChange, children }: AppShellProps) {
@@ -41,6 +43,7 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
     setTheme((current) => {
       const next = current === 'dark' ? 'light' : 'dark'
       window.localStorage.setItem('organizacion-dia-theme', next)
+      window.dispatchEvent(new CustomEvent('organizacion-dia-theme-change', { detail: next }))
       return next
     })
   }
@@ -51,9 +54,10 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
   const textMutedClass = isDark ? 'text-slate-400' : 'text-slate-500'
 
   return (
-    <main className={`min-h-screen transition-colors ${shellClass}`}>
-      <div className="flex min-h-screen">
-        <aside className={`hidden w-64 border-r px-4 py-5 lg:block ${isDark ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-white'}`}>
+    <main className={`relative isolate min-h-screen overflow-hidden transition-colors ${shellClass}`}>
+      <CursorAiBackground isDark={isDark} />
+      <div className="relative z-10 flex min-h-screen">
+        <aside className={`hidden w-64 border-r px-4 py-5 lg:block ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-white/95'}`}>
           <div className="mb-8 flex items-center gap-3 px-2">
             <div className="flex h-10 w-10 items-center justify-center rounded-md bg-[#103b3a] text-white">
               <Code2 className="h-5 w-5" />
@@ -82,7 +86,7 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
         </aside>
 
         <section className="flex min-w-0 flex-1 flex-col">
-          <header className={`border-b ${isDark ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-white'}`}>
+          <header className={`border-b backdrop-blur ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-white/90'}`}>
             <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
               <div>
                 <h1 className={`text-xl font-bold ${textStrongClass}`}>{title}</h1>

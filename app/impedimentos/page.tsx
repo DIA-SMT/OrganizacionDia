@@ -1,5 +1,5 @@
-import { WorkspacePage } from '@/components/workspace-page'
+import { BlockersScreen } from '@/components/blockers-screen'
 
 export default function BlockersPage() {
-  return <WorkspacePage page="impedimentos" />
+  return <BlockersScreen />
 }

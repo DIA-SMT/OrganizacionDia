@@ -15,7 +15,7 @@ function priorityFromRepo(repo: GithubRepo) {
 }
 
 function statusFromRepo(repo: GithubRepo) {
-  if (repo.archived) return 'Mantenimiento'
+  if (repo.archived) return 'Pausado'
   return 'En desarrollo'
 }
 
