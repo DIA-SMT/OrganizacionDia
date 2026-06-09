@@ -32,7 +32,7 @@ export function TaskCreateButton({
   demoProjects?: SelectOption[]
   isDark?: boolean
 }) {
-  const { authConfigured, role } = useAuth()
+  const { authConfigured } = useAuth()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -51,7 +51,7 @@ export function TaskCreateButton({
     pr_url: '',
   })
 
-  const canCreate = !authConfigured || role === 'Admin' || role === 'PM'
+  const canCreate = true
   const projectOptions = authConfigured ? projects : demoProjects
   const inputClass = `h-10 rounded-md border px-3 text-sm outline-none ${
     isDark ? 'border-slate-700 bg-slate-950 text-slate-100 placeholder:text-slate-500' : 'border-slate-200 bg-white text-slate-950'
@@ -110,6 +110,14 @@ export function TaskCreateButton({
 
     setLoading(true)
     try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+
+      if (!session) {
+        throw new Error('No hay una sesion activa. Volve a iniciar sesion para guardar en Supabase.')
+      }
+
       const { data: task, error: taskError } = await supabase
         .from('tasks')
         .insert({
@@ -150,7 +158,13 @@ export function TaskCreateButton({
       })
       onCreated?.()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo crear la tarea')
+      const message =
+        err instanceof Error
+          ? err.message
+          : typeof err === 'object' && err && 'message' in err
+            ? String((err as { message?: unknown }).message)
+            : 'No se pudo crear la tarea'
+      setError(message)
     } finally {
       setLoading(false)
     }
@@ -164,7 +178,7 @@ export function TaskCreateButton({
         }`}
         disabled={!canCreate}
         onClick={() => setOpen(true)}
-        title={canCreate ? 'Nueva tarea' : 'Disponible para Admin o PM'}
+        title="Nueva tarea"
       >
         <GitPullRequest className="h-4 w-4" />
         Nueva tarea

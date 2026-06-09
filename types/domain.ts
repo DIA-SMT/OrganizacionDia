@@ -2,6 +2,7 @@ export type ProjectStatus =
   | 'Backlog'
   | 'Planificacion'
   | 'En desarrollo'
+  | 'En aprobacion'
   | 'QA'
   | 'Deployado'
   | 'Mantenimiento'

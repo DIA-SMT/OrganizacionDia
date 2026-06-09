@@ -1,6 +1,5 @@
 'use client'
 
-import { useAuth } from '@/context/AuthContext'
 import type { DashboardProject } from '@/lib/dashboard-data'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
 import { Plus, X } from 'lucide-react'
@@ -15,7 +14,6 @@ export function ProjectCreateButton({
   onDemoCreated?: (project: DashboardProject) => void
   isDark?: boolean
 }) {
-  const { authConfigured, role } = useAuth()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -24,11 +22,13 @@ export function ProjectCreateButton({
     description: '',
     requester_area: '',
     stack: '',
+    repository_url: '',
+    status: 'En desarrollo',
     priority: 'Media',
     estimated_delivery: '',
   })
 
-  const canCreate = !authConfigured || role === 'Admin' || role === 'PM'
+  const canCreate = true
   const inputClass = `h-10 rounded-md border px-3 text-sm outline-none ${
     isDark ? 'border-slate-700 bg-slate-950 text-slate-100 placeholder:text-slate-500' : 'border-slate-200 bg-white text-slate-950'
   }`
@@ -46,35 +46,51 @@ export function ProjectCreateButton({
         name: form.name,
         area: form.requester_area || 'Sin area',
         stack: form.stack || 'Sin stack',
-        status: 'Backlog',
+        status: form.status,
         priority: form.priority,
         progress: 0,
         delivery: form.estimated_delivery || null,
+        repositoryUrl: form.repository_url || null,
       })
       setOpen(false)
-      setForm({ name: '', description: '', requester_area: '', stack: '', priority: 'Media', estimated_delivery: '' })
+      setForm({ name: '', description: '', requester_area: '', stack: '', repository_url: '', status: 'En desarrollo', priority: 'Media', estimated_delivery: '' })
       return
     }
 
     setLoading(true)
     try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+
+      if (!session) {
+        throw new Error('No hay una sesion activa. Volve a iniciar sesion para guardar en Supabase.')
+      }
+
       const { error: insertError } = await supabase.from('projects').insert({
         name: form.name,
         description: form.description || null,
         requester_area: form.requester_area || null,
         stack: form.stack || null,
+        repository_url: form.repository_url || null,
         priority: form.priority,
         estimated_delivery: form.estimated_delivery || null,
-        status: 'Backlog',
+        status: form.status,
       })
 
       if (insertError) throw insertError
 
       setOpen(false)
-      setForm({ name: '', description: '', requester_area: '', stack: '', priority: 'Media', estimated_delivery: '' })
+      setForm({ name: '', description: '', requester_area: '', stack: '', repository_url: '', status: 'En desarrollo', priority: 'Media', estimated_delivery: '' })
       onCreated?.()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo crear el proyecto')
+      const message =
+        err instanceof Error
+          ? err.message
+          : typeof err === 'object' && err && 'message' in err
+            ? String((err as { message?: unknown }).message)
+            : 'No se pudo crear el proyecto'
+      setError(message)
     } finally {
       setLoading(false)
     }
@@ -86,7 +102,7 @@ export function ProjectCreateButton({
         className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#10b981] px-4 text-sm font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
         disabled={!canCreate}
         onClick={() => setOpen(true)}
-        title={canCreate ? 'Nuevo proyecto' : 'Disponible para Admin o PM'}
+        title="Nuevo proyecto"
       >
         <Plus className="h-4 w-4" />
         Nuevo proyecto
@@ -119,15 +135,26 @@ export function ProjectCreateButton({
                 <input className={inputClass} placeholder="Area solicitante" value={form.requester_area} onChange={(e) => setForm({ ...form, requester_area: e.target.value })} />
                 <input className={inputClass} placeholder="Stack tecnico" value={form.stack} onChange={(e) => setForm({ ...form, stack: e.target.value })} />
               </div>
+              <input className={inputClass} placeholder="Link de GitHub / repositorio" value={form.repository_url} onChange={(e) => setForm({ ...form, repository_url: e.target.value })} />
               <div className="grid gap-4 md:grid-cols-2">
+                <select className={inputClass} value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+                  <option value="Backlog">Backlog</option>
+                  <option value="Planificacion">Planificacion</option>
+                  <option value="En desarrollo">Proyecto activo</option>
+                  <option value="En aprobacion">En aprobacion</option>
+                  <option value="QA">Para testear</option>
+                  <option value="Deployado">Deployado</option>
+                  <option value="Mantenimiento">Mantenimiento</option>
+                  <option value="Pausado">Pausado</option>
+                </select>
                 <select className={inputClass} value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
                   <option>Baja</option>
                   <option>Media</option>
                   <option>Alta</option>
                   <option>Critica</option>
                 </select>
-                <input className={inputClass} type="date" value={form.estimated_delivery} onChange={(e) => setForm({ ...form, estimated_delivery: e.target.value })} />
               </div>
+              <input className={inputClass} type="date" value={form.estimated_delivery} onChange={(e) => setForm({ ...form, estimated_delivery: e.target.value })} />
             </div>
 
             <button className="mt-5 h-10 w-full rounded-md bg-[#10b981] text-sm font-semibold text-white disabled:opacity-60" disabled={loading}>
