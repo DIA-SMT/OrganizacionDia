@@ -6,6 +6,10 @@ export type DashboardProject = {
   priority: string
   progress: number
   delivery: string | null
+  repositoryUrl?: string
+  updatedAt?: string
+  description?: string | null
+  private?: boolean
 }
 
 export type DashboardTask = {

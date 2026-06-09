@@ -5,6 +5,7 @@ import { ProjectCreateButton } from '@/components/project-create-button'
 import { TaskCreateButton } from '@/components/task-create-button'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
 import { mockActivity, mockPipeline, mockProjects, type DashboardProject, type DashboardTask, type PipelineColumn } from '@/lib/dashboard-data'
+import Link from 'next/link'
 import {
   Bell,
   CalendarClock,
@@ -148,16 +149,17 @@ function MetricCard({
   )
 }
 
-function SidebarItem({ icon, label, active }: { icon: React.ReactNode; label: string; active?: boolean }) {
+function SidebarItem({ icon, label, href, active }: { icon: React.ReactNode; label: string; href: string; active?: boolean }) {
   return (
-    <button
+    <Link
+      href={href}
       className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition ${
         active ? 'bg-[#e9f8f1] text-[#08784f]' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
       }`}
     >
       {icon}
       {label}
-    </button>
+    </Link>
   )
 }
 
@@ -170,6 +172,7 @@ export function DashboardView() {
   const [searchQuery, setSearchQuery] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
+  const [githubStatus, setGithubStatus] = useState<string | null>(null)
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -264,6 +267,35 @@ export function DashboardView() {
     })
   }, [authConfigured, loading, user])
 
+  useEffect(() => {
+    async function fetchGithubProjects() {
+      try {
+        const res = await fetch('/api/github/projects', { cache: 'no-store' })
+        if (!res.ok) return
+
+        const payload = (await res.json()) as {
+          projects?: DashboardProject[]
+          configured?: boolean
+          error?: string | null
+        }
+
+        if (payload.projects && payload.projects.length > 0) {
+          setProjects(payload.projects)
+          setUsingMockData(false)
+          setGithubStatus(`${payload.projects.length} proyectos cargados desde GitHub`)
+          setActivity((current) => [`${payload.projects?.length ?? 0} repositorios sincronizados desde GitHub`, ...current].slice(0, 5))
+          return
+        }
+
+        if (payload.error) setGithubStatus(payload.error)
+      } catch {
+        setGithubStatus('No se pudo conectar con GitHub')
+      }
+    }
+
+    fetchGithubProjects()
+  }, [])
+
   const metrics = useMemo(() => {
     const approvalCount = pipeline.find((column) => column.title === 'En aprobacion')?.tasks.length ?? 0
     const testingCount = pipeline.find((column) => column.title === 'Para testear')?.tasks.length ?? 0
@@ -355,16 +387,16 @@ export function DashboardView() {
           </div>
 
           <nav className="space-y-1">
-            <SidebarItem icon={<LayoutDashboard className="h-4 w-4" />} label="Dashboard" active />
-            <SidebarItem icon={<Code2 className="h-4 w-4" />} label="Proyectos" />
-            <SidebarItem icon={<GitPullRequest className="h-4 w-4" />} label="Tareas" />
-            <SidebarItem icon={<FlaskConical className="h-4 w-4" />} label="Testing" />
-            <SidebarItem icon={<Users className="h-4 w-4" />} label="Equipo" />
+            <SidebarItem icon={<LayoutDashboard className="h-4 w-4" />} label="Dashboard" href="/" active />
+            <SidebarItem icon={<Code2 className="h-4 w-4" />} label="Proyectos" href="/proyectos" />
+            <SidebarItem icon={<GitPullRequest className="h-4 w-4" />} label="Tareas" href="/tareas" />
+            <SidebarItem icon={<FlaskConical className="h-4 w-4" />} label="Impedimentos" href="/impedimentos" />
+            <SidebarItem icon={<Users className="h-4 w-4" />} label="Equipo" href="/equipo" />
           </nav>
 
           <div className={`mt-8 rounded-lg border p-3 ${mutedSurfaceClass}`}>
             <p className="text-xs font-semibold uppercase text-slate-400">Sprint actual</p>
-            <p className={`mt-2 text-sm font-semibold ${textStrongClass}`}>Junio · Semana 2</p>
+            <p className={`mt-2 text-sm font-semibold ${textStrongClass}`}>Junio - Semana 2</p>
             <div className="mt-3 h-2 rounded-full bg-slate-100">
               <div className="h-2 w-[62%] rounded-full bg-[#10b981]" />
             </div>
@@ -444,6 +476,10 @@ export function DashboardView() {
                       Datos de ejemplo
                     </span>
                   )}
+                  <Link href="/supabase" className={`rounded-md px-2 py-1 text-xs font-semibold ${isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>
+                    Supabase
+                  </Link>
+                  {githubStatus && <span className={`rounded-md px-2 py-1 text-xs font-semibold ${isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>{githubStatus}</span>}
                   {role && <span className="rounded-md bg-[#e9f8f1] px-2 py-1 text-xs font-semibold text-[#08784f]">Rol: {role}</span>}
                 </div>
               </div>
@@ -575,8 +611,13 @@ export function DashboardView() {
                         <div>
                           <h3 className={`font-semibold ${textStrongClass}`}>{project.name}</h3>
                           <p className={`mt-1 text-sm ${textMutedClass}`}>
-                            {project.area} · {project.stack}
+                            {project.area} - {project.stack}
                           </p>
+                          {project.repositoryUrl && (
+                            <a className="mt-2 inline-block text-xs font-semibold text-[#0d8f62]" href={project.repositoryUrl} target="_blank" rel="noreferrer">
+                              Ver repositorio
+                            </a>
+                          )}
                         </div>
                         <span className="rounded-md bg-[#eef8ff] px-2 py-1 text-xs font-semibold text-[#1677a8]">{project.status}</span>
                       </div>
