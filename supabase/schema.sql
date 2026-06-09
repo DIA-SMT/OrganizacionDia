@@ -26,7 +26,7 @@ create table public.projects (
   staging_url text,
   production_url text,
   status text not null default 'Backlog' check (
-    status in ('Backlog', 'Planificacion', 'En desarrollo', 'QA', 'Deployado', 'Mantenimiento', 'Pausado')
+    status in ('Backlog', 'Planificacion', 'En desarrollo', 'En aprobacion', 'QA', 'Deployado', 'Mantenimiento', 'Pausado')
   ),
   priority text not null default 'Media' check (priority in ('Baja', 'Media', 'Alta', 'Critica')),
   start_date date,

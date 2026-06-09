@@ -6,7 +6,7 @@ export type DashboardProject = {
   priority: string
   progress: number
   delivery: string | null
-  repositoryUrl?: string
+  repositoryUrl?: string | null
   updatedAt?: string
   description?: string | null
   private?: boolean

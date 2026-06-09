@@ -5,6 +5,11 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import type { AuthChangeEvent, Session, User } from '@supabase/supabase-js'
 import type { TeamRole } from '@/types/domain'
 
+type MemberLookup = {
+  id: string
+  role: string
+}
+
 type AuthContextType = {
   user: User | null
   session: Session | null
@@ -35,6 +40,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const lastUserId = useRef<string | null>(null)
   const loadingTimeoutRef = useRef<number | null>(null)
 
+  function normalizeRole(value: string | null | undefined): TeamRole {
+    const normalized = String(value ?? '').trim()
+    if (normalized === 'Admin' || normalized === 'PM' || normalized === 'Dev' || normalized === 'QA' || normalized === 'Viewer') {
+      return normalized
+    }
+    return 'Viewer'
+  }
+
   useEffect(() => {
     if (!supabase) {
       return
@@ -49,12 +62,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return
       }
 
-      const { data: member } = await supabase
+      let member: MemberLookup | null = null
+
+      const { data: byAuthUser } = await supabase
         .from('members')
         .select('id, role')
-        .or(`auth_user_id.eq.${currentUser.id},email.eq.${currentUser.email ?? ''}`)
+        .eq('auth_user_id', currentUser.id)
         .eq('active', true)
         .maybeSingle()
+
+      member = byAuthUser as MemberLookup | null
+
+      const userEmail = currentUser.email?.trim()
+
+      if (!member && userEmail) {
+        const { data: byEmail } = await supabase
+          .from('members')
+          .select('id, role')
+          .ilike('email', userEmail)
+          .eq('active', true)
+          .maybeSingle()
+
+        member = byEmail as MemberLookup | null
+      }
 
       if (!member) {
         setRole('Viewer')
@@ -62,7 +92,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return
       }
 
-      setRole(member.role as TeamRole)
+      setRole(normalizeRole(member.role))
       setMemberId(member.id)
     }
 

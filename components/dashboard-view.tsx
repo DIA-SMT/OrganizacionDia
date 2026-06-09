@@ -32,6 +32,7 @@ type ProjectRow = {
   name: string
   requester_area: string | null
   stack: string | null
+  repository_url: string | null
   status: string
   priority: string
   estimated_delivery: string | null
@@ -54,7 +55,7 @@ type JoinedTaskRow = {
 const pipelineConfig = [
   { title: 'Pendiente', statuses: ['Backlog', 'Pendiente'], tone: 'bg-slate-100 text-slate-700' },
   { title: 'En desarrollo', statuses: ['En desarrollo'], tone: 'bg-blue-50 text-blue-700' },
-  { title: 'En aprobacion', statuses: ['En revision'], tone: 'bg-violet-50 text-violet-700' },
+  { title: 'En aprobacion', statuses: ['En aprobacion', 'En revision'], tone: 'bg-violet-50 text-violet-700' },
   { title: 'Para testear', statuses: ['QA'], tone: 'bg-emerald-50 text-emerald-700' },
 ]
 
@@ -78,6 +79,7 @@ function MetricCard({
   progress,
   series,
   isDark,
+  href,
 }: {
   icon: React.ReactNode
   label: string
@@ -87,14 +89,16 @@ function MetricCard({
   progress: number
   series: number[]
   isDark: boolean
+  href: string
 }) {
   const clampedProgress = Math.max(0, Math.min(progress, 100))
   const circumference = 2 * Math.PI * 21
   const dashOffset = circumference - (clampedProgress / 100) * circumference
 
   return (
-    <div
-      className={`group relative overflow-hidden rounded-lg border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
+    <Link
+      href={href}
+      className={`group relative block overflow-hidden rounded-lg border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
         isDark ? 'border-slate-800 bg-slate-900 shadow-slate-950/20' : 'border-slate-200 bg-white'
       }`}
     >
@@ -145,7 +149,7 @@ function MetricCard({
           </div>
         ))}
       </div>
-    </div>
+    </Link>
   )
 }
 
@@ -203,7 +207,7 @@ export function DashboardView() {
       const [{ data: projectRows }, { data: taskProgressRows }, { data: joinedTaskRows }] = await Promise.all([
         supabase
           .from('projects')
-          .select('id, name, requester_area, stack, status, priority, estimated_delivery')
+          .select('id, name, requester_area, stack, repository_url, status, priority, estimated_delivery')
           .eq('active', true)
           .order('estimated_delivery', { ascending: true }),
         supabase.from('tasks').select('project_id, status').eq('active', true),
@@ -235,6 +239,7 @@ export function DashboardView() {
           priority: project.priority,
           progress: progress && progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0,
           delivery: project.estimated_delivery,
+          repositoryUrl: project.repository_url,
         }
       })
 
@@ -251,11 +256,11 @@ export function DashboardView() {
           })),
       }))
 
-      if (nextProjects.length > 0) setProjects(nextProjects)
-      setPipeline(nextPipeline.some((column) => column.tasks.length > 0) ? nextPipeline : mockPipeline)
+      setProjects(nextProjects)
+      setPipeline(nextPipeline)
       setActivity([
         `Sesion iniciada como ${userEmail}`,
-        `${nextProjects.length || mockProjects.length} proyectos activos cargados`,
+        `${nextProjects.length} proyectos activos cargados`,
         `${tasks.length} tareas tecnicas en seguimiento`,
       ])
       setUsingMockData(false)
@@ -297,17 +302,18 @@ export function DashboardView() {
   }, [])
 
   const metrics = useMemo(() => {
-    const approvalCount = pipeline.find((column) => column.title === 'En aprobacion')?.tasks.length ?? 0
-    const testingCount = pipeline.find((column) => column.title === 'Para testear')?.tasks.length ?? 0
+    const activeProjects = projects.filter((project) => project.status === 'En desarrollo').length
+    const approvalCount = projects.filter((project) => project.status === 'En aprobacion').length
+    const testingCount = projects.filter((project) => project.status === 'QA').length
     const upcomingCount = projects.filter((project) => project.delivery).length
 
     return {
-      activeProjects: projects.length,
+      activeProjects,
       approvalCount,
       testingCount,
       upcomingCount,
     }
-  }, [pipeline, projects])
+  }, [projects])
 
   const normalizedSearch = searchQuery.trim().toLowerCase()
   const filteredProjects = useMemo(() => {
@@ -480,6 +486,7 @@ export function DashboardView() {
                     Supabase
                   </Link>
                   {githubStatus && <span className={`rounded-md px-2 py-1 text-xs font-semibold ${isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>{githubStatus}</span>}
+                  {user && <span className="rounded-md bg-[#e9f8f1] px-2 py-1 text-xs font-semibold text-[#08784f]">Sesion activa</span>}
                   {role && <span className="rounded-md bg-[#e9f8f1] px-2 py-1 text-xs font-semibold text-[#08784f]">Rol: {role}</span>}
                 </div>
               </div>
@@ -504,6 +511,7 @@ export function DashboardView() {
                 progress={Math.min(metrics.activeProjects * 24, 96)}
                 series={[34, 56, 48, 72, 62, 86, 74]}
                 isDark={isDark}
+                href="/projects"
               />
               <MetricCard
                 icon={<GitPullRequest className="h-4 w-4" />}
@@ -514,6 +522,7 @@ export function DashboardView() {
                 progress={Math.min(metrics.approvalCount * 35, 100)}
                 series={[22, 34, 58, 46, 64, 38, 52]}
                 isDark={isDark}
+                href="/projects"
               />
               <MetricCard
                 icon={<FlaskConical className="h-4 w-4" />}
@@ -524,6 +533,7 @@ export function DashboardView() {
                 progress={Math.min(metrics.testingCount * 40, 100)}
                 series={[18, 28, 36, 52, 44, 68, 58]}
                 isDark={isDark}
+                href="/testing"
               />
               <MetricCard
                 icon={<CalendarClock className="h-4 w-4" />}
@@ -534,6 +544,7 @@ export function DashboardView() {
                 progress={Math.min(metrics.upcomingCount * 30, 100)}
                 series={[40, 44, 38, 70, 66, 76, 88]}
                 isDark={isDark}
+                href="/projects"
               />
             </section>
 
@@ -599,14 +610,14 @@ export function DashboardView() {
                     <h2 className={`font-semibold ${textStrongClass}`}>Proyectos principales</h2>
                     <p className={`text-sm ${textMutedClass}`}>Estado, stack y avance general</p>
                   </div>
-                  <button className={`flex items-center gap-1 rounded-md border px-3 py-2 text-sm ${isDark ? 'border-slate-700 text-slate-300' : 'border-slate-200 text-slate-600'}`}>
+                  <Link href="/projects" className={`flex items-center gap-1 rounded-md border px-3 py-2 text-sm ${isDark ? 'border-slate-700 text-slate-300 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
                     {normalizedSearch ? `${filteredProjects.length} resultados` : 'Todos'}
                     <ChevronDown className="h-4 w-4" />
-                  </button>
+                  </Link>
                 </div>
                 <div className={`divide-y ${isDark ? 'divide-slate-800' : 'divide-slate-100'}`}>
                   {filteredProjects.map((project) => (
-                    <article key={project.name} className="p-5">
+                    <Link key={project.name} href="/projects" className={`block p-5 transition ${isDark ? 'hover:bg-slate-800/60' : 'hover:bg-slate-50'}`}>
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div>
                           <h3 className={`font-semibold ${textStrongClass}`}>{project.name}</h3>
@@ -614,7 +625,12 @@ export function DashboardView() {
                             {project.area} - {project.stack}
                           </p>
                           {project.repositoryUrl && (
-                            <a className="mt-2 inline-block text-xs font-semibold text-[#0d8f62]" href={project.repositoryUrl} target="_blank" rel="noreferrer">
+                            <a
+                              className="mt-2 inline-flex text-xs font-semibold text-[#0d8f62] hover:underline"
+                              href={project.repositoryUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
                               Ver repositorio
                             </a>
                           )}
@@ -630,7 +646,7 @@ export function DashboardView() {
                           <div className="h-2 rounded-full bg-[#10b981]" style={{ width: `${project.progress}%` }} />
                         </div>
                       </div>
-                    </article>
+                    </Link>
                   ))}
                   {filteredProjects.length === 0 && <p className={`p-5 text-sm ${textMutedClass}`}>No hay proyectos que coincidan con la busqueda.</p>}
                 </div>
@@ -736,6 +752,14 @@ export function DashboardView() {
                 <p className={`mt-1 text-sm ${textMutedClass}`}>
                   {authConfigured ? 'Supabase configurado. El dashboard puede leer datos reales.' : 'Modo demo activo. Los cambios se muestran en pantalla hasta recargar.'}
                 </p>
+              </div>
+
+              <div className={`rounded-lg border p-4 ${mutedSurfaceClass}`}>
+                <p className={`font-semibold ${textStrongClass}`}>Sesion</p>
+                <div className={`mt-2 space-y-1 text-sm ${textMutedClass}`}>
+                  <p>Email: {user?.email ?? 'Sin sesion'}</p>
+                  <p>Permisos: funciones habilitadas para todos los usuarios con acceso</p>
+                </div>
               </div>
             </div>
           </aside>

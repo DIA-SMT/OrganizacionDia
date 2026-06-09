@@ -25,15 +25,31 @@ create table if not exists public.projects (
   repository_url text,
   staging_url text,
   production_url text,
-  status text not null default 'Backlog' check (
-    status in ('Backlog', 'Planificacion', 'En desarrollo', 'QA', 'Deployado', 'Mantenimiento', 'Pausado')
-  ),
+  status text not null default 'Backlog',
   priority text not null default 'Media' check (priority in ('Baja', 'Media', 'Alta', 'Critica')),
   start_date date,
   estimated_delivery date,
   active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
+);
+
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.table_constraints
+    where table_schema = 'public'
+      and table_name = 'projects'
+      and constraint_name = 'projects_status_check'
+  ) then
+    alter table public.projects drop constraint projects_status_check;
+  end if;
+end $$;
+
+alter table public.projects
+add constraint projects_status_check check (
+  status in ('Backlog', 'Planificacion', 'En desarrollo', 'En aprobacion', 'QA', 'Deployado', 'Mantenimiento', 'Pausado')
 );
 
 create table if not exists public.tasks (
