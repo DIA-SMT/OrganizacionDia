@@ -29,6 +29,7 @@ type AssistantMessage = {
 type OpenRouterAssistantResponse = {
   answer?: string
   error?: string
+  projects?: AssistantProject[]
 }
 
 const statusFilters = [
@@ -174,13 +175,13 @@ export function VirtualAssistant() {
     fetchProjects()
   }, [loading, open, projects.length])
 
-  async function getOpenRouterAnswer(questionText: string, matchedProjects: AssistantProject[]) {
+  async function getOpenRouterAnswer(questionText: string) {
     const response = await fetch('/api/assistant/openrouter', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         question: questionText,
-        projects: matchedProjects.length > 0 ? matchedProjects : projects,
+        projects,
       }),
     })
 
@@ -190,7 +191,10 @@ export function VirtualAssistant() {
       throw new Error(payload.error ?? 'OpenRouter no pudo responder.')
     }
 
-    return payload.answer
+    return {
+      answer: payload.answer,
+      projects: payload.projects ?? [],
+    }
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -209,8 +213,8 @@ export function VirtualAssistant() {
     setError(null)
 
     try {
-      const aiAnswer = await getOpenRouterAnswer(trimmedQuestion, answer.projects)
-      setMessages((current) => [...current, { role: 'assistant', text: aiAnswer, projects: answer.projects }])
+      const aiResponse = await getOpenRouterAnswer(trimmedQuestion)
+      setMessages((current) => [...current, { role: 'assistant', text: aiResponse.answer, projects: aiResponse.projects.length > 0 ? aiResponse.projects : answer.projects }])
     } catch (err) {
       const message = err instanceof Error ? err.message : 'No se pudo conectar con OpenRouter.'
       setError(`${message} Respondo con el modo local.`)
