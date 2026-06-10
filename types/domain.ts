@@ -1,11 +1,9 @@
 export type ProjectStatus =
-  | 'Backlog'
-  | 'Planificacion'
+  | 'Planificación'
   | 'En desarrollo'
-  | 'En aprobacion'
+  | 'MVP aprobado'
   | 'QA'
-  | 'Deployado'
-  | 'Mantenimiento'
+  | 'En Producción'
   | 'Pausado'
 
 export type TaskStatus =

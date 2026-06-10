@@ -23,10 +23,13 @@ create table if not exists public.projects (
   technical_owner_id uuid references public.members(id) on delete set null,
   stack text,
   repository_url text,
+  repository_url_secondary text,
   staging_url text,
   production_url text,
-  status text not null default 'Backlog',
+  note text,
+  status text not null default 'Planificación',
   priority text not null default 'Media' check (priority in ('Baja', 'Media', 'Alta', 'Critica')),
+  progress integer not null default 0 check (progress >= 0 and progress <= 100),
   start_date date,
   estimated_delivery date,
   active boolean not null default true,
@@ -47,10 +50,44 @@ begin
   end if;
 end $$;
 
+update public.projects
+set status = case
+  when status in ('Backlog', 'Planificacion') then 'Planificación'
+  when status = 'En aprobacion' then 'MVP aprobado'
+  when status = 'Deployado' then 'En Producción'
+  when status = 'Mantenimiento' then 'Pausado'
+  else status
+end;
+
 alter table public.projects
 add constraint projects_status_check check (
-  status in ('Backlog', 'Planificacion', 'En desarrollo', 'En aprobacion', 'QA', 'Deployado', 'Mantenimiento', 'Pausado')
+  status in ('Planificación', 'En desarrollo', 'MVP aprobado', 'QA', 'En Producción', 'Pausado')
 );
+
+alter table public.projects
+add column if not exists progress integer not null default 0;
+
+alter table public.projects
+add column if not exists note text;
+
+alter table public.projects
+add column if not exists repository_url_secondary text;
+
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.table_constraints
+    where table_schema = 'public'
+      and table_name = 'projects'
+      and constraint_name = 'projects_progress_check'
+  ) then
+    alter table public.projects drop constraint projects_progress_check;
+  end if;
+end $$;
+
+alter table public.projects
+add constraint projects_progress_check check (progress >= 0 and progress <= 100);
 
 create table if not exists public.tasks (
   id uuid primary key default gen_random_uuid(),

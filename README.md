@@ -76,13 +76,19 @@ supabase/schema.sql
 supabase/seed.sql
 ```
 
-6. Iniciar desarrollo:
+6. Opcional: cargar la cartera de proyectos DIA-SMT:
+
+```text
+supabase/import_dia_projects.sql
+```
+
+7. Iniciar desarrollo:
 
 ```powershell
 npm run dev
 ```
 
-7. Abrir:
+8. Abrir:
 
 ```text
 http://localhost:3000

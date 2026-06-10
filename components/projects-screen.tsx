@@ -2,7 +2,7 @@
 
 import { AppShell } from '@/components/app-shell'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
-import { ExternalLink } from 'lucide-react'
+import { Check, ChevronDown, ExternalLink, Maximize2, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 type ProjectRow = {
@@ -12,15 +12,122 @@ type ProjectRow = {
   requester_area: string | null
   stack: string | null
   repository_url: string | null
+  repository_url_secondary: string | null
   status: string
   priority: string
+  progress: number
   estimated_delivery: string | null
+  note: string | null
 }
 
-export function ProjectsScreen() {
+const projectStatuses = ['Planificación', 'En desarrollo', 'MVP aprobado', 'QA', 'En Producción', 'Pausado']
+const priorities = ['Baja', 'Media', 'Alta', 'Critica']
+
+function statusTone(status: string, isDark: boolean) {
+  if (status === 'Pausado') return isDark ? 'border-red-900/60 bg-red-950/40 text-red-300' : 'border-red-200 bg-red-50 text-red-700'
+  if (status === 'QA') return isDark ? 'border-sky-900/60 bg-sky-950/40 text-sky-300' : 'border-sky-200 bg-sky-50 text-sky-700'
+  if (status === 'MVP aprobado') return isDark ? 'border-violet-900/60 bg-violet-950/40 text-violet-300' : 'border-violet-200 bg-violet-50 text-violet-700'
+  if (status === 'En Producción') return isDark ? 'border-emerald-900/60 bg-emerald-950/40 text-emerald-300' : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  if (status === 'En desarrollo') return isDark ? 'border-blue-900/60 bg-blue-950/40 text-blue-300' : 'border-blue-200 bg-blue-50 text-blue-700'
+  return isDark ? 'border-amber-900/60 bg-amber-950/40 text-amber-300' : 'border-amber-200 bg-amber-50 text-amber-700'
+}
+
+function useStoredTheme() {
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    if (typeof window === 'undefined') return 'light'
+    const savedTheme = window.localStorage.getItem('organizacion-dia-theme')
+    return savedTheme === 'dark' || savedTheme === 'light' ? savedTheme : 'light'
+  })
+
+  useEffect(() => {
+    function handleThemeChange(event: Event) {
+      const next = (event as CustomEvent<'light' | 'dark'>).detail
+      if (next === 'dark' || next === 'light') setTheme(next)
+    }
+
+    window.addEventListener('organizacion-dia-theme-change', handleThemeChange)
+    return () => window.removeEventListener('organizacion-dia-theme-change', handleThemeChange)
+  }, [])
+
+  return theme
+}
+
+function StatusDropdown({
+  value,
+  isDark,
+  onChange,
+}: {
+  value: string
+  isDark: boolean
+  onChange: (value: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        className={`inline-flex h-9 items-center gap-2 rounded-md border px-3 text-xs font-semibold shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${statusTone(value, isDark)}`}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span>{value}</span>
+        <ChevronDown className={`h-3.5 w-3.5 transition ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className={`absolute right-0 z-20 mt-2 w-56 overflow-hidden rounded-lg border p-1.5 shadow-xl shadow-slate-900/10 ${isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-200 bg-white'}`}>
+          {projectStatuses.map((status) => (
+            <button
+              key={status}
+              type="button"
+              className={`flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2 text-left text-sm font-semibold transition hover:scale-[1.01] ${statusTone(status, isDark)} ${
+                status === value ? 'ring-2 ring-[#10b981]/30' : ''
+              }`}
+              onClick={() => {
+                onChange(status)
+                setOpen(false)
+              }}
+            >
+              <span>{status}</span>
+              {status === value && <Check className="h-4 w-4" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function ProjectsScreen({
+  initialSearch = '',
+  initialStatusFilter = null,
+  initialSelectedProjectId = null,
+}: {
+  initialSearch?: string
+  initialStatusFilter?: string | null
+  initialSelectedProjectId?: string | null
+}) {
   const [projects, setProjects] = useState<ProjectRow[]>([])
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(initialSearch)
+  const [statusFilter, setStatusFilter] = useState<string | null>(initialStatusFilter)
   const [loading, setLoading] = useState(true)
+  const [savingProgressId, setSavingProgressId] = useState<string | null>(null)
+  const [savingField, setSavingField] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [view, setView] = useState<'active' | 'finished'>('active')
+  const [addingSecondaryRepoIds, setAddingSecondaryRepoIds] = useState<string[]>([])
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(initialSelectedProjectId)
+  const [error, setError] = useState<string | null>(null)
+  const theme = useStoredTheme()
+  const isDark = theme === 'dark'
+
+  const cardClass = isDark ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-white'
+  const panelClass = isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-200 bg-slate-50'
+  const titleClass = isDark ? 'text-white' : 'text-slate-950'
+  const bodyClass = isDark ? 'text-slate-300' : 'text-slate-600'
+  const mutedClass = isDark ? 'text-slate-400' : 'text-slate-500'
+  const labelClass = isDark ? 'text-slate-500' : 'text-slate-400'
+  const inputClass = isDark ? 'border-slate-700 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-900'
 
   useEffect(() => {
     async function fetchProjects() {
@@ -30,67 +137,503 @@ export function ProjectsScreen() {
         return
       }
 
-      const { data } = await supabase
+      const { data, error: projectsError } = await supabase
         .from('projects')
-        .select('id, name, description, requester_area, stack, repository_url, status, priority, estimated_delivery')
+        .select('id, name, description, requester_area, stack, repository_url, repository_url_secondary, status, priority, progress, estimated_delivery, note')
         .eq('active', true)
         .order('created_at', { ascending: false })
 
-      setProjects((data ?? []) as ProjectRow[])
+      if (projectsError) {
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('projects')
+          .select('id, name, description, requester_area, stack, repository_url, status, priority, progress, estimated_delivery')
+          .eq('active', true)
+          .order('created_at', { ascending: false })
+
+        if (fallbackError) {
+          setError(fallbackError.message)
+          setProjects([])
+        } else {
+          setError('Falta actualizar Supabase con las columnas nuevas. Ejecuta supabase/add_project_note.sql y supabase/add_project_repository_secondary.sql.')
+          setProjects(((fallbackData ?? []) as Omit<ProjectRow, 'note' | 'repository_url_secondary'>[]).map((project) => ({ ...project, note: null, repository_url_secondary: null })))
+        }
+      } else {
+        setProjects((data ?? []) as ProjectRow[])
+      }
+
       setLoading(false)
     }
 
     fetchProjects()
   }, [])
 
+  async function updateProject<K extends keyof Pick<ProjectRow, 'name' | 'status' | 'priority' | 'estimated_delivery' | 'note' | 'repository_url' | 'repository_url_secondary'>>(projectId: string, field: K, value: ProjectRow[K]) {
+    setError(null)
+    setProjects((current) => current.map((project) => (project.id === projectId ? { ...project, [field]: value } : project)))
+
+    const supabase = getSupabaseBrowserClient()
+    if (!supabase) {
+      setError('Supabase no esta configurado.')
+      return
+    }
+
+    const key = `${projectId}-${String(field)}`
+    setSavingField(key)
+    const nullableFields: Array<keyof ProjectRow> = ['estimated_delivery', 'note', 'repository_url', 'repository_url_secondary']
+    const persistedValue = nullableFields.includes(field) ? value || null : value
+    const { error: updateError } = await supabase.from('projects').update({ [field]: persistedValue }).eq('id', projectId)
+    setSavingField(null)
+
+    if (updateError) setError(updateError.message)
+  }
+
+  async function updateProgress(projectId: string, progress: number) {
+    setError(null)
+    setProjects((current) => current.map((project) => (project.id === projectId ? { ...project, progress } : project)))
+
+    const supabase = getSupabaseBrowserClient()
+    if (!supabase) {
+      setError('Supabase no esta configurado.')
+      return
+    }
+
+    setSavingProgressId(projectId)
+    const { error: updateError } = await supabase.from('projects').update({ progress }).eq('id', projectId)
+    setSavingProgressId(null)
+
+    if (updateError) setError(updateError.message)
+  }
+
+  async function deleteProject(project: ProjectRow) {
+    const confirmed = window.confirm(`¿Eliminar "${project.name}"? Esta accion lo quitara del dashboard.`)
+    if (!confirmed) return
+
+    setError(null)
+    const supabase = getSupabaseBrowserClient()
+    if (!supabase) {
+      setError('Supabase no esta configurado.')
+      return
+    }
+
+    setDeletingId(project.id)
+    const { error: deleteError } = await supabase.from('projects').update({ active: false }).eq('id', project.id)
+    setDeletingId(null)
+
+    if (deleteError) {
+      setError(deleteError.message)
+      return
+    }
+
+    setProjects((current) => current.filter((item) => item.id !== project.id))
+    setSelectedProjectId((current) => (current === project.id ? null : current))
+  }
+
+  function openProjectCard(event: React.MouseEvent<HTMLElement>, projectId: string) {
+    const target = event.target as HTMLElement
+    if (target.closest('input, textarea, select, button, a, [data-no-project-open]')) return
+    setSelectedProjectId(projectId)
+  }
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return projects
-    return projects.filter((project) => [project.name, project.description, project.requester_area, project.stack, project.status, project.priority].filter(Boolean).join(' ').toLowerCase().includes(q))
-  }, [projects, search])
+    const byView = statusFilter
+      ? statusFilter === 'Todos'
+        ? projects
+        : projects.filter((project) => (statusFilter === 'Activos' ? project.status !== 'En Producción' : project.status === statusFilter))
+      : projects.filter((project) => (view === 'finished' ? project.status === 'En Producción' : project.status !== 'En Producción'))
+    if (!q) return byView
+    return byView.filter((project) => [project.name, project.description, project.note, project.requester_area, project.stack, project.repository_url, project.repository_url_secondary, project.status, project.priority].filter(Boolean).join(' ').toLowerCase().includes(q))
+  }, [projects, search, statusFilter, view])
+
+  const activeCount = projects.filter((project) => project.status !== 'En Producción').length
+  const finishedCount = projects.filter((project) => project.status === 'En Producción').length
+  const selectedProject = selectedProjectId ? projects.find((project) => project.id === selectedProjectId) ?? null : null
 
   return (
     <AppShell title="Proyectos" subtitle="Informacion cargada de cada proyecto" search={search} onSearchChange={setSearch}>
+      {error && <div className={`mb-4 rounded-lg border p-3 text-sm ${isDark ? 'border-red-900/60 bg-red-950/30 text-red-300' : 'border-red-200 bg-red-50 text-red-700'}`}>{error}</div>}
+
+      {statusFilter && (
+        <div className={`mb-4 flex w-fit items-center gap-3 rounded-lg border px-3 py-2 text-sm font-semibold ${isDark ? 'border-emerald-900/60 bg-emerald-950/30 text-emerald-300' : 'border-emerald-200 bg-emerald-50 text-[#08784f]'}`}>
+          <span>Filtro: {statusFilter === 'Todos' ? 'Todos los proyectos' : statusFilter}</span>
+          <button type="button" className={isDark ? 'text-slate-300 hover:text-white' : 'text-slate-500 hover:text-slate-900'} onClick={() => setStatusFilter(null)}>
+            Limpiar
+          </button>
+        </div>
+      )}
+
+      <div className={`mb-4 inline-flex rounded-lg border p-1 ${isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-200 bg-white'}`}>
+        {[
+          ['active', `Activos (${activeCount})`],
+          ['finished', `Finalizados (${finishedCount})`],
+        ].map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            className={`rounded-md px-3 py-2 text-sm font-semibold transition ${
+              view === key
+                ? isDark
+                  ? 'bg-emerald-500/15 text-emerald-300'
+                  : 'bg-[#e9f8f1] text-[#08784f]'
+                : isDark
+                  ? 'text-slate-400 hover:bg-slate-900'
+                  : 'text-slate-500 hover:bg-slate-50'
+            }`}
+            onClick={() => {
+              setStatusFilter(null)
+              setView(key as 'active' | 'finished')
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {loading ? (
-        <div className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">Cargando proyectos...</div>
+        <div className={`rounded-lg border p-6 text-sm ${cardClass} ${mutedClass}`}>Cargando proyectos...</div>
       ) : filtered.length === 0 ? (
-        <div className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">No hay proyectos cargados.</div>
+        <div className={`rounded-lg border p-6 text-sm ${cardClass} ${mutedClass}`}>No hay proyectos cargados.</div>
       ) : (
         <div className="grid gap-4 xl:grid-cols-2">
           {filtered.map((project) => (
-            <article key={project.id} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <article
+              key={project.id}
+              className={`group cursor-zoom-in rounded-lg border p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg ${cardClass}`}
+              onClick={(event) => openProjectCard(event, project.id)}
+            >
               <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="text-lg font-bold text-slate-950 dark:text-white">{project.name}</h2>
-                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{project.requester_area ?? 'Sin area'} - {project.stack ?? 'Sin stack'}</p>
+                <div className="min-w-0 flex-1">
+                  <input
+                    className={`w-full rounded-md border border-transparent bg-transparent px-0 text-lg font-bold outline-none transition focus:px-2 ${titleClass} ${isDark ? 'focus:border-slate-700 focus:bg-slate-950' : 'focus:border-slate-200 focus:bg-white'}`}
+                    value={project.name}
+                    onChange={(event) => setProjects((current) => current.map((item) => (item.id === project.id ? { ...item, name: event.target.value } : item)))}
+                    onBlur={(event) => updateProject(project.id, 'name', event.target.value.trim() || project.name)}
+                  />
+                  <p className={`mt-1 text-sm ${mutedClass}`}>{project.requester_area ?? 'Sin area'} - {project.stack ?? 'Sin stack'}</p>
+                  {savingField === `${project.id}-name` && <p className={`mt-1 text-xs font-semibold ${isDark ? 'text-emerald-300' : 'text-[#0d8f62]'}`}>Guardando nombre...</p>}
                 </div>
-                <span className="rounded-md bg-[#e9f8f1] px-2 py-1 text-xs font-semibold text-[#08784f] dark:bg-emerald-500/15 dark:text-emerald-300">{project.status}</span>
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    className={`flex h-9 w-9 items-center justify-center rounded-md border transition ${isDark ? 'border-slate-700 text-slate-300 hover:bg-slate-950' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+                    onClick={() => setSelectedProjectId(project.id)}
+                    title="Ver detalle"
+                  >
+                    <Maximize2 className="h-4 w-4" />
+                  </button>
+                  <StatusDropdown value={project.status} isDark={isDark} onChange={(status) => updateProject(project.id, 'status', status)} />
+                  <button
+                    type="button"
+                    className={`flex h-9 w-9 items-center justify-center rounded-md border transition ${isDark ? 'border-red-900/60 bg-red-950/30 text-red-300 hover:bg-red-950/60' : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100'}`}
+                    onClick={() => deleteProject(project)}
+                    title="Eliminar proyecto"
+                    disabled={deletingId === project.id}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
 
-              {project.description && <p className="mt-4 text-sm leading-6 text-slate-600 dark:text-slate-300">{project.description}</p>}
+              {project.description && <p className={`mt-4 text-sm leading-6 ${bodyClass}`}>{project.description}</p>}
 
-              <div className="mt-4 grid gap-3 text-sm md:grid-cols-3">
-                <div className="rounded-md bg-slate-50 p-3 dark:bg-slate-950">
-                  <p className="text-xs text-slate-400 dark:text-slate-500">Prioridad</p>
-                  <p className="mt-1 font-semibold text-slate-800 dark:text-slate-100">{project.priority}</p>
+              <label className={`mt-4 block rounded-md border p-3 ${panelClass}`}>
+                <div className="flex items-center justify-between gap-4">
+                  <span className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Nota</span>
+                  {savingField === `${project.id}-note` && <span className={`text-xs font-semibold ${isDark ? 'text-emerald-300' : 'text-[#0d8f62]'}`}>Guardando...</span>}
                 </div>
-                <div className="rounded-md bg-slate-50 p-3 dark:bg-slate-950">
-                  <p className="text-xs text-slate-400 dark:text-slate-500">Entrega</p>
-                  <p className="mt-1 font-semibold text-slate-800 dark:text-slate-100">{project.estimated_delivery ?? 'Sin fecha'}</p>
+                <textarea
+                  className={`mt-2 min-h-20 w-full resize-y rounded-md border px-3 py-2 text-sm outline-none ${inputClass}`}
+                  placeholder="Ej: necesita mantenimiento, pendiente de revisar deploy, funcionando estable..."
+                  value={project.note ?? ''}
+                  onChange={(event) => setProjects((current) => current.map((item) => (item.id === project.id ? { ...item, note: event.target.value } : item)))}
+                  onBlur={(event) => updateProject(project.id, 'note', event.target.value.trim() || null)}
+                />
+              </label>
+
+              <div className={`mt-4 rounded-md border p-3 ${panelClass}`}>
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Desarrollo</p>
+                    <p className={`mt-0.5 text-xs ${mutedClass}`}>Arrastra la barra para ajustar el avance</p>
+                  </div>
+                  <p className={`rounded-md px-2.5 py-1 text-sm font-bold ${isDark ? 'bg-emerald-500/15 text-emerald-300' : 'bg-[#e9f8f1] text-[#08784f]'}`}>
+                    {savingProgressId === project.id ? 'Guardando...' : `${project.progress}%`}
+                  </p>
                 </div>
-                <div className="rounded-md bg-slate-50 p-3 dark:bg-slate-950">
-                  <p className="text-xs text-slate-400 dark:text-slate-500">Repositorio</p>
-                  {project.repository_url ? (
-                    <a className="mt-1 inline-flex items-center gap-1 font-semibold text-[#0d8f62] dark:text-emerald-300" href={project.repository_url} target="_blank" rel="noreferrer">
-                      GitHub <ExternalLink className="h-3 w-3" />
-                    </a>
-                  ) : (
-                    <p className="mt-1 font-semibold text-slate-800 dark:text-slate-100">Sin link</p>
-                  )}
+                <div className="relative mt-4">
+                  <input
+                    className="progress-slider w-full"
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="5"
+                    value={project.progress}
+                    onChange={(event) => updateProgress(project.id, Number(event.target.value))}
+                    style={{
+                      background: `linear-gradient(to right, #10b981 0%, #10b981 ${project.progress}%, ${isDark ? '#1e293b' : '#e2e8f0'} ${project.progress}%, ${isDark ? '#1e293b' : '#e2e8f0'} 100%)`,
+                    }}
+                    aria-label={`Progreso de ${project.name}`}
+                  />
+                  <div className={`mt-2 flex justify-between text-[11px] font-semibold ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                    <span>0%</span>
+                    <span>50%</span>
+                    <span>100%</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 text-sm md:grid-cols-2">
+                <div className={`rounded-md p-3 ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}>
+                  <p className={`text-xs ${labelClass}`}>Prioridad</p>
+                  <select className={`mt-1 h-9 w-full rounded-md border px-2 font-semibold outline-none ${inputClass}`} value={project.priority} onChange={(event) => updateProject(project.id, 'priority', event.target.value)}>
+                    {priorities.map((priority) => (
+                      <option key={priority} value={priority}>
+                        {priority}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className={`rounded-md p-3 ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}>
+                  <p className={`text-xs ${labelClass}`}>Entrega</p>
+                  <input
+                    className={`mt-1 h-9 w-full rounded-md border px-2 font-semibold outline-none ${inputClass}`}
+                    type="date"
+                    value={project.estimated_delivery ?? ''}
+                    onChange={(event) => updateProject(project.id, 'estimated_delivery', event.target.value || null)}
+                  />
+                </div>
+
+                <div className={`rounded-md p-3 md:col-span-2 ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}>
+                  <p className={`text-xs ${labelClass}`}>Repositorios</p>
+                  <div className="mt-2 grid gap-3">
+                    {[
+                      ['repository_url', 'Repo 1'],
+                      ['repository_url_secondary', 'Repo 2'],
+                    ].map(([field, label]) => {
+                      const repoField = field as 'repository_url' | 'repository_url_secondary'
+                      const value = project[repoField] ?? ''
+                      const showSecondaryInput = repoField === 'repository_url_secondary' && (value || addingSecondaryRepoIds.includes(project.id))
+                      if (repoField === 'repository_url_secondary' && !showSecondaryInput) {
+                        return (
+                          <button
+                            key={field}
+                            type="button"
+                            className={`inline-flex h-10 w-fit items-center gap-2 rounded-md border px-3 text-sm font-semibold transition ${
+                              isDark ? 'border-slate-700 text-emerald-300 hover:bg-slate-900' : 'border-slate-200 text-[#0d8f62] hover:bg-white'
+                            }`}
+                            onClick={() => setAddingSecondaryRepoIds((current) => (current.includes(project.id) ? current : [...current, project.id]))}
+                          >
+                            <Plus className="h-4 w-4" />
+                            Agregar Repo 2
+                          </button>
+                        )}
+                      return (
+                        <label key={field} className="grid gap-1.5">
+                          <span className={`text-xs font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{label}</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              className={`h-10 min-w-0 flex-1 rounded-md border px-3 text-sm font-medium outline-none ${inputClass}`}
+                              placeholder={`${label} - link`}
+                              value={value}
+                              onChange={(event) => setProjects((current) => current.map((item) => (item.id === project.id ? { ...item, [field]: event.target.value } : item)))}
+                              onBlur={(event) => updateProject(project.id, repoField, event.target.value.trim() || null)}
+                            />
+                            {value && (
+                              <a
+                                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md border ${isDark ? 'border-slate-700 text-emerald-300 hover:bg-slate-900' : 'border-slate-200 text-[#0d8f62] hover:bg-white'}`}
+                                href={value}
+                                target="_blank"
+                                rel="noreferrer"
+                                title={`Abrir ${label}`}
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                              </a>
+                            )}
+                          </div>
+                        </label>
+                      )
+                    })}
+                  </div>
                 </div>
               </div>
             </article>
           ))}
+        </div>
+      )}
+
+      {selectedProject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm" onClick={() => setSelectedProjectId(null)}>
+          <section
+            className={`max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-xl border shadow-2xl ${isDark ? 'border-slate-800 bg-slate-950 text-slate-100' : 'border-slate-200 bg-white text-slate-950'}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className={`sticky top-0 z-10 flex items-start justify-between gap-4 border-b p-5 backdrop-blur ${isDark ? 'border-slate-800 bg-slate-950/95' : 'border-slate-200 bg-white/95'}`}>
+              <div className="min-w-0">
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <StatusDropdown value={selectedProject.status} isDark={isDark} onChange={(status) => updateProject(selectedProject.id, 'status', status)} />
+                  <span className={`rounded-md border px-2.5 py-1 text-xs font-semibold ${isDark ? 'border-slate-700 bg-slate-900 text-slate-300' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
+                    {selectedProject.priority}
+                  </span>
+                </div>
+                <input
+                  className={`w-full rounded-md border border-transparent bg-transparent text-2xl font-bold outline-none transition focus:border-emerald-300 focus:px-2 ${titleClass}`}
+                  value={selectedProject.name}
+                  onChange={(event) => setProjects((current) => current.map((item) => (item.id === selectedProject.id ? { ...item, name: event.target.value } : item)))}
+                  onBlur={(event) => updateProject(selectedProject.id, 'name', event.target.value.trim() || selectedProject.name)}
+                />
+                <p className={`mt-2 text-sm ${mutedClass}`}>{selectedProject.requester_area ?? 'Sin area'} - {selectedProject.stack ?? 'Sin stack'}</p>
+              </div>
+              <button
+                type="button"
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md border ${isDark ? 'border-slate-700 text-slate-300 hover:bg-slate-900' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+                onClick={() => setSelectedProjectId(null)}
+                title="Cerrar detalle"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="grid gap-5 p-5 lg:grid-cols-[1.2fr_0.8fr]">
+              <div className="space-y-5">
+                <div className={`rounded-lg border p-4 ${panelClass}`}>
+                  <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Descripcion</p>
+                  <p className={`mt-3 text-sm leading-7 ${bodyClass}`}>{selectedProject.description || 'Sin descripcion cargada.'}</p>
+                </div>
+
+                <label className={`block rounded-lg border p-4 ${panelClass}`}>
+                  <div className="flex items-center justify-between gap-4">
+                    <span className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Nota interna</span>
+                    {savingField === `${selectedProject.id}-note` && <span className={`text-xs font-semibold ${isDark ? 'text-emerald-300' : 'text-[#0d8f62]'}`}>Guardando...</span>}
+                  </div>
+                  <textarea
+                    className={`mt-3 min-h-36 w-full resize-y rounded-md border px-3 py-2 text-sm leading-6 outline-none ${inputClass}`}
+                    placeholder="Estado corto, mantenimiento pendiente, observaciones del equipo..."
+                    value={selectedProject.note ?? ''}
+                    onChange={(event) => setProjects((current) => current.map((item) => (item.id === selectedProject.id ? { ...item, note: event.target.value } : item)))}
+                    onBlur={(event) => updateProject(selectedProject.id, 'note', event.target.value.trim() || null)}
+                  />
+                </label>
+
+                <div className={`rounded-lg border p-4 ${panelClass}`}>
+                  <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Repositorios</p>
+                  <div className="mt-3 grid gap-3">
+                    {[
+                      ['repository_url', 'Repo 1'],
+                      ['repository_url_secondary', 'Repo 2'],
+                    ].map(([field, label]) => {
+                      const repoField = field as 'repository_url' | 'repository_url_secondary'
+                      const value = selectedProject[repoField] ?? ''
+                      const showSecondaryInput = repoField === 'repository_url_secondary' && (value || addingSecondaryRepoIds.includes(selectedProject.id))
+                      if (repoField === 'repository_url_secondary' && !showSecondaryInput) {
+                        return (
+                          <button
+                            key={field}
+                            type="button"
+                            className={`inline-flex h-10 w-fit items-center gap-2 rounded-md border px-3 text-sm font-semibold transition ${
+                              isDark ? 'border-slate-700 text-emerald-300 hover:bg-slate-900' : 'border-slate-200 text-[#0d8f62] hover:bg-white'
+                            }`}
+                            onClick={() => setAddingSecondaryRepoIds((current) => (current.includes(selectedProject.id) ? current : [...current, selectedProject.id]))}
+                          >
+                            <Plus className="h-4 w-4" />
+                            Agregar Repo 2
+                          </button>
+                        )
+                      }
+
+                      return (
+                        <label key={field} className="grid gap-1.5">
+                          <span className={`text-xs font-semibold ${labelClass}`}>{label}</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              className={`h-10 min-w-0 flex-1 rounded-md border px-3 text-sm font-medium outline-none ${inputClass}`}
+                              placeholder={`${label} - link`}
+                              value={value}
+                              onChange={(event) => setProjects((current) => current.map((item) => (item.id === selectedProject.id ? { ...item, [field]: event.target.value } : item)))}
+                              onBlur={(event) => updateProject(selectedProject.id, repoField, event.target.value.trim() || null)}
+                            />
+                            {value && (
+                              <a
+                                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md border ${isDark ? 'border-slate-700 text-emerald-300 hover:bg-slate-900' : 'border-slate-200 text-[#0d8f62] hover:bg-white'}`}
+                                href={value}
+                                target="_blank"
+                                rel="noreferrer"
+                                title={`Abrir ${label}`}
+                              >
+                                <ExternalLink className="h-4 w-4" />
+                              </a>
+                            )}
+                          </div>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <aside className="space-y-5">
+                <div className={`rounded-lg border p-4 ${panelClass}`}>
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Desarrollo</p>
+                      <p className={`mt-0.5 text-xs ${mutedClass}`}>Avance general del proyecto</p>
+                    </div>
+                    <p className={`rounded-md px-2.5 py-1 text-sm font-bold ${isDark ? 'bg-emerald-500/15 text-emerald-300' : 'bg-[#e9f8f1] text-[#08784f]'}`}>
+                      {savingProgressId === selectedProject.id ? 'Guardando...' : `${selectedProject.progress}%`}
+                    </p>
+                  </div>
+                  <input
+                    className="progress-slider mt-5 w-full"
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="5"
+                    value={selectedProject.progress}
+                    onChange={(event) => updateProgress(selectedProject.id, Number(event.target.value))}
+                    style={{
+                      background: `linear-gradient(to right, #10b981 0%, #10b981 ${selectedProject.progress}%, ${isDark ? '#1e293b' : '#e2e8f0'} ${selectedProject.progress}%, ${isDark ? '#1e293b' : '#e2e8f0'} 100%)`,
+                    }}
+                    aria-label={`Progreso de ${selectedProject.name}`}
+                  />
+                </div>
+
+                <div className={`grid gap-3 rounded-lg border p-4 ${panelClass}`}>
+                  <label>
+                    <span className={`text-xs font-semibold ${labelClass}`}>Prioridad</span>
+                    <select className={`mt-1 h-10 w-full rounded-md border px-2 font-semibold outline-none ${inputClass}`} value={selectedProject.priority} onChange={(event) => updateProject(selectedProject.id, 'priority', event.target.value)}>
+                      {priorities.map((priority) => (
+                        <option key={priority} value={priority}>
+                          {priority}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label>
+                    <span className={`text-xs font-semibold ${labelClass}`}>Entrega</span>
+                    <input
+                      className={`mt-1 h-10 w-full rounded-md border px-2 font-semibold outline-none ${inputClass}`}
+                      type="date"
+                      value={selectedProject.estimated_delivery ?? ''}
+                      onChange={(event) => updateProject(selectedProject.id, 'estimated_delivery', event.target.value || null)}
+                    />
+                  </label>
+                </div>
+
+                <button
+                  type="button"
+                  className={`flex h-11 w-full items-center justify-center gap-2 rounded-md border text-sm font-semibold transition ${
+                    isDark ? 'border-red-900/60 bg-red-950/30 text-red-300 hover:bg-red-950/60' : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100'
+                  }`}
+                  onClick={() => deleteProject(selectedProject)}
+                  disabled={deletingId === selectedProject.id}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Eliminar proyecto
+                </button>
+              </aside>
+            </div>
+          </section>
         </div>
       )}
     </AppShell>

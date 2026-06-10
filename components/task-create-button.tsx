@@ -1,7 +1,6 @@
 'use client'
 
 import { useAuth } from '@/context/AuthContext'
-import type { DashboardTask } from '@/lib/dashboard-data'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
 import { GitPullRequest, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -23,13 +22,9 @@ type MemberOptionRow = {
 
 export function TaskCreateButton({
   onCreated,
-  onDemoCreated,
-  demoProjects = [],
   isDark = false,
 }: {
   onCreated?: () => void
-  onDemoCreated?: (task: DashboardTask & { status: string }) => void
-  demoProjects?: SelectOption[]
   isDark?: boolean
 }) {
   const { authConfigured } = useAuth()
@@ -51,8 +46,7 @@ export function TaskCreateButton({
     pr_url: '',
   })
 
-  const canCreate = true
-  const projectOptions = authConfigured ? projects : demoProjects
+  const projectOptions = projects
   const inputClass = `h-10 rounded-md border px-3 text-sm outline-none ${
     isDark ? 'border-slate-700 bg-slate-950 text-slate-100 placeholder:text-slate-500' : 'border-slate-200 bg-white text-slate-950'
   }`
@@ -61,7 +55,7 @@ export function TaskCreateButton({
   }`
 
   useEffect(() => {
-    if (!open || !canCreate || !authConfigured) return
+    if (!open || !authConfigured) return
 
     async function fetchOptions() {
       const supabase = getSupabaseBrowserClient()
@@ -77,7 +71,7 @@ export function TaskCreateButton({
     }
 
     fetchOptions().catch((err) => setError(err instanceof Error ? err.message : 'No se pudieron cargar opciones'))
-  }, [authConfigured, canCreate, open])
+  }, [authConfigured, open])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -85,26 +79,7 @@ export function TaskCreateButton({
 
     const supabase = getSupabaseBrowserClient()
     if (!supabase) {
-      const project = projectOptions.find((item) => item.id === form.project_id)
-      onDemoCreated?.({
-        title: form.title,
-        project: project?.label ?? 'Sin proyecto',
-        owner: form.owner_name || 'Sin responsable',
-        status: form.status,
-      })
-      setOpen(false)
-      setForm({
-        project_id: '',
-        title: '',
-        description: '',
-        type: 'Feature',
-        status: 'Pendiente',
-        priority: 'Media',
-        member_id: '',
-        owner_name: '',
-        branch_name: '',
-        pr_url: '',
-      })
+      setError('Supabase no esta configurado. Completa .env.local para guardar tareas reales.')
       return
     }
 
@@ -173,10 +148,9 @@ export function TaskCreateButton({
   return (
     <>
       <button
-        className={`inline-flex h-10 items-center justify-center gap-2 rounded-md border px-4 text-sm font-semibold shadow-sm disabled:cursor-not-allowed disabled:opacity-50 ${
+        className={`inline-flex h-10 items-center justify-center gap-2 rounded-md border px-4 text-sm font-semibold shadow-sm ${
           isDark ? 'border-slate-700 bg-slate-950 text-slate-100 hover:bg-slate-800' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
         }`}
-        disabled={!canCreate}
         onClick={() => setOpen(true)}
         title="Nueva tarea"
       >
@@ -203,6 +177,11 @@ export function TaskCreateButton({
             </div>
 
             {error && <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+            {!authConfigured && (
+              <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                Para crear tareas reales falta configurar Supabase en <a className="font-semibold underline" href="/supabase">/supabase</a>.
+              </div>
+            )}
 
             <div className="mt-5 grid gap-4">
               <select className={inputClass} value={form.project_id} onChange={(e) => setForm({ ...form, project_id: e.target.value })} required>
@@ -241,17 +220,16 @@ export function TaskCreateButton({
                   <option>Critica</option>
                 </select>
               </div>
-              {authConfigured ? (
-                <select className={inputClass} value={form.member_id} onChange={(e) => setForm({ ...form, member_id: e.target.value })}>
-                  <option value="">Sin responsable</option>
-                  {members.map((member) => (
-                    <option key={member.id} value={member.id}>
-                      {member.label}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input className={inputClass} placeholder="Responsable" value={form.owner_name} onChange={(e) => setForm({ ...form, owner_name: e.target.value })} />
+              <select className={inputClass} value={form.member_id} onChange={(e) => setForm({ ...form, member_id: e.target.value })}>
+                <option value="">Sin responsable</option>
+                {members.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.label}
+                  </option>
+                ))}
+              </select>
+              {authConfigured && projectOptions.length === 0 && (
+                <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Primero carga al menos un proyecto para poder crear tareas.</p>
               )}
               <div className="grid gap-4 md:grid-cols-2">
                 <input className={inputClass} placeholder="Branch" value={form.branch_name} onChange={(e) => setForm({ ...form, branch_name: e.target.value })} />
@@ -259,7 +237,7 @@ export function TaskCreateButton({
               </div>
             </div>
 
-            <button className="mt-5 h-10 w-full rounded-md bg-[#10b981] text-sm font-semibold text-white disabled:opacity-60" disabled={loading}>
+            <button className="mt-5 h-10 w-full rounded-md bg-[#10b981] text-sm font-semibold text-white disabled:opacity-60" disabled={loading || !authConfigured || projectOptions.length === 0}>
               {loading ? 'Guardando...' : 'Crear tarea'}
             </button>
           </form>
