@@ -2,9 +2,9 @@
 
 import { useAuth } from '@/context/AuthContext'
 import { CursorAiBackground } from '@/components/cursor-ai-background'
-import { Bell, Code2, FlaskConical, GitPullRequest, LayoutDashboard, LogOut, Menu, PanelLeftClose, Search, Settings, Sun, Moon, Trash2, Users } from 'lucide-react'
+import { Bell, Code2, FlaskConical, GitPullRequest, History, LayoutDashboard, LogOut, Menu, PanelLeftClose, Search, Settings, Sun, Moon, Trash2, Users } from 'lucide-react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
 type AppShellProps = {
@@ -21,12 +21,14 @@ const navItems = [
   { href: '/tasks', label: 'Tareas', icon: GitPullRequest },
   { href: '/testing', label: 'Testing', icon: FlaskConical },
   { href: '/team', label: 'Equipo', icon: Users },
+  { href: '/commit-history', label: 'Historial', icon: History },
   { href: '/papelera', label: 'Papelera', icon: Trash2 },
 ]
 
 export function AppShell({ title, subtitle, search = '', onSearchChange, children }: AppShellProps) {
   const pathname = usePathname()
-  const { user, signOut } = useAuth()
+  const router = useRouter()
+  const { user, loading, authConfigured, signOut } = useAuth()
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -58,30 +60,46 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
     })
   }
 
+  useEffect(() => {
+    if (!authConfigured || loading || user) return
+    router.replace(`/login?next=${encodeURIComponent(pathname)}`)
+  }, [authConfigured, loading, pathname, router, user])
+
   const isDark = theme === 'dark'
-  const shellClass = isDark ? 'dark bg-slate-950 text-slate-100' : 'bg-[#f6f8fb] text-slate-950'
+  const shellClass = isDark ? 'dark bg-slate-950 text-slate-100' : 'bg-[#eef3f6] text-slate-950'
   const textStrongClass = isDark ? 'text-white' : 'text-slate-950'
   const textMutedClass = isDark ? 'text-slate-400' : 'text-slate-500'
+
+  if (authConfigured && (loading || !user)) {
+    return (
+      <main className={`relative isolate flex min-h-screen items-center justify-center transition-colors ${shellClass}`}>
+        <div className={`rounded-lg border px-4 py-3 text-sm font-semibold ${isDark ? 'border-slate-800 bg-slate-900 text-slate-300' : 'border-slate-200 bg-[#fbfcfd] text-slate-600'}`}>
+          Verificando sesion...
+        </div>
+      </main>
+    )
+  }
 
   return (
     <main className={`relative isolate min-h-screen overflow-hidden transition-colors ${shellClass}`}>
       <CursorAiBackground isDark={isDark} />
       <div className="relative z-10 flex min-h-screen">
-        <aside className={`relative hidden border-r px-4 py-5 transition-[width] duration-200 lg:block ${sidebarCollapsed ? 'w-20' : 'w-64'} ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-white/95'}`}>
-          <div className={`mb-8 flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between gap-3 px-2'}`}>
+        <aside className={`relative hidden border-r px-3 py-4 transition-[width] duration-200 lg:block ${sidebarCollapsed ? 'w-16' : 'w-52'} ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-[#fbfcfd]/95'}`}>
+          <div className={`mb-7 flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between gap-2 px-1'}`}>
             <div className={`flex min-w-0 items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'}`}>
-            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-[#103b3a] text-white">
-              <Code2 className="h-5 w-5" />
+            <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-[#061e3d] ring-1 ring-white/10">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img className="h-full w-full object-cover" src="/logo-dia.png" alt="DIA" />
             </div>
             {!sidebarCollapsed && (
             <div className="min-w-0">
-              <p className={`text-sm font-bold ${textStrongClass}`}>Organizacion DIA</p>
+              <p className={`truncate text-sm font-bold ${textStrongClass}`}>Organizacion DIA</p>
               <p className="text-xs text-slate-400">Equipo de desarrollo</p>
             </div>
             )}
             </div>
             <button
-              className={`flex h-9 w-9 items-center justify-center rounded-md border transition ${sidebarCollapsed ? 'absolute left-[62px] top-6 shadow-sm' : ''} ${isDark ? 'border-slate-700 bg-slate-950 text-slate-300 hover:bg-slate-800' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}
+              className={`flex h-8 w-8 items-center justify-center rounded-md border transition ${sidebarCollapsed ? 'absolute left-[50px] top-5 shadow-sm' : ''} ${isDark ? 'border-slate-700 bg-slate-950 text-slate-300 hover:bg-slate-800' : 'border-slate-200 bg-[#fbfcfd] text-slate-500 hover:bg-slate-50'}`}
               onClick={toggleSidebar}
               title={sidebarCollapsed ? 'Desplegar menu' : 'Plegar menu'}
               aria-label={sidebarCollapsed ? 'Desplegar menu' : 'Plegar menu'}
@@ -90,7 +108,7 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
             </button>
           </div>
 
-          <nav className="space-y-1">
+          <nav className="space-y-0.5">
             {navItems.map((item) => {
               const Icon = item.icon
               const active = pathname === item.href
@@ -101,11 +119,11 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex w-full items-center rounded-md py-2 text-sm font-medium transition ${sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${active ? activeClass : idleClass}`}
+                  className={`flex w-full items-center rounded-md py-1.5 text-sm font-medium transition ${sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${active ? activeClass : idleClass}`}
                   title={sidebarCollapsed ? item.label : undefined}
                   aria-label={item.label}
                 >
-                  <Icon className="h-4 w-4" />
+                  <Icon className="h-4 w-4 shrink-0" />
                   {!sidebarCollapsed && item.label}
                 </Link>
               )
@@ -114,7 +132,7 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
         </aside>
 
         <section className="flex min-w-0 flex-1 flex-col">
-          <header className={`border-b backdrop-blur ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-white/90'}`}>
+          <header className={`border-b backdrop-blur ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-[#fbfcfd]/90'}`}>
             <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
               <div>
                 <h1 className={`text-xl font-bold ${textStrongClass}`}>{title}</h1>

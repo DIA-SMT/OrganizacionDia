@@ -6,6 +6,11 @@ import './globals.css'
 export const metadata: Metadata = {
   title: 'Organizacion DIA',
   description: 'Gestion interna de proyectos de programacion',
+  icons: {
+    icon: '/favicon.png',
+    shortcut: '/favicon.png',
+    apple: '/favicon.png',
+  },
 }
 
 export default function RootLayout({

@@ -5,11 +5,23 @@ export async function updateSession(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
+  const url = request.nextUrl
+  const publicPath =
+    url.pathname.startsWith('/login') ||
+    url.pathname.startsWith('/auth') ||
+    url.pathname.startsWith('/forgot-password') ||
+    url.pathname.startsWith('/reset-password') ||
+    url.pathname.startsWith('/api/auth')
+
   if (!supabaseUrl || !supabaseAnonKey) {
-    return NextResponse.next({ request })
+    if (publicPath) return NextResponse.next({ request })
+
+    const redirectUrl = request.nextUrl.clone()
+    redirectUrl.pathname = '/login'
+    redirectUrl.searchParams.set('next', request.nextUrl.pathname + request.nextUrl.search)
+    return NextResponse.redirect(redirectUrl)
   }
 
-  const url = request.nextUrl
   const isRscRequest =
     url.searchParams.has('_rsc') ||
     request.headers.get('RSC') === '1' ||
@@ -17,7 +29,7 @@ export async function updateSession(request: NextRequest) {
     request.headers.get('Purpose') === 'prefetch' ||
     request.headers.get('X-Middleware-Prefetch') === '1'
 
-  if (isRscRequest) {
+  if (isRscRequest && publicPath) {
     return NextResponse.next({ request })
   }
 
@@ -46,16 +58,10 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse
   }
 
-  const publicPath =
-    request.nextUrl.pathname.startsWith('/api') ||
-    request.nextUrl.pathname.startsWith('/login') ||
-    request.nextUrl.pathname.startsWith('/auth') ||
-    request.nextUrl.pathname.startsWith('/forgot-password') ||
-    request.nextUrl.pathname.startsWith('/reset-password')
-
   if (!user && !publicPath) {
     const redirectUrl = request.nextUrl.clone()
     redirectUrl.pathname = '/login'
+    redirectUrl.searchParams.set('next', request.nextUrl.pathname + request.nextUrl.search)
     return NextResponse.redirect(redirectUrl)
   }
 

@@ -1,4 +1,7 @@
 alter table public.members
+add column if not exists avatar_url text;
+
+alter table public.members
 add column if not exists birthday date;
 
 alter table public.members
