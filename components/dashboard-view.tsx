@@ -20,7 +20,9 @@ import {
   History,
   LayoutDashboard,
   LogOut,
+  Menu,
   Moon,
+  PanelLeftClose,
   Search,
   Settings,
   Sun,
@@ -220,16 +222,18 @@ function MetricCard({
   )
 }
 
-function SidebarItem({ icon, label, href, active }: { icon: React.ReactNode; label: string; href: string; active?: boolean }) {
+function SidebarItem({ icon, label, href, active, collapsed }: { icon: React.ReactNode; label: string; href: string; active?: boolean; collapsed?: boolean }) {
   return (
     <Link
       href={href}
-      className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition ${
+      className={`flex w-full items-center rounded-md py-1.5 text-sm font-medium transition ${collapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${
         active ? 'bg-[#e9f8f1] text-[#08784f]' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
       }`}
+      title={collapsed ? label : undefined}
+      aria-label={label}
     >
       {icon}
-      {label}
+      {!collapsed && label}
     </Link>
   )
 }
@@ -243,6 +247,7 @@ export function DashboardView() {
   const [searchQuery, setSearchQuery] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [commitsByProject, setCommitsByProject] = useState<Record<string, ProjectCommitActivity[]>>({})
   const [seenCommitIds, setSeenCommitIds] = useState<string[]>([])
   const [lastCommitSync, setLastCommitSync] = useState<string | null>(null)
@@ -251,6 +256,7 @@ export function DashboardView() {
     const timer = window.setTimeout(() => {
       const savedTheme = window.localStorage.getItem('organizacion-dia-theme')
       if (savedTheme === 'dark' || savedTheme === 'light') setTheme(savedTheme)
+      setSidebarCollapsed(window.localStorage.getItem('organizacion-dia-sidebar-collapsed') === 'true')
       const savedSeenCommitIds = window.localStorage.getItem(seenCommitsStorageKey)
       if (savedSeenCommitIds) setSeenCommitIds(JSON.parse(savedSeenCommitIds) as string[])
     }, 0)
@@ -262,6 +268,14 @@ export function DashboardView() {
     setTheme((current) => {
       const next = current === 'dark' ? 'light' : 'dark'
       window.localStorage.setItem('organizacion-dia-theme', next)
+      return next
+    })
+  }
+
+  function toggleSidebar() {
+    setSidebarCollapsed((current) => {
+      const next = !current
+      window.localStorage.setItem('organizacion-dia-sidebar-collapsed', String(next))
       return next
     })
   }
@@ -516,25 +530,38 @@ export function DashboardView() {
     <main className={`relative isolate min-h-screen overflow-hidden transition-colors ${shellClass}`}>
       <CursorAiBackground isDark={isDark} />
       <div className="relative z-10 flex min-h-screen">
-        <aside className={`hidden w-64 border-r px-4 py-5 lg:block ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-[#fbfcfd]/95'}`}>
-          <div className="mb-8 flex items-center gap-3 px-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-[#103b3a] text-white">
-              <Code2 className="h-5 w-5" />
+        <aside className={`relative hidden border-r px-3 py-4 transition-[width] duration-200 lg:block ${sidebarCollapsed ? 'w-16' : 'w-52'} ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-[#fbfcfd]/95'}`}>
+          <div className={`mb-7 flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between gap-2 px-1'}`}>
+            <div className={`flex min-w-0 items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'}`}>
+              <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-[#061e3d] ring-1 ring-white/10">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img className="h-full w-full object-cover" src="/logo-dia.png" alt="DIA" />
+              </div>
+              {!sidebarCollapsed && (
+                <div className="min-w-0">
+                  <p className={`truncate text-sm font-bold ${textStrongClass}`}>Organizacion DIA</p>
+                  <p className="text-xs text-slate-400">Equipo de desarrollo</p>
+                </div>
+              )}
             </div>
-            <div>
-              <p className={`text-sm font-bold ${textStrongClass}`}>Organizacion DIA</p>
-              <p className="text-xs text-slate-400">Equipo de desarrollo</p>
-            </div>
+            <button
+              className={`flex h-8 w-8 items-center justify-center rounded-md border transition ${sidebarCollapsed ? 'absolute left-[50px] top-5 shadow-sm' : ''} ${isDark ? 'border-slate-700 bg-slate-950 text-slate-300 hover:bg-slate-800' : 'border-slate-200 bg-[#fbfcfd] text-slate-500 hover:bg-slate-50'}`}
+              onClick={toggleSidebar}
+              title={sidebarCollapsed ? 'Desplegar menu' : 'Plegar menu'}
+              aria-label={sidebarCollapsed ? 'Desplegar menu' : 'Plegar menu'}
+            >
+              {sidebarCollapsed ? <Menu className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            </button>
           </div>
 
-          <nav className="space-y-1">
-            <SidebarItem icon={<LayoutDashboard className="h-4 w-4" />} label="Dashboard" href="/" active />
-            <SidebarItem icon={<Code2 className="h-4 w-4" />} label="Proyectos" href="/proyectos" />
-            <SidebarItem icon={<GitPullRequest className="h-4 w-4" />} label="Tareas" href="/tareas" />
-            <SidebarItem icon={<FlaskConical className="h-4 w-4" />} label="Testing" href="/testing" />
-            <SidebarItem icon={<Users className="h-4 w-4" />} label="Equipo" href="/equipo" />
-            <SidebarItem icon={<History className="h-4 w-4" />} label="Historial" href="/commit-history" />
-            <SidebarItem icon={<Trash2 className="h-4 w-4" />} label="Papelera" href="/papelera" />
+          <nav className="space-y-0.5">
+            <SidebarItem icon={<LayoutDashboard className="h-4 w-4 shrink-0" />} label="Dashboard" href="/" active collapsed={sidebarCollapsed} />
+            <SidebarItem icon={<Code2 className="h-4 w-4 shrink-0" />} label="Proyectos" href="/projects" collapsed={sidebarCollapsed} />
+            <SidebarItem icon={<GitPullRequest className="h-4 w-4 shrink-0" />} label="Tareas" href="/tasks" collapsed={sidebarCollapsed} />
+            <SidebarItem icon={<FlaskConical className="h-4 w-4 shrink-0" />} label="Testing" href="/testing" collapsed={sidebarCollapsed} />
+            <SidebarItem icon={<Users className="h-4 w-4 shrink-0" />} label="Equipo" href="/team" collapsed={sidebarCollapsed} />
+            <SidebarItem icon={<History className="h-4 w-4 shrink-0" />} label="Historial" href="/commit-history" collapsed={sidebarCollapsed} />
+            <SidebarItem icon={<Trash2 className="h-4 w-4 shrink-0" />} label="Papelera" href="/papelera" collapsed={sidebarCollapsed} />
           </nav>
         </aside>
 

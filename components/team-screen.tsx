@@ -175,6 +175,35 @@ export function TeamScreen() {
     setSavingId(null)
   }
 
+  function handleAvatarFile(member: MemberRow, file: File | null) {
+    if (!file) return
+
+    if (file.type !== 'image/jpeg') {
+      setError('La foto tiene que ser un archivo JPG.')
+      return
+    }
+
+    if (file.size > 1_500_000) {
+      setError('La foto no puede superar 1.5 MB.')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onerror = () => setError('No se pudo leer la imagen seleccionada.')
+    reader.onload = () => {
+      const avatarUrl = typeof reader.result === 'string' ? reader.result : ''
+      if (!avatarUrl) {
+        setError('No se pudo cargar la imagen seleccionada.')
+        return
+      }
+
+      const updatedMember = { ...member, avatar_url: avatarUrl }
+      setMembers((current) => current.map((currentMember) => (currentMember.id === member.id ? updatedMember : currentMember)))
+      void saveMember(updatedMember)
+    }
+    reader.readAsDataURL(file)
+  }
+
   async function createMember(event: React.FormEvent) {
     event.preventDefault()
 
@@ -257,6 +286,35 @@ export function TeamScreen() {
     )
   }
 
+  function renderAvatarPicker(member: MemberRow, inputId: string) {
+    return (
+      <>
+        <input
+          id={inputId}
+          className="hidden"
+          type="file"
+          accept=".jpg,.jpeg,image/jpeg"
+          onClick={(event) => {
+            event.stopPropagation()
+            event.currentTarget.value = ''
+          }}
+          onChange={(event) => {
+            event.stopPropagation()
+            handleAvatarFile(member, event.target.files?.[0] ?? null)
+          }}
+        />
+        <label
+          htmlFor={inputId}
+          className="absolute bottom-1 right-1 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-white/80 bg-white text-slate-700 shadow-lg transition hover:scale-105 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-800"
+          onClick={(event) => event.stopPropagation()}
+          title="Cambiar foto JPG"
+        >
+          <Pencil className="h-4 w-4" />
+        </label>
+      </>
+    )
+  }
+
   return (
     <AppShell title="Equipo" subtitle="Usuarios internos habilitados para operar el sistema" search={search} onSearchChange={setSearch}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -283,7 +341,12 @@ export function TeamScreen() {
               className="group cursor-pointer rounded-lg border border-slate-200 bg-white p-5 text-center shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-slate-900"
               onClick={() => setSelectedMemberId(member.id)}
             >
-              <div className="flex w-full justify-center">{renderAvatar(member, 'h-36 w-36', 'text-4xl')}</div>
+              <div className="flex w-full justify-center">
+                <div className="relative">
+                  {renderAvatar(member, 'h-36 w-36', 'text-4xl')}
+                  {renderAvatarPicker(member, `avatar-card-${member.id}`)}
+                </div>
+              </div>
               <p className="mt-4 text-sm font-semibold text-[#0d8f62] dark:text-emerald-300">{member.role ?? 'Sin rol'}</p>
               {member.specialty && <p className="mt-2 line-clamp-1 text-sm text-slate-500 dark:text-slate-400">{member.specialty}</p>}
             </article>
@@ -303,7 +366,12 @@ export function TeamScreen() {
               </button>
             </div>
 
-            <div className="mt-5 flex w-full justify-center">{renderAvatar(selectedMember, 'h-48 w-48', 'text-5xl')}</div>
+            <div className="mt-5 flex w-full justify-center">
+              <div className="relative">
+                {renderAvatar(selectedMember, 'h-48 w-48', 'text-5xl')}
+                {renderAvatarPicker(selectedMember, `avatar-profile-${selectedMember.id}`)}
+              </div>
+            </div>
             <h2 className="mt-5 text-2xl font-bold text-slate-950 dark:text-white">{selectedMember.full_name || 'Sin nombre'}</h2>
             <p className="mt-1 text-sm font-semibold text-[#0d8f62] dark:text-emerald-300">{selectedMember.role ?? 'Sin rol'}</p>
             <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{selectedMember.specialty || 'Sin skill cargado'}</p>
@@ -333,7 +401,12 @@ export function TeamScreen() {
               </button>
             </div>
 
-            <div className="mt-5 flex justify-center">{renderAvatar(editingMember, 'h-32 w-32', 'text-4xl')}</div>
+            <div className="mt-5 flex justify-center">
+              <div className="relative">
+                {renderAvatar(editingMember, 'h-32 w-32', 'text-4xl')}
+                {renderAvatarPicker(editingMember, `avatar-edit-${editingMember.id}`)}
+              </div>
+            </div>
             <div className="mt-5 grid gap-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">

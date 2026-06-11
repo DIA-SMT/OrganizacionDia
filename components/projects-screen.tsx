@@ -3,7 +3,7 @@
 import { AppShell } from '@/components/app-shell'
 import { ProjectCreateButton } from '@/components/project-create-button'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
-import { Check, ChevronDown, ExternalLink, GitCommitHorizontal, Maximize2, Plus, Trash2, X } from 'lucide-react'
+import { Check, ChevronDown, ExternalLink, GitCommitHorizontal, Maximize2, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 type ProjectRow = {
@@ -160,6 +160,7 @@ export function ProjectsScreen({
   const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>([])
   const [multiExpandEnabled, setMultiExpandEnabled] = useState(false)
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(initialSelectedProjectId)
+  const [selectedProjectEditing, setSelectedProjectEditing] = useState(false)
   const [commitsByProject, setCommitsByProject] = useState<Record<string, ProjectCommitActivity[]>>({})
   const [loadingCommits, setLoadingCommits] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -336,6 +337,21 @@ export function ProjectsScreen({
     return orderedByView.filter((project) => [project.name, project.description, project.note, project.requester_area, project.stack, project.repository_url, project.repository_url_secondary, project.status, project.priority].filter(Boolean).join(' ').toLowerCase().includes(q))
   }, [projects, search, statusFilter, view])
 
+  const displayedProjects = useMemo(() => {
+    const ordered = [...filtered]
+
+    expandedProjectIds.forEach((projectId) => {
+      const index = ordered.findIndex((project) => project.id === projectId)
+      if (index > 0 && index % 2 === 1) {
+        const previous = ordered[index - 1]
+        ordered[index - 1] = ordered[index]
+        ordered[index] = previous
+      }
+    })
+
+    return ordered
+  }, [expandedProjectIds, filtered])
+
   const finishedCount = projects.filter((project) => project.status === 'En Producción').length
   const activeVisibleCount = projects.filter((project) => !isProduction(project) && !isPaused(project)).length
   const pausedCount = projects.filter((project) => isPaused(project)).length
@@ -442,7 +458,7 @@ export function ProjectsScreen({
         <div className={`rounded-lg border p-6 text-sm ${cardClass} ${mutedClass}`}>No hay proyectos cargados.</div>
       ) : (
         <div className="grid gap-4 xl:grid-cols-2">
-          {filtered.map((project) => {
+          {displayedProjects.map((project) => {
             const projectCommits = commitsByProject[project.id] ?? []
             const isExpanded = expandedProjectIds.includes(project.id)
 
@@ -450,32 +466,17 @@ export function ProjectsScreen({
             <article
               key={project.id}
               className={`group cursor-pointer rounded-lg border p-5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg ${
-                isExpanded ? 'xl:col-span-2' : ''
+                isExpanded ? 'xl:col-span-2 xl:col-start-1' : ''
               } ${projectPriorityCardClass(project.priority, isDark)}`}
               onClick={(event) => openProjectCard(event, project.id)}
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
-                  <input
-                    className={`w-full rounded-md border border-transparent bg-transparent px-0 text-lg font-bold outline-none transition focus:px-2 ${titleClass} ${isDark ? 'focus:border-slate-700 focus:bg-slate-950' : 'focus:border-slate-200 focus:bg-white'}`}
-                    value={project.name}
-                    onChange={(event) => setProjects((current) => current.map((item) => (item.id === project.id ? { ...item, name: event.target.value } : item)))}
-                    onBlur={(event) => updateProject(project.id, 'name', event.target.value.trim() || project.name)}
-                  />
+                  <h3 className={`truncate text-lg font-bold ${titleClass}`}>{project.name}</h3>
                   <p className={`mt-1 text-sm ${mutedClass}`}>{project.requester_area ?? 'Sin area'} - {project.stack ?? 'Sin stack'}</p>
-                  {savingField === `${project.id}-name` && <p className={`mt-1 text-xs font-semibold ${isDark ? 'text-emerald-300' : 'text-[#0d8f62]'}`}>Guardando nombre...</p>}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  <StatusDropdown value={project.status} isDark={isDark} onChange={(status) => updateProject(project.id, 'status', status)} />
-                  <button
-                    type="button"
-                    className={`flex h-9 w-9 items-center justify-center rounded-md border transition ${isDark ? 'border-red-900/60 bg-red-950/30 text-red-300 hover:bg-red-950/60' : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100'}`}
-                    onClick={() => deleteProject(project)}
-                    title="Eliminar proyecto"
-                    disabled={deletingId === project.id}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  <span className={`inline-flex h-9 items-center rounded-md border px-3 text-xs font-semibold ${statusTone(project.status, isDark)}`}>{project.status}</span>
                 </div>
               </div>
 
@@ -489,147 +490,62 @@ export function ProjectsScreen({
                 </div>
               </div>
 
-              <div className="mt-3 flex justify-center">
-                <button
-                  type="button"
-                  className={`flex h-7 min-w-16 items-center justify-center rounded-full border px-3 transition duration-300 ${
-                    isDark ? 'border-slate-700/80 bg-slate-950/60 text-slate-400 hover:border-emerald-500/30 hover:text-emerald-300' : 'border-slate-200 bg-white/70 text-slate-400 hover:border-emerald-200 hover:bg-emerald-50 hover:text-[#0d8f62]'
-                  }`}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    toggleProjectExpanded(project.id)
-                  }}
-                  title={isExpanded ? 'Plegar proyecto' : 'Desplegar proyecto'}
-                  aria-label={isExpanded ? 'Plegar proyecto' : 'Desplegar proyecto'}
-                  aria-expanded={isExpanded}
-                >
-                  <ChevronDown className={`h-4 w-4 transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${isExpanded ? 'rotate-180' : ''}`} />
-                </button>
-              </div>
-
               <div className={`grid transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
               <div className="overflow-hidden">
               <div className={`transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${isExpanded ? 'translate-y-0' : '-translate-y-2'}`}>
               {project.description && <p className={`mt-4 text-sm leading-6 ${bodyClass}`}>{project.description}</p>}
 
-              <label className={`mt-4 block rounded-md border p-3 ${panelClass}`}>
-                <div className="flex items-center justify-between gap-4">
-                  <span className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Nota</span>
-                  {savingField === `${project.id}-note` && <span className={`text-xs font-semibold ${isDark ? 'text-emerald-300' : 'text-[#0d8f62]'}`}>Guardando...</span>}
-                </div>
-                <textarea
-                  className={`mt-2 min-h-20 w-full resize-y rounded-md border px-3 py-2 text-sm outline-none ${inputClass}`}
-                  placeholder="Ej: necesita mantenimiento, pendiente de revisar deploy, funcionando estable..."
-                  value={project.note ?? ''}
-                  onChange={(event) => setProjects((current) => current.map((item) => (item.id === project.id ? { ...item, note: event.target.value } : item)))}
-                  onBlur={(event) => updateProject(project.id, 'note', event.target.value.trim() || null)}
-                />
-              </label>
+              <div className={`mt-4 rounded-md border p-3 ${panelClass}`}>
+                <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Nota</p>
+                <p className={`mt-2 text-sm leading-6 ${project.note ? bodyClass : mutedClass}`}>
+                  {project.note || 'Sin nota cargada.'}
+                </p>
+              </div>
 
               <div className={`mt-4 rounded-md border p-3 ${panelClass}`}>
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Desarrollo</p>
-                    <p className={`mt-0.5 text-xs ${mutedClass}`}>Arrastra la barra para ajustar el avance</p>
+                    <p className={`mt-0.5 text-xs ${mutedClass}`}>Avance general del proyecto</p>
                   </div>
                   <p className={`rounded-md px-2.5 py-1 text-sm font-bold ${isDark ? 'bg-emerald-500/15 text-emerald-300' : 'bg-[#e9f8f1] text-[#08784f]'}`}>
                     {savingProgressId === project.id ? 'Guardando...' : `${project.progress}%`}
                   </p>
                 </div>
-                <div className="relative mt-4">
-                  <input
-                    className="progress-slider w-full"
-                    type="range"
-                    min="0"
-                    max="100"
-                    step="5"
-                    value={project.progress}
-                    onChange={(event) => updateProgress(project.id, Number(event.target.value))}
-                    style={{
-                      background: `linear-gradient(to right, #10b981 0%, #10b981 ${project.progress}%, ${isDark ? '#1e293b' : '#e2e8f0'} ${project.progress}%, ${isDark ? '#1e293b' : '#e2e8f0'} 100%)`,
-                    }}
-                    aria-label={`Progreso de ${project.name}`}
-                  />
-                  <div className={`mt-2 flex justify-between text-[11px] font-semibold ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                    <span>0%</span>
-                    <span>50%</span>
-                    <span>100%</span>
-                  </div>
+                <div className={`mt-4 h-2 overflow-hidden rounded-full ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
+                  <div className="h-full rounded-full bg-[#10b981]" style={{ width: `${project.progress}%` }} />
                 </div>
               </div>
 
               <div className="mt-4 grid gap-3 text-sm md:grid-cols-2">
                 <div className={`rounded-md p-3 ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}>
                   <p className={`text-xs ${labelClass}`}>Prioridad</p>
-                  <select className={`mt-1 h-9 w-full rounded-md border px-2 font-semibold outline-none ${inputClass}`} value={project.priority} onChange={(event) => updateProject(project.id, 'priority', event.target.value)}>
-                    {priorities.map((priority) => (
-                      <option key={priority} value={priority}>
-                        {priority}
-                      </option>
-                    ))}
-                  </select>
+                  <p className={`mt-1 text-sm font-semibold ${titleClass}`}>{project.priority}</p>
                 </div>
 
                 <div className={`rounded-md p-3 ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}>
                   <p className={`text-xs ${labelClass}`}>Entrega</p>
-                  <input
-                    className={`mt-1 h-9 w-full rounded-md border px-2 font-semibold outline-none ${inputClass}`}
-                    type="date"
-                    value={project.estimated_delivery ?? ''}
-                    onChange={(event) => updateProject(project.id, 'estimated_delivery', event.target.value || null)}
-                  />
+                  <p className={`mt-1 text-sm font-semibold ${titleClass}`}>{project.estimated_delivery || 'Sin fecha'}</p>
                 </div>
 
                 <div className={`rounded-md p-3 md:col-span-2 ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}>
                   <p className={`text-xs ${labelClass}`}>Repositorios</p>
-                  <div className="mt-2 grid gap-3">
+                  <div className="mt-2 grid gap-2">
                     {[
                       ['repository_url', 'Repo 1'],
                       ['repository_url_secondary', 'Repo 2'],
                     ].map(([field, label]) => {
                       const repoField = field as 'repository_url' | 'repository_url_secondary'
                       const value = project[repoField] ?? ''
-                      const showSecondaryInput = repoField === 'repository_url_secondary' && (value || addingSecondaryRepoIds.includes(project.id))
-                      if (repoField === 'repository_url_secondary' && !showSecondaryInput) {
-                        return (
-                          <button
-                            key={field}
-                            type="button"
-                            className={`inline-flex h-10 w-fit items-center gap-2 rounded-md border px-3 text-sm font-semibold transition ${
-                              isDark ? 'border-slate-700 text-emerald-300 hover:bg-slate-900' : 'border-slate-200 text-[#0d8f62] hover:bg-white'
-                            }`}
-                            onClick={() => setAddingSecondaryRepoIds((current) => (current.includes(project.id) ? current : [...current, project.id]))}
-                          >
-                            <Plus className="h-4 w-4" />
-                            Agregar Repo 2
-                          </button>
-                        )}
+                      if (!value) return null
                       return (
-                        <label key={field} className="grid gap-1.5">
-                          <span className={`text-xs font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{label}</span>
-                          <div className="flex items-center gap-2">
-                            <input
-                              className={`h-10 min-w-0 flex-1 rounded-md border px-3 text-sm font-medium outline-none ${inputClass}`}
-                              placeholder={`${label} - link`}
-                              value={value}
-                              onChange={(event) => setProjects((current) => current.map((item) => (item.id === project.id ? { ...item, [field]: event.target.value } : item)))}
-                              onBlur={(event) => updateProject(project.id, repoField, event.target.value.trim() || null)}
-                            />
-                            {value && (
-                              <a
-                                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md border ${isDark ? 'border-slate-700 text-emerald-300 hover:bg-slate-900' : 'border-slate-200 text-[#0d8f62] hover:bg-white'}`}
-                                href={value}
-                                target="_blank"
-                                rel="noreferrer"
-                                title={`Abrir ${label}`}
-                              >
-                                <ExternalLink className="h-3.5 w-3.5" />
-                              </a>
-                            )}
-                          </div>
-                        </label>
+                        <a key={field} className="block break-all text-xs font-semibold leading-5 text-[#0d8f62] hover:underline" href={value} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
+                          <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>{label}: </span>
+                          {value}
+                        </a>
                       )
                     })}
+                    {!project.repository_url && !project.repository_url_secondary && <p className={`text-sm ${mutedClass}`}>Sin repositorios cargados.</p>}
                   </div>
                 </div>
               </div>
@@ -677,6 +593,7 @@ export function ProjectsScreen({
                   }`}
                   onClick={(event) => {
                     event.stopPropagation()
+                    setSelectedProjectEditing(false)
                     setSelectedProjectId(project.id)
                   }}
                   title="Abrir proyecto ampliado"
@@ -696,7 +613,13 @@ export function ProjectsScreen({
       )}
 
       {selectedProject && (
-        <div className="prezi-backdrop-in fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm" onClick={() => setSelectedProjectId(null)}>
+        <div
+          className="prezi-backdrop-in fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
+          onClick={() => {
+            setSelectedProjectEditing(false)
+            setSelectedProjectId(null)
+          }}
+        >
           <section
             className={`prezi-bubble-in max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-xl border shadow-2xl ${isDark ? 'border-slate-800 bg-slate-950 text-slate-100' : 'border-slate-200 bg-white text-slate-950'}`}
             onClick={(event) => event.stopPropagation()}
@@ -704,27 +627,57 @@ export function ProjectsScreen({
             <div className={`sticky top-0 z-10 flex items-start justify-between gap-4 border-b p-5 backdrop-blur ${isDark ? 'border-slate-800 bg-slate-950/95' : 'border-slate-200 bg-white/95'}`}>
               <div className="min-w-0">
                 <div className="mb-3 flex flex-wrap items-center gap-2">
-                  <StatusDropdown value={selectedProject.status} isDark={isDark} onChange={(status) => updateProject(selectedProject.id, 'status', status)} />
+                  {selectedProjectEditing ? (
+                    <StatusDropdown value={selectedProject.status} isDark={isDark} onChange={(status) => updateProject(selectedProject.id, 'status', status)} />
+                  ) : (
+                    <span className={`inline-flex h-9 items-center rounded-md border px-3 text-xs font-semibold ${statusTone(selectedProject.status, isDark)}`}>{selectedProject.status}</span>
+                  )}
                   <span className={`rounded-md border px-2.5 py-1 text-xs font-semibold ${isDark ? 'border-slate-700 bg-slate-900 text-slate-300' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
                     {selectedProject.priority}
                   </span>
                 </div>
-                <input
-                  className={`w-full rounded-md border border-transparent bg-transparent text-2xl font-bold outline-none transition focus:border-emerald-300 focus:px-2 ${titleClass}`}
-                  value={selectedProject.name}
-                  onChange={(event) => setProjects((current) => current.map((item) => (item.id === selectedProject.id ? { ...item, name: event.target.value } : item)))}
-                  onBlur={(event) => updateProject(selectedProject.id, 'name', event.target.value.trim() || selectedProject.name)}
-                />
+                {selectedProjectEditing ? (
+                  <input
+                    className={`w-full rounded-md border border-transparent bg-transparent text-2xl font-bold outline-none transition focus:border-emerald-300 focus:px-2 ${titleClass}`}
+                    value={selectedProject.name}
+                    onChange={(event) => setProjects((current) => current.map((item) => (item.id === selectedProject.id ? { ...item, name: event.target.value } : item)))}
+                    onBlur={(event) => updateProject(selectedProject.id, 'name', event.target.value.trim() || selectedProject.name)}
+                  />
+                ) : (
+                  <h2 className={`text-2xl font-bold ${titleClass}`}>{selectedProject.name}</h2>
+                )}
                 <p className={`mt-2 text-sm ${mutedClass}`}>{selectedProject.requester_area ?? 'Sin area'} - {selectedProject.stack ?? 'Sin stack'}</p>
               </div>
-              <button
-                type="button"
-                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md border ${isDark ? 'border-slate-700 text-slate-300 hover:bg-slate-900' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}
-                onClick={() => setSelectedProjectId(null)}
-                title="Cerrar detalle"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  className={`flex h-10 items-center gap-2 rounded-md border px-3 text-sm font-semibold transition ${
+                    selectedProjectEditing
+                      ? isDark
+                        ? 'border-emerald-800 bg-emerald-950/40 text-emerald-300 hover:bg-emerald-950/60'
+                        : 'border-emerald-200 bg-emerald-50 text-[#0d8f62] hover:bg-emerald-100'
+                      : isDark
+                        ? 'border-slate-700 text-slate-300 hover:bg-slate-900'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                  onClick={() => setSelectedProjectEditing((current) => !current)}
+                  title={selectedProjectEditing ? 'Terminar edicion' : 'Editar proyecto'}
+                >
+                  <Pencil className="h-4 w-4" />
+                  {selectedProjectEditing ? 'Editando' : 'Editar'}
+                </button>
+                <button
+                  type="button"
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md border ${isDark ? 'border-slate-700 text-slate-300 hover:bg-slate-900' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+                  onClick={() => {
+                    setSelectedProjectEditing(false)
+                    setSelectedProjectId(null)
+                  }}
+                  title="Cerrar detalle"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
             <div className="grid gap-5 p-5 lg:grid-cols-[1.2fr_0.8fr]">
@@ -734,73 +687,96 @@ export function ProjectsScreen({
                   <p className={`mt-3 text-sm leading-7 ${bodyClass}`}>{selectedProject.description || 'Sin descripcion cargada.'}</p>
                 </div>
 
-                <label className={`block rounded-lg border p-4 ${panelClass}`}>
+                <div className={`block rounded-lg border p-4 ${panelClass}`}>
                   <div className="flex items-center justify-between gap-4">
                     <span className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Nota interna</span>
                     {savingField === `${selectedProject.id}-note` && <span className={`text-xs font-semibold ${isDark ? 'text-emerald-300' : 'text-[#0d8f62]'}`}>Guardando...</span>}
                   </div>
-                  <textarea
-                    className={`mt-3 min-h-36 w-full resize-y rounded-md border px-3 py-2 text-sm leading-6 outline-none ${inputClass}`}
-                    placeholder="Estado corto, mantenimiento pendiente, observaciones del equipo..."
-                    value={selectedProject.note ?? ''}
-                    onChange={(event) => setProjects((current) => current.map((item) => (item.id === selectedProject.id ? { ...item, note: event.target.value } : item)))}
-                    onBlur={(event) => updateProject(selectedProject.id, 'note', event.target.value.trim() || null)}
-                  />
-                </label>
+                  {selectedProjectEditing ? (
+                    <textarea
+                      className={`mt-3 min-h-36 w-full resize-y rounded-md border px-3 py-2 text-sm leading-6 outline-none ${inputClass}`}
+                      placeholder="Estado corto, mantenimiento pendiente, observaciones del equipo..."
+                      value={selectedProject.note ?? ''}
+                      onChange={(event) => setProjects((current) => current.map((item) => (item.id === selectedProject.id ? { ...item, note: event.target.value } : item)))}
+                      onBlur={(event) => updateProject(selectedProject.id, 'note', event.target.value.trim() || null)}
+                    />
+                  ) : (
+                    <p className={`mt-3 text-sm leading-7 ${selectedProject.note ? bodyClass : mutedClass}`}>
+                      {selectedProject.note || 'Sin nota cargada.'}
+                    </p>
+                  )}
+                </div>
 
                 <div className={`rounded-lg border p-4 ${panelClass}`}>
                   <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Repositorios</p>
-                  <div className="mt-3 grid gap-3">
-                    {[
-                      ['repository_url', 'Repo 1'],
-                      ['repository_url_secondary', 'Repo 2'],
-                    ].map(([field, label]) => {
-                      const repoField = field as 'repository_url' | 'repository_url_secondary'
-                      const value = selectedProject[repoField] ?? ''
-                      const showSecondaryInput = repoField === 'repository_url_secondary' && (value || addingSecondaryRepoIds.includes(selectedProject.id))
-                      if (repoField === 'repository_url_secondary' && !showSecondaryInput) {
-                        return (
-                          <button
-                            key={field}
-                            type="button"
-                            className={`inline-flex h-10 w-fit items-center gap-2 rounded-md border px-3 text-sm font-semibold transition ${
-                              isDark ? 'border-slate-700 text-emerald-300 hover:bg-slate-900' : 'border-slate-200 text-[#0d8f62] hover:bg-white'
-                            }`}
-                            onClick={() => setAddingSecondaryRepoIds((current) => (current.includes(selectedProject.id) ? current : [...current, selectedProject.id]))}
-                          >
-                            <Plus className="h-4 w-4" />
-                            Agregar Repo 2
-                          </button>
-                        )
-                      }
+                  {selectedProjectEditing ? (
+                    <div className="mt-3 grid gap-3">
+                      {[
+                        ['repository_url', 'Repo 1'],
+                        ['repository_url_secondary', 'Repo 2'],
+                      ].map(([field, label]) => {
+                        const repoField = field as 'repository_url' | 'repository_url_secondary'
+                        const value = selectedProject[repoField] ?? ''
+                        const showSecondaryInput = repoField === 'repository_url_secondary' && (value || addingSecondaryRepoIds.includes(selectedProject.id))
+                        if (repoField === 'repository_url_secondary' && !showSecondaryInput) {
+                          return (
+                            <button
+                              key={field}
+                              type="button"
+                              className={`inline-flex h-10 w-fit items-center gap-2 rounded-md border px-3 text-sm font-semibold transition ${
+                                isDark ? 'border-slate-700 text-emerald-300 hover:bg-slate-900' : 'border-slate-200 text-[#0d8f62] hover:bg-white'
+                              }`}
+                              onClick={() => setAddingSecondaryRepoIds((current) => (current.includes(selectedProject.id) ? current : [...current, selectedProject.id]))}
+                            >
+                              <Plus className="h-4 w-4" />
+                              Agregar Repo 2
+                            </button>
+                          )
+                        }
 
-                      return (
-                        <label key={field} className="grid gap-1.5">
-                          <span className={`text-xs font-semibold ${labelClass}`}>{label}</span>
-                          <div className="flex items-center gap-2">
-                            <input
-                              className={`h-10 min-w-0 flex-1 rounded-md border px-3 text-sm font-medium outline-none ${inputClass}`}
-                              placeholder={`${label} - link`}
-                              value={value}
-                              onChange={(event) => setProjects((current) => current.map((item) => (item.id === selectedProject.id ? { ...item, [field]: event.target.value } : item)))}
-                              onBlur={(event) => updateProject(selectedProject.id, repoField, event.target.value.trim() || null)}
-                            />
-                            {value && (
-                              <a
-                                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md border ${isDark ? 'border-slate-700 text-emerald-300 hover:bg-slate-900' : 'border-slate-200 text-[#0d8f62] hover:bg-white'}`}
-                                href={value}
-                                target="_blank"
-                                rel="noreferrer"
-                                title={`Abrir ${label}`}
-                              >
-                                <ExternalLink className="h-4 w-4" />
-                              </a>
-                            )}
-                          </div>
-                        </label>
-                      )
-                    })}
-                  </div>
+                        return (
+                          <label key={field} className="grid gap-1.5">
+                            <span className={`text-xs font-semibold ${labelClass}`}>{label}</span>
+                            <div className="flex items-center gap-2">
+                              <input
+                                className={`h-10 min-w-0 flex-1 rounded-md border px-3 text-sm font-medium outline-none ${inputClass}`}
+                                placeholder={`${label} - link`}
+                                value={value}
+                                onChange={(event) => setProjects((current) => current.map((item) => (item.id === selectedProject.id ? { ...item, [field]: event.target.value } : item)))}
+                                onBlur={(event) => updateProject(selectedProject.id, repoField, event.target.value.trim() || null)}
+                              />
+                              {value && (
+                                <a
+                                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md border ${isDark ? 'border-slate-700 text-emerald-300 hover:bg-slate-900' : 'border-slate-200 text-[#0d8f62] hover:bg-white'}`}
+                                  href={value}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  title={`Abrir ${label}`}
+                                >
+                                  <ExternalLink className="h-4 w-4" />
+                                </a>
+                              )}
+                            </div>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <div className="mt-3 grid gap-2">
+                      {[
+                        [selectedProject.repository_url, 'Repo 1'],
+                        [selectedProject.repository_url_secondary, 'Repo 2'],
+                      ].map(([url, label]) =>
+                        url ? (
+                          <a key={label} className="block break-all text-sm font-semibold leading-6 text-[#0d8f62] hover:underline" href={url} target="_blank" rel="noreferrer">
+                            <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>{label}: </span>
+                            {url}
+                          </a>
+                        ) : null,
+                      )}
+                      {!selectedProject.repository_url && !selectedProject.repository_url_secondary && <p className={`text-sm ${mutedClass}`}>Sin repositorios cargados.</p>}
+                    </div>
+                  )}
                 </div>
 
                 <div className={`rounded-lg border p-4 ${panelClass}`}>
@@ -848,55 +824,71 @@ export function ProjectsScreen({
                       {savingProgressId === selectedProject.id ? 'Guardando...' : `${selectedProject.progress}%`}
                     </p>
                   </div>
-                  <input
-                    className="progress-slider mt-5 w-full"
-                    type="range"
-                    min="0"
-                    max="100"
-                    step="5"
-                    value={selectedProject.progress}
-                    onChange={(event) => updateProgress(selectedProject.id, Number(event.target.value))}
-                    style={{
-                      background: `linear-gradient(to right, #10b981 0%, #10b981 ${selectedProject.progress}%, ${isDark ? '#1e293b' : '#e2e8f0'} ${selectedProject.progress}%, ${isDark ? '#1e293b' : '#e2e8f0'} 100%)`,
-                    }}
-                    aria-label={`Progreso de ${selectedProject.name}`}
-                  />
+                  {selectedProjectEditing ? (
+                    <input
+                      className="progress-slider mt-5 w-full"
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="5"
+                      value={selectedProject.progress}
+                      onChange={(event) => updateProgress(selectedProject.id, Number(event.target.value))}
+                      style={{
+                        background: `linear-gradient(to right, #10b981 0%, #10b981 ${selectedProject.progress}%, ${isDark ? '#1e293b' : '#e2e8f0'} ${selectedProject.progress}%, ${isDark ? '#1e293b' : '#e2e8f0'} 100%)`,
+                      }}
+                      aria-label={`Progreso de ${selectedProject.name}`}
+                    />
+                  ) : (
+                    <div className={`mt-5 h-3 overflow-hidden rounded-full ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
+                      <div className="h-full rounded-full bg-[#10b981]" style={{ width: `${selectedProject.progress}%` }} />
+                    </div>
+                  )}
                 </div>
 
                 <div className={`grid gap-3 rounded-lg border p-4 ${panelClass}`}>
-                  <label>
-                    <span className={`text-xs font-semibold ${labelClass}`}>Prioridad</span>
-                    <select className={`mt-1 h-10 w-full rounded-md border px-2 font-semibold outline-none ${inputClass}`} value={selectedProject.priority} onChange={(event) => updateProject(selectedProject.id, 'priority', event.target.value)}>
-                      {priorities.map((priority) => (
-                        <option key={priority} value={priority}>
-                          {priority}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <div>
+                    <p className={`text-xs font-semibold ${labelClass}`}>Prioridad</p>
+                    {selectedProjectEditing ? (
+                      <select className={`mt-1 h-10 w-full rounded-md border px-2 font-semibold outline-none ${inputClass}`} value={selectedProject.priority} onChange={(event) => updateProject(selectedProject.id, 'priority', event.target.value)}>
+                        {priorities.map((priority) => (
+                          <option key={priority} value={priority}>
+                            {priority}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <p className={`mt-1 text-sm font-semibold ${titleClass}`}>{selectedProject.priority}</p>
+                    )}
+                  </div>
 
-                  <label>
-                    <span className={`text-xs font-semibold ${labelClass}`}>Entrega</span>
-                    <input
-                      className={`mt-1 h-10 w-full rounded-md border px-2 font-semibold outline-none ${inputClass}`}
-                      type="date"
-                      value={selectedProject.estimated_delivery ?? ''}
-                      onChange={(event) => updateProject(selectedProject.id, 'estimated_delivery', event.target.value || null)}
-                    />
-                  </label>
+                  <div>
+                    <p className={`text-xs font-semibold ${labelClass}`}>Entrega</p>
+                    {selectedProjectEditing ? (
+                      <input
+                        className={`mt-1 h-10 w-full rounded-md border px-2 font-semibold outline-none ${inputClass}`}
+                        type="date"
+                        value={selectedProject.estimated_delivery ?? ''}
+                        onChange={(event) => updateProject(selectedProject.id, 'estimated_delivery', event.target.value || null)}
+                      />
+                    ) : (
+                      <p className={`mt-1 text-sm font-semibold ${titleClass}`}>{selectedProject.estimated_delivery || 'Sin fecha'}</p>
+                    )}
+                  </div>
                 </div>
 
-                <button
-                  type="button"
-                  className={`flex h-11 w-full items-center justify-center gap-2 rounded-md border text-sm font-semibold transition ${
-                    isDark ? 'border-red-900/60 bg-red-950/30 text-red-300 hover:bg-red-950/60' : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100'
-                  }`}
-                  onClick={() => deleteProject(selectedProject)}
-                  disabled={deletingId === selectedProject.id}
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Eliminar proyecto
-                </button>
+                {selectedProjectEditing && (
+                  <button
+                    type="button"
+                    className={`flex h-11 w-full items-center justify-center gap-2 rounded-md border text-sm font-semibold transition ${
+                      isDark ? 'border-red-900/60 bg-red-950/30 text-red-300 hover:bg-red-950/60' : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100'
+                    }`}
+                    onClick={() => deleteProject(selectedProject)}
+                    disabled={deletingId === selectedProject.id}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Eliminar proyecto
+                  </button>
+                )}
               </aside>
             </div>
           </section>

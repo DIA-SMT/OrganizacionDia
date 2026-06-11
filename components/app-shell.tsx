@@ -84,21 +84,22 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
     <main className={`relative isolate min-h-screen overflow-hidden transition-colors ${shellClass}`}>
       <CursorAiBackground isDark={isDark} />
       <div className="relative z-10 flex min-h-screen">
-        <aside className={`relative hidden border-r px-4 py-5 transition-[width] duration-200 lg:block ${sidebarCollapsed ? 'w-20' : 'w-64'} ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-[#fbfcfd]/95'}`}>
-          <div className={`mb-8 flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between gap-3 px-2'}`}>
+        <aside className={`relative hidden border-r px-3 py-4 transition-[width] duration-200 lg:block ${sidebarCollapsed ? 'w-16' : 'w-52'} ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-[#fbfcfd]/95'}`}>
+          <div className={`mb-7 flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between gap-2 px-1'}`}>
             <div className={`flex min-w-0 items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'}`}>
-            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-[#103b3a] text-white">
-              <Code2 className="h-5 w-5" />
+            <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-[#061e3d] ring-1 ring-white/10">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img className="h-full w-full object-cover" src="/logo-dia.png" alt="DIA" />
             </div>
             {!sidebarCollapsed && (
             <div className="min-w-0">
-              <p className={`text-sm font-bold ${textStrongClass}`}>Organizacion DIA</p>
+              <p className={`truncate text-sm font-bold ${textStrongClass}`}>Organizacion DIA</p>
               <p className="text-xs text-slate-400">Equipo de desarrollo</p>
             </div>
             )}
             </div>
             <button
-              className={`flex h-9 w-9 items-center justify-center rounded-md border transition ${sidebarCollapsed ? 'absolute left-[62px] top-6 shadow-sm' : ''} ${isDark ? 'border-slate-700 bg-slate-950 text-slate-300 hover:bg-slate-800' : 'border-slate-200 bg-[#fbfcfd] text-slate-500 hover:bg-slate-50'}`}
+              className={`flex h-8 w-8 items-center justify-center rounded-md border transition ${sidebarCollapsed ? 'absolute left-[50px] top-5 shadow-sm' : ''} ${isDark ? 'border-slate-700 bg-slate-950 text-slate-300 hover:bg-slate-800' : 'border-slate-200 bg-[#fbfcfd] text-slate-500 hover:bg-slate-50'}`}
               onClick={toggleSidebar}
               title={sidebarCollapsed ? 'Desplegar menu' : 'Plegar menu'}
               aria-label={sidebarCollapsed ? 'Desplegar menu' : 'Plegar menu'}
@@ -107,7 +108,7 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
             </button>
           </div>
 
-          <nav className="space-y-1">
+          <nav className="space-y-0.5">
             {navItems.map((item) => {
               const Icon = item.icon
               const active = pathname === item.href
@@ -118,11 +119,11 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex w-full items-center rounded-md py-2 text-sm font-medium transition ${sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${active ? activeClass : idleClass}`}
+                  className={`flex w-full items-center rounded-md py-1.5 text-sm font-medium transition ${sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${active ? activeClass : idleClass}`}
                   title={sidebarCollapsed ? item.label : undefined}
                   aria-label={item.label}
                 >
-                  <Icon className="h-4 w-4" />
+                  <Icon className="h-4 w-4 shrink-0" />
                   {!sidebarCollapsed && item.label}
                 </Link>
               )
