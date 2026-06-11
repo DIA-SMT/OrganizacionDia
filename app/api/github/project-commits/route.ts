@@ -4,6 +4,8 @@ type ProjectCommitRequest = {
     repositoryUrl?: string | null
     repositoryUrlSecondary?: string | null
   }>
+  days?: number | null
+  allTime?: boolean
 }
 
 type GithubCommit = {
@@ -54,15 +56,21 @@ function firstCommitLine(message: string) {
   return message.split('\n')[0]?.trim() || 'Commit sin descripcion'
 }
 
-async function fetchRepoCommits(repoUrl: string | null | undefined, repoLabel: string, headers: HeadersInit) {
+async function fetchRepoCommits(repoUrl: string | null | undefined, repoLabel: string, headers: HeadersInit, days: number | null) {
   const repo = parseGithubRepo(repoUrl)
   if (!repo) return []
 
-  const since = new Date()
-  since.setDate(since.getDate() - 3)
+  const since = days
+    ? (() => {
+        const date = new Date()
+        date.setDate(date.getDate() - days)
+        return date
+      })()
+    : null
+  const sinceParam = since ? `&since=${encodeURIComponent(since.toISOString())}` : ''
 
   const response = await fetch(
-    `https://api.github.com/repos/${repo.owner}/${repo.repo}/commits?per_page=20&since=${encodeURIComponent(since.toISOString())}`,
+    `https://api.github.com/repos/${repo.owner}/${repo.repo}/commits?per_page=100${sinceParam}`,
     {
       headers,
       cache: 'no-store',
@@ -86,6 +94,7 @@ async function fetchRepoCommits(repoUrl: string | null | undefined, repoLabel: s
 export async function POST(request: Request) {
   const body = (await request.json()) as ProjectCommitRequest
   const projects = body.projects ?? []
+  const days = body.allTime ? null : typeof body.days === 'number' ? body.days : 3
   const token = process.env.GITHUB_TOKEN
 
   const headers: HeadersInit = {
@@ -100,13 +109,13 @@ export async function POST(request: Request) {
     projects.map(async (project) => {
       const commits = (
         await Promise.all([
-          fetchRepoCommits(project.repositoryUrl, 'Repo 1', headers),
-          fetchRepoCommits(project.repositoryUrlSecondary, 'Repo 2', headers),
+          fetchRepoCommits(project.repositoryUrl, 'Repo 1', headers, days),
+          fetchRepoCommits(project.repositoryUrlSecondary, 'Repo 2', headers, days),
         ])
       )
         .flat()
         .sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime())
-        .slice(0, 20)
+        .slice(0, days ? 100 : 50)
 
       return [project.id, commits] as const
     }),

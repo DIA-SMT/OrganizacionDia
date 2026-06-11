@@ -66,14 +66,14 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
   }, [authConfigured, loading, pathname, router, user])
 
   const isDark = theme === 'dark'
-  const shellClass = isDark ? 'dark bg-slate-950 text-slate-100' : 'bg-[#f6f8fb] text-slate-950'
+  const shellClass = isDark ? 'dark bg-slate-950 text-slate-100' : 'bg-[#eef3f6] text-slate-950'
   const textStrongClass = isDark ? 'text-white' : 'text-slate-950'
   const textMutedClass = isDark ? 'text-slate-400' : 'text-slate-500'
 
   if (authConfigured && (loading || !user)) {
     return (
       <main className={`relative isolate flex min-h-screen items-center justify-center transition-colors ${shellClass}`}>
-        <div className={`rounded-lg border px-4 py-3 text-sm font-semibold ${isDark ? 'border-slate-800 bg-slate-900 text-slate-300' : 'border-slate-200 bg-white text-slate-600'}`}>
+        <div className={`rounded-lg border px-4 py-3 text-sm font-semibold ${isDark ? 'border-slate-800 bg-slate-900 text-slate-300' : 'border-slate-200 bg-[#fbfcfd] text-slate-600'}`}>
           Verificando sesion...
         </div>
       </main>
@@ -84,7 +84,7 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
     <main className={`relative isolate min-h-screen overflow-hidden transition-colors ${shellClass}`}>
       <CursorAiBackground isDark={isDark} />
       <div className="relative z-10 flex min-h-screen">
-        <aside className={`relative hidden border-r px-4 py-5 transition-[width] duration-200 lg:block ${sidebarCollapsed ? 'w-20' : 'w-64'} ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-white/95'}`}>
+        <aside className={`relative hidden border-r px-4 py-5 transition-[width] duration-200 lg:block ${sidebarCollapsed ? 'w-20' : 'w-64'} ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-[#fbfcfd]/95'}`}>
           <div className={`mb-8 flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between gap-3 px-2'}`}>
             <div className={`flex min-w-0 items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'}`}>
             <div className="flex h-10 w-10 items-center justify-center rounded-md bg-[#103b3a] text-white">
@@ -98,7 +98,7 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
             )}
             </div>
             <button
-              className={`flex h-9 w-9 items-center justify-center rounded-md border transition ${sidebarCollapsed ? 'absolute left-[62px] top-6 shadow-sm' : ''} ${isDark ? 'border-slate-700 bg-slate-950 text-slate-300 hover:bg-slate-800' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}
+              className={`flex h-9 w-9 items-center justify-center rounded-md border transition ${sidebarCollapsed ? 'absolute left-[62px] top-6 shadow-sm' : ''} ${isDark ? 'border-slate-700 bg-slate-950 text-slate-300 hover:bg-slate-800' : 'border-slate-200 bg-[#fbfcfd] text-slate-500 hover:bg-slate-50'}`}
               onClick={toggleSidebar}
               title={sidebarCollapsed ? 'Desplegar menu' : 'Plegar menu'}
               aria-label={sidebarCollapsed ? 'Desplegar menu' : 'Plegar menu'}
@@ -131,7 +131,7 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
         </aside>
 
         <section className="flex min-w-0 flex-1 flex-col">
-          <header className={`border-b backdrop-blur ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-white/90'}`}>
+          <header className={`border-b backdrop-blur ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-[#fbfcfd]/90'}`}>
             <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
               <div>
                 <h1 className={`text-xl font-bold ${textStrongClass}`}>{title}</h1>

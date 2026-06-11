@@ -15,7 +15,7 @@ export default function LoginPage() {
 
 function LoginShell() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#f6f8fb] px-4">
+    <main className="flex min-h-screen items-center justify-center bg-[#eef3f6] px-4">
       <section className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
         <Loader2 className="h-5 w-5 animate-spin text-[#10b981]" />
       </section>
@@ -69,7 +69,7 @@ function LoginForm() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#f6f8fb] px-4">
+    <main className="flex min-h-screen items-center justify-center bg-[#eef3f6] px-4">
       <section className="grid w-full max-w-5xl overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm md:grid-cols-[1fr_0.85fr]">
         <div className="hidden bg-[#103b3a] p-10 text-white md:block">
           <div className="flex h-11 w-11 items-center justify-center rounded-md bg-white/10">

@@ -2,13 +2,13 @@
 
 import { AppShell } from '@/components/app-shell'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
-import { CalendarDays, Gamepad2, Heart, ImageIcon, Mail, Plus, Save, Sparkles, Utensils, X } from 'lucide-react'
+import { CalendarDays, Gamepad2, Heart, ImageIcon, Mail, Pencil, Plus, Save, Utensils, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 type MemberRow = {
   id: string
   full_name: string
-  email: string
+  email: string | null
   role: string | null
   specialty: string | null
   avatar_url: string | null
@@ -31,10 +31,30 @@ const emptyProfile = {
   favorite_game: null,
 }
 
-function memberInitials(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  const initials = parts.slice(0, 2).map((part) => part[0]?.toUpperCase()).join('')
-  return initials || 'DIA'
+function memberAvatarFallback(name: string) {
+  return name.trim() || 'Sin nombre'
+}
+
+function fallbackNameClass(name: string) {
+  const length = memberAvatarFallback(name).length
+  if (length > 26) return 'text-[13px]'
+  if (length > 18) return 'text-sm'
+  if (length > 12) return 'text-base'
+  return 'text-lg'
+}
+
+function formatBirthday(value: string | null) {
+  if (!value) return 'Sin cargar'
+  return new Intl.DateTimeFormat('es-AR', { day: '2-digit', month: 'long' }).format(new Date(`${value}T00:00:00`))
+}
+
+function ProfileInfo({ icon, label, value }: { icon: React.ReactNode; label: string; value: string | null | undefined }) {
+  return (
+    <div className="rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950">
+      <p className="flex items-center gap-2 text-xs font-semibold text-slate-400">{icon}{label}</p>
+      <p className="mt-1 break-words text-sm font-semibold text-slate-800 dark:text-slate-100">{value || 'Sin cargar'}</p>
+    </div>
+  )
 }
 
 export function TeamScreen() {
@@ -44,6 +64,8 @@ export function TeamScreen() {
   const [savingId, setSavingId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null)
+  const [editingMemberId, setEditingMemberId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [newMember, setNewMember] = useState({
     full_name: '',
@@ -90,7 +112,7 @@ export function TeamScreen() {
       setMembers([])
     } else {
       setMembers(((fallbackData ?? []) as Omit<MemberRow, keyof typeof emptyProfile>[]).map((member) => ({ ...member, ...emptyProfile })))
-      setError('Faltan columnas de perfil en Supabase. Ejecuta supabase/add_member_profile_fields.sql para guardar cumpleaños, comida, hobby y juego.')
+      setError('Faltan columnas de perfil en Supabase. Ejecuta supabase/add_member_profile_fields.sql para guardar foto, cumpleaños, comida, hobby y juego.')
     }
 
     setLoading(false)
@@ -112,6 +134,9 @@ export function TeamScreen() {
     )
   }, [members, search])
 
+  const selectedMember = selectedMemberId ? members.find((member) => member.id === selectedMemberId) ?? null : null
+  const editingMember = editingMemberId ? members.find((member) => member.id === editingMemberId) ?? null : null
+
   function updateLocalMember(memberId: string, field: MemberProfileField, value: string) {
     setMembers((current) => current.map((member) => (member.id === memberId ? { ...member, [field]: value || null } : member)))
   }
@@ -131,7 +156,7 @@ export function TeamScreen() {
       .update({
         birthday: member.birthday || null,
         full_name: member.full_name.trim() || 'Sin nombre',
-        email: member.email.trim() || null,
+        email: member.email?.trim() || null,
         role: member.role || 'Dev',
         specialty: member.specialty || null,
         avatar_url: member.avatar_url || null,
@@ -143,6 +168,8 @@ export function TeamScreen() {
 
     if (updateError) {
       setError(`${updateError.message}. Si faltan columnas, ejecuta supabase/add_member_profile_fields.sql.`)
+    } else {
+      setEditingMemberId(null)
     }
 
     setSavingId(null)
@@ -184,7 +211,7 @@ export function TeamScreen() {
         }
         const { error: fallbackError } = await supabase.from('members').insert(fallbackPayload)
         if (fallbackError) throw insertError
-        setError('Persona creada. Para guardar cumpleaños, comida, hobby y juego ejecuta supabase/add_member_profile_fields.sql.')
+        setError('Persona creada. Para guardar foto, cumpleaños, comida, hobby y juego ejecuta supabase/add_member_profile_fields.sql.')
       }
 
       setNewMember({
@@ -213,7 +240,22 @@ export function TeamScreen() {
     }
   }
 
-  const inputClass = 'mt-1 h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500'
+  const inputClass = 'mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500'
+
+  function renderAvatar(member: MemberRow, sizeClass: string, textClass = 'text-3xl') {
+    return (
+      <div className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#e9f8f1] font-bold text-[#08784f] ring-4 ring-white dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-slate-800 ${sizeClass} ${textClass}`}>
+        {member.avatar_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img className="h-full w-full object-cover" src={member.avatar_url} alt={`Foto de ${member.full_name}`} />
+        ) : (
+          <span className={`max-w-[78%] px-1 text-center font-serif font-semibold italic leading-tight tracking-wide ${fallbackNameClass(member.full_name)}`}>
+            {memberAvatarFallback(member.full_name)}
+          </span>
+        )}
+      </div>
+    )
+  }
 
   return (
     <AppShell title="Equipo" subtitle="Usuarios internos habilitados para operar el sistema" search={search} onSearchChange={setSearch}>
@@ -234,79 +276,120 @@ export function TeamScreen() {
       ) : filtered.length === 0 ? (
         <div className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">No hay integrantes cargados.</div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {filtered.map((member) => (
-            <article key={member.id} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 items-start gap-3">
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#e9f8f1] text-sm font-bold text-[#08784f] ring-2 ring-white dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-slate-800">
-                  {member.avatar_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img className="h-full w-full object-cover" src={member.avatar_url} alt={`Foto de ${member.full_name}`} />
-                  ) : (
-                    memberInitials(member.full_name)
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <input
-                    className="w-full rounded-md border border-transparent bg-transparent px-0 text-base font-bold text-slate-950 outline-none transition focus:border-slate-200 focus:bg-white focus:px-2 dark:text-white dark:focus:border-slate-700 dark:focus:bg-slate-950"
-                    value={member.full_name}
-                    onChange={(event) => updateLocalMember(member.id, 'full_name', event.target.value)}
-                    placeholder="Nombre"
-                  />
-                  <select
-                    className="mt-1 h-8 rounded-md border border-slate-200 bg-white px-2 text-sm font-semibold text-slate-500 outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
-                    value={member.role ?? 'Dev'}
-                    onChange={(event) => updateLocalMember(member.id, 'role', event.target.value)}
-                  >
+            <article
+              key={member.id}
+              className="group cursor-pointer rounded-lg border border-slate-200 bg-white p-5 text-center shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-slate-900"
+              onClick={() => setSelectedMemberId(member.id)}
+            >
+              <div className="flex w-full justify-center">{renderAvatar(member, 'h-36 w-36', 'text-4xl')}</div>
+              <p className="mt-4 text-sm font-semibold text-[#0d8f62] dark:text-emerald-300">{member.role ?? 'Sin rol'}</p>
+              {member.specialty && <p className="mt-2 line-clamp-1 text-sm text-slate-500 dark:text-slate-400">{member.specialty}</p>}
+            </article>
+          ))}
+        </div>
+      )}
+
+      {selectedMember && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm" onClick={() => setSelectedMemberId(null)}>
+          <section className="relative max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-slate-200 bg-white p-6 text-center shadow-2xl dark:border-slate-800 dark:bg-slate-900" onClick={(event) => event.stopPropagation()}>
+            <div className="absolute right-4 top-4 flex gap-2">
+              <button className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800" onClick={() => setEditingMemberId(selectedMember.id)} title="Editar perfil">
+                <Pencil className="h-4 w-4" />
+              </button>
+              <button className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800" onClick={() => setSelectedMemberId(null)} title="Cerrar">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-5 flex w-full justify-center">{renderAvatar(selectedMember, 'h-48 w-48', 'text-5xl')}</div>
+            <h2 className="mt-5 text-2xl font-bold text-slate-950 dark:text-white">{selectedMember.full_name || 'Sin nombre'}</h2>
+            <p className="mt-1 text-sm font-semibold text-[#0d8f62] dark:text-emerald-300">{selectedMember.role ?? 'Sin rol'}</p>
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{selectedMember.specialty || 'Sin skill cargado'}</p>
+
+            <div className="mt-6 grid gap-3 text-left sm:grid-cols-2">
+              <ProfileInfo icon={<Mail className="h-3.5 w-3.5" />} label="Email" value={selectedMember.email} />
+              <ProfileInfo icon={<CalendarDays className="h-3.5 w-3.5" />} label="Cumpleaños" value={formatBirthday(selectedMember.birthday)} />
+              <ProfileInfo icon={<Utensils className="h-3.5 w-3.5" />} label="Comida favorita" value={selectedMember.favorite_food} />
+              <ProfileInfo icon={<Heart className="h-3.5 w-3.5" />} label="Hobby" value={selectedMember.hobby} />
+              <ProfileInfo icon={<Gamepad2 className="h-3.5 w-3.5" />} label="Juego favorito" value={selectedMember.favorite_game} />
+              <ProfileInfo icon={<ImageIcon className="h-3.5 w-3.5" />} label="Foto" value={selectedMember.avatar_url} />
+            </div>
+          </section>
+        </div>
+      )}
+
+      {editingMember && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm" onClick={() => setEditingMemberId(null)}>
+          <section className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-slate-900" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-950 dark:text-white">Editar perfil</h2>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Actualiza los datos visibles de la persona.</p>
+              </div>
+              <button type="button" className="rounded-md p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800" onClick={() => setEditingMemberId(null)} title="Cerrar">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-5 flex justify-center">{renderAvatar(editingMember, 'h-32 w-32', 'text-4xl')}</div>
+            <div className="mt-5 grid gap-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Nombre
+                  <input className={inputClass} value={editingMember.full_name} onChange={(event) => updateLocalMember(editingMember.id, 'full_name', event.target.value)} placeholder="Nombre y apellido" />
+                </label>
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Rol
+                  <select className={inputClass} value={editingMember.role ?? 'Dev'} onChange={(event) => updateLocalMember(editingMember.id, 'role', event.target.value)}>
                     <option>Admin</option>
                     <option>PM</option>
                     <option>Dev</option>
                     <option>QA</option>
                     <option>Viewer</option>
                   </select>
-                </div>
-                </div>
-                <button className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800" onClick={() => saveMember(member)} disabled={savingId === member.id} title="Guardar datos">
-                  <Save className="h-4 w-4" />
-                </button>
+                </label>
               </div>
-
-              <label className="mt-5 block text-xs font-semibold text-slate-500 dark:text-slate-400">
-                <span className="flex items-center gap-2"><Mail className="h-3.5 w-3.5" /> Email</span>
-                <input className={inputClass} type="email" value={member.email ?? ''} onChange={(event) => updateLocalMember(member.id, 'email', event.target.value)} placeholder="persona@dominio.com" />
+              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                Foto
+                <input className={inputClass} value={editingMember.avatar_url ?? ''} onChange={(event) => updateLocalMember(editingMember.id, 'avatar_url', event.target.value)} placeholder="https://..." />
               </label>
-
-              <div className="mt-5 grid gap-3">
+              <div className="grid gap-4 md:grid-cols-2">
                 <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  <span className="flex items-center gap-2"><Sparkles className="h-3.5 w-3.5" /> Skill</span>
-                  <input className={inputClass} value={member.specialty ?? ''} onChange={(event) => updateLocalMember(member.id, 'specialty', event.target.value)} placeholder="Frontend, Backend, QA..." />
+                  Email
+                  <input className={inputClass} type="email" value={editingMember.email ?? ''} onChange={(event) => updateLocalMember(editingMember.id, 'email', event.target.value)} placeholder="persona@dominio.com" />
                 </label>
                 <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  <span className="flex items-center gap-2"><ImageIcon className="h-3.5 w-3.5" /> Foto</span>
-                  <input className={inputClass} value={member.avatar_url ?? ''} onChange={(event) => updateLocalMember(member.id, 'avatar_url', event.target.value)} placeholder="https://..." />
-                </label>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  <span className="flex items-center gap-2"><CalendarDays className="h-3.5 w-3.5" /> Cumpleaños</span>
-                  <input className={inputClass} type="date" value={member.birthday ?? ''} onChange={(event) => updateLocalMember(member.id, 'birthday', event.target.value)} />
-                </label>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                    <span className="flex items-center gap-2"><Utensils className="h-3.5 w-3.5" /> Comida favorita</span>
-                    <input className={inputClass} value={member.favorite_food ?? ''} onChange={(event) => updateLocalMember(member.id, 'favorite_food', event.target.value)} placeholder="Milanesa, sushi..." />
-                  </label>
-                  <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                    <span className="flex items-center gap-2"><Heart className="h-3.5 w-3.5" /> Hobby</span>
-                    <input className={inputClass} value={member.hobby ?? ''} onChange={(event) => updateLocalMember(member.id, 'hobby', event.target.value)} placeholder="Gimnasio, musica..." />
-                  </label>
-                </div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  <span className="flex items-center gap-2"><Gamepad2 className="h-3.5 w-3.5" /> Juego favorito</span>
-                  <input className={inputClass} value={member.favorite_game ?? ''} onChange={(event) => updateLocalMember(member.id, 'favorite_game', event.target.value)} placeholder="FIFA, Valorant, Minecraft..." />
+                  Skill
+                  <input className={inputClass} value={editingMember.specialty ?? ''} onChange={(event) => updateLocalMember(editingMember.id, 'specialty', event.target.value)} placeholder="Frontend, Backend, QA..." />
                 </label>
               </div>
-            </article>
-          ))}
+              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                Cumpleaños
+                <input className={inputClass} type="date" value={editingMember.birthday ?? ''} onChange={(event) => updateLocalMember(editingMember.id, 'birthday', event.target.value)} />
+              </label>
+              <div className="grid gap-4 md:grid-cols-3">
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Comida favorita
+                  <input className={inputClass} value={editingMember.favorite_food ?? ''} onChange={(event) => updateLocalMember(editingMember.id, 'favorite_food', event.target.value)} placeholder="Milanesa" />
+                </label>
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Hobby
+                  <input className={inputClass} value={editingMember.hobby ?? ''} onChange={(event) => updateLocalMember(editingMember.id, 'hobby', event.target.value)} placeholder="Musica" />
+                </label>
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Juego favorito
+                  <input className={inputClass} value={editingMember.favorite_game ?? ''} onChange={(event) => updateLocalMember(editingMember.id, 'favorite_game', event.target.value)} placeholder="Valorant" />
+                </label>
+              </div>
+            </div>
+
+            <button className="mt-5 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[#10b981] text-sm font-semibold text-white disabled:opacity-60" onClick={() => saveMember(editingMember)} disabled={savingId === editingMember.id}>
+              <Save className="h-4 w-4" />
+              {savingId === editingMember.id ? 'Guardando...' : 'Guardar cambios'}
+            </button>
+          </section>
         </div>
       )}
 

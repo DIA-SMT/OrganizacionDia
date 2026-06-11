@@ -65,13 +65,12 @@ function formatCommitDate(value: string | null) {
   }).format(new Date(value))
 }
 
-function sortPausedLast(projects: ProjectRow[]) {
-  return [...projects].sort((a, b) => {
-    const aPaused = a.status === 'Pausado'
-    const bPaused = b.status === 'Pausado'
-    if (aPaused === bPaused) return 0
-    return aPaused ? 1 : -1
-  })
+function isProduction(project: ProjectRow) {
+  return project.status === 'En Producción'
+}
+
+function isPaused(project: ProjectRow) {
+  return project.status === 'Pausado'
 }
 
 function useStoredTheme() {
@@ -159,6 +158,7 @@ export function ProjectsScreen({
   const [view, setView] = useState<'active' | 'finished'>('active')
   const [addingSecondaryRepoIds, setAddingSecondaryRepoIds] = useState<string[]>([])
   const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>([])
+  const [multiExpandEnabled, setMultiExpandEnabled] = useState(false)
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(initialSelectedProjectId)
   const [commitsByProject, setCommitsByProject] = useState<Record<string, ProjectCommitActivity[]>>({})
   const [loadingCommits, setLoadingCommits] = useState(false)
@@ -308,11 +308,15 @@ export function ProjectsScreen({
   function openProjectCard(event: React.MouseEvent<HTMLElement>, projectId: string) {
     const target = event.target as HTMLElement
     if (target.closest('input, textarea, select, button, a, [data-no-project-open]')) return
-    setSelectedProjectId(projectId)
+    toggleProjectExpanded(projectId)
   }
 
   function toggleProjectExpanded(projectId: string) {
-    setExpandedProjectIds((current) => (current.includes(projectId) ? current.filter((id) => id !== projectId) : [...current, projectId]))
+    setExpandedProjectIds((current) => {
+      const isOpen = current.includes(projectId)
+      if (isOpen) return current.filter((id) => id !== projectId)
+      return multiExpandEnabled ? [...current, projectId] : [projectId]
+    })
   }
 
   const filtered = useMemo(() => {
@@ -322,13 +326,19 @@ export function ProjectsScreen({
         ? projects
         : projects.filter((project) => (statusFilter === 'Activos' ? project.status !== 'En Producción' : project.status === statusFilter))
       : projects.filter((project) => (view === 'finished' ? project.status === 'En Producción' : project.status !== 'En Producción'))
-    const orderedByView = statusFilter && statusFilter !== 'Todos' ? byView : sortPausedLast(byView)
+    const isSpecificStatusFilter = Boolean(statusFilter && statusFilter !== 'Todos' && statusFilter !== 'Activos')
+    const visibleByView =
+      isSpecificStatusFilter || view === 'finished'
+        ? byView
+        : byView.filter((project) => !isProduction(project) && !isPaused(project))
+    const orderedByView = visibleByView
     if (!q) return orderedByView
     return orderedByView.filter((project) => [project.name, project.description, project.note, project.requester_area, project.stack, project.repository_url, project.repository_url_secondary, project.status, project.priority].filter(Boolean).join(' ').toLowerCase().includes(q))
   }, [projects, search, statusFilter, view])
 
-  const activeCount = projects.filter((project) => project.status !== 'En Producción').length
   const finishedCount = projects.filter((project) => project.status === 'En Producción').length
+  const activeVisibleCount = projects.filter((project) => !isProduction(project) && !isPaused(project)).length
+  const pausedCount = projects.filter((project) => isPaused(project)).length
   const selectedProject = selectedProjectId ? projects.find((project) => project.id === selectedProjectId) ?? null : null
 
   return (
@@ -337,7 +347,7 @@ export function ProjectsScreen({
 
       {statusFilter && (
         <div className={`mb-4 flex w-fit items-center gap-3 rounded-lg border px-3 py-2 text-sm font-semibold ${isDark ? 'border-emerald-900/60 bg-emerald-950/30 text-emerald-300' : 'border-emerald-200 bg-emerald-50 text-[#08784f]'}`}>
-          <span>Filtro: {statusFilter === 'Todos' ? 'Todos los proyectos' : statusFilter}</span>
+          <span>Filtro: {statusFilter === 'Todos' ? 'Todos los proyectos activos' : statusFilter}</span>
           <button type="button" className={isDark ? 'text-slate-300 hover:text-white' : 'text-slate-500 hover:text-slate-900'} onClick={() => setStatusFilter(null)}>
             Limpiar
           </button>
@@ -347,7 +357,7 @@ export function ProjectsScreen({
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className={`inline-flex rounded-lg border p-1 ${isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-200 bg-white'}`}>
           {[
-            ['active', `Activos (${activeCount})`],
+            ['active', `Activos (${activeVisibleCount})`],
             ['finished', `Finalizados (${finishedCount})`],
           ].map(([key, label]) => (
             <button
@@ -371,7 +381,59 @@ export function ProjectsScreen({
             </button>
           ))}
         </div>
-        <ProjectCreateButton onCreated={() => window.location.reload()} isDark={isDark} />
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <button
+            type="button"
+            className={`inline-flex h-10 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition ${
+              multiExpandEnabled
+                ? isDark
+                  ? 'border-sky-800/70 bg-sky-950/40 text-sky-300'
+                  : 'border-sky-200 bg-sky-50 text-sky-700'
+                : isDark
+                  ? 'border-slate-700 text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                  : 'border-slate-200 bg-white/70 text-slate-500 hover:bg-slate-50 hover:text-slate-700'
+            }`}
+            onClick={() => {
+              setMultiExpandEnabled((current) => {
+                const next = !current
+                if (!next) setExpandedProjectIds((ids) => ids.slice(0, 1))
+                return next
+              })
+            }}
+            title={multiExpandEnabled ? 'Desactivar selección múltiple' : 'Activar selección múltiple'}
+            aria-pressed={multiExpandEnabled}
+          >
+            <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition ${
+              multiExpandEnabled
+                ? 'border-sky-500 bg-sky-500'
+                : isDark
+                  ? 'border-slate-600'
+                  : 'border-slate-300'
+            }`}>
+              {multiExpandEnabled && <span className="h-1.5 w-1.5 rounded-full bg-white" />}
+            </span>
+            <span className="whitespace-nowrap">Seleccion multiple</span>
+          </button>
+          <button
+            type="button"
+            className={`h-10 rounded-md border px-3 text-sm font-semibold transition ${
+              statusFilter === 'Pausado'
+                ? isDark
+                  ? 'border-red-900/60 bg-red-950/40 text-red-300'
+                  : 'border-red-200 bg-red-50 text-red-700'
+                : isDark
+                  ? 'border-slate-700 text-slate-300 hover:bg-slate-900'
+                  : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+            }`}
+            onClick={() => {
+              setStatusFilter('Pausado')
+              setView('active')
+            }}
+          >
+            Ver todos ({pausedCount})
+          </button>
+          <ProjectCreateButton onCreated={() => window.location.reload()} isDark={isDark} />
+        </div>
       </div>
 
       {loading ? (
@@ -387,7 +449,9 @@ export function ProjectsScreen({
             return (
             <article
               key={project.id}
-              className={`group cursor-zoom-in rounded-lg border p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg ${projectPriorityCardClass(project.priority, isDark)}`}
+              className={`group cursor-pointer rounded-lg border p-5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg ${
+                isExpanded ? 'xl:col-span-2' : ''
+              } ${projectPriorityCardClass(project.priority, isDark)}`}
               onClick={(event) => openProjectCard(event, project.id)}
             >
               <div className="flex items-start justify-between gap-4">
@@ -402,24 +466,6 @@ export function ProjectsScreen({
                   {savingField === `${project.id}-name` && <p className={`mt-1 text-xs font-semibold ${isDark ? 'text-emerald-300' : 'text-[#0d8f62]'}`}>Guardando nombre...</p>}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  <button
-                    type="button"
-                    className={`flex h-9 w-9 items-center justify-center rounded-md border transition ${isDark ? 'border-slate-700 text-slate-300 hover:bg-slate-950' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}
-                    onClick={() => toggleProjectExpanded(project.id)}
-                    title={isExpanded ? 'Plegar proyecto' : 'Desplegar proyecto'}
-                    aria-label={isExpanded ? 'Plegar proyecto' : 'Desplegar proyecto'}
-                    aria-expanded={isExpanded}
-                  >
-                    <ChevronDown className={`h-4 w-4 transition ${isExpanded ? 'rotate-180' : ''}`} />
-                  </button>
-                  <button
-                    type="button"
-                    className={`flex h-9 w-9 items-center justify-center rounded-md border transition ${isDark ? 'border-slate-700 text-slate-300 hover:bg-slate-950' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}
-                    onClick={() => setSelectedProjectId(project.id)}
-                    title="Ver detalle"
-                  >
-                    <Maximize2 className="h-4 w-4" />
-                  </button>
                   <StatusDropdown value={project.status} isDark={isDark} onChange={(status) => updateProject(project.id, 'status', status)} />
                   <button
                     type="button"
@@ -443,8 +489,27 @@ export function ProjectsScreen({
                 </div>
               </div>
 
-              {isExpanded && (
-              <div className="mt-4">
+              <div className="mt-3 flex justify-center">
+                <button
+                  type="button"
+                  className={`flex h-7 min-w-16 items-center justify-center rounded-full border px-3 transition duration-300 ${
+                    isDark ? 'border-slate-700/80 bg-slate-950/60 text-slate-400 hover:border-emerald-500/30 hover:text-emerald-300' : 'border-slate-200 bg-white/70 text-slate-400 hover:border-emerald-200 hover:bg-emerald-50 hover:text-[#0d8f62]'
+                  }`}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    toggleProjectExpanded(project.id)
+                  }}
+                  title={isExpanded ? 'Plegar proyecto' : 'Desplegar proyecto'}
+                  aria-label={isExpanded ? 'Plegar proyecto' : 'Desplegar proyecto'}
+                  aria-expanded={isExpanded}
+                >
+                  <ChevronDown className={`h-4 w-4 transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${isExpanded ? 'rotate-180' : ''}`} />
+                </button>
+              </div>
+
+              <div className={`grid transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+              <div className="overflow-hidden">
+              <div className={`transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${isExpanded ? 'translate-y-0' : '-translate-y-2'}`}>
               {project.description && <p className={`mt-4 text-sm leading-6 ${bodyClass}`}>{project.description}</p>}
 
               <label className={`mt-4 block rounded-md border p-3 ${panelClass}`}>
@@ -603,8 +668,27 @@ export function ProjectsScreen({
                   </p>
                 )}
               </div>
+
+              <div className="mt-5 flex justify-center">
+                <button
+                  type="button"
+                  className={`group/zoom relative flex h-12 w-12 items-center justify-center rounded-full border shadow-sm transition duration-300 hover:-translate-y-0.5 hover:scale-105 hover:shadow-md ${
+                    isDark ? 'border-slate-700 bg-slate-950 text-emerald-300 hover:bg-slate-900' : 'border-slate-200 bg-white text-[#0d8f62] hover:bg-emerald-50'
+                  }`}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setSelectedProjectId(project.id)
+                  }}
+                  title="Abrir proyecto ampliado"
+                  aria-label="Abrir proyecto ampliado"
+                >
+                  <span className="absolute inset-0 rounded-full bg-emerald-400/0 transition duration-300 group-hover/zoom:scale-150 group-hover/zoom:bg-emerald-400/10" />
+                  <Maximize2 className="h-5 w-5 transition-transform duration-300 group-hover/zoom:scale-110" />
+                </button>
               </div>
-              )}
+              </div>
+              </div>
+              </div>
             </article>
             )
           })}
@@ -612,9 +696,9 @@ export function ProjectsScreen({
       )}
 
       {selectedProject && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm" onClick={() => setSelectedProjectId(null)}>
+        <div className="prezi-backdrop-in fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm" onClick={() => setSelectedProjectId(null)}>
           <section
-            className={`max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-xl border shadow-2xl ${isDark ? 'border-slate-800 bg-slate-950 text-slate-100' : 'border-slate-200 bg-white text-slate-950'}`}
+            className={`prezi-bubble-in max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-xl border shadow-2xl ${isDark ? 'border-slate-800 bg-slate-950 text-slate-100' : 'border-slate-200 bg-white text-slate-950'}`}
             onClick={(event) => event.stopPropagation()}
           >
             <div className={`sticky top-0 z-10 flex items-start justify-between gap-4 border-b p-5 backdrop-blur ${isDark ? 'border-slate-800 bg-slate-950/95' : 'border-slate-200 bg-white/95'}`}>
