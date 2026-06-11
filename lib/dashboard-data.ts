@@ -1,4 +1,5 @@
 export type DashboardProject = {
+  id?: string
   name: string
   area: string
   stack: string

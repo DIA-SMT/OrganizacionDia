@@ -2,7 +2,7 @@
 
 import { useAuth } from '@/context/AuthContext'
 import { CursorAiBackground } from '@/components/cursor-ai-background'
-import { Bell, Code2, FlaskConical, GitPullRequest, LayoutDashboard, LogOut, Search, Settings, Sun, Moon, Trash2, Users } from 'lucide-react'
+import { Bell, Code2, FlaskConical, GitPullRequest, LayoutDashboard, LogOut, Menu, PanelLeftClose, Search, Settings, Sun, Moon, Trash2, Users } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
@@ -29,11 +29,13 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
   const { user, signOut } = useAuth()
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const savedTheme = window.localStorage.getItem('organizacion-dia-theme')
       if (savedTheme === 'dark' || savedTheme === 'light') setTheme(savedTheme)
+      setSidebarCollapsed(window.localStorage.getItem('organizacion-dia-sidebar-collapsed') === 'true')
     }, 0)
 
     return () => window.clearTimeout(timer)
@@ -48,6 +50,14 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
     })
   }
 
+  function toggleSidebar() {
+    setSidebarCollapsed((current) => {
+      const next = !current
+      window.localStorage.setItem('organizacion-dia-sidebar-collapsed', String(next))
+      return next
+    })
+  }
+
   const isDark = theme === 'dark'
   const shellClass = isDark ? 'dark bg-slate-950 text-slate-100' : 'bg-[#f6f8fb] text-slate-950'
   const textStrongClass = isDark ? 'text-white' : 'text-slate-950'
@@ -57,15 +67,27 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
     <main className={`relative isolate min-h-screen overflow-hidden transition-colors ${shellClass}`}>
       <CursorAiBackground isDark={isDark} />
       <div className="relative z-10 flex min-h-screen">
-        <aside className={`hidden w-64 border-r px-4 py-5 lg:block ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-white/95'}`}>
-          <div className="mb-8 flex items-center gap-3 px-2">
+        <aside className={`relative hidden border-r px-4 py-5 transition-[width] duration-200 lg:block ${sidebarCollapsed ? 'w-20' : 'w-64'} ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-white/95'}`}>
+          <div className={`mb-8 flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between gap-3 px-2'}`}>
+            <div className={`flex min-w-0 items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'}`}>
             <div className="flex h-10 w-10 items-center justify-center rounded-md bg-[#103b3a] text-white">
               <Code2 className="h-5 w-5" />
             </div>
-            <div>
+            {!sidebarCollapsed && (
+            <div className="min-w-0">
               <p className={`text-sm font-bold ${textStrongClass}`}>Organizacion DIA</p>
               <p className="text-xs text-slate-400">Equipo de desarrollo</p>
             </div>
+            )}
+            </div>
+            <button
+              className={`flex h-9 w-9 items-center justify-center rounded-md border transition ${sidebarCollapsed ? 'absolute left-[62px] top-6 shadow-sm' : ''} ${isDark ? 'border-slate-700 bg-slate-950 text-slate-300 hover:bg-slate-800' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}
+              onClick={toggleSidebar}
+              title={sidebarCollapsed ? 'Desplegar menu' : 'Plegar menu'}
+              aria-label={sidebarCollapsed ? 'Desplegar menu' : 'Plegar menu'}
+            >
+              {sidebarCollapsed ? <Menu className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            </button>
           </div>
 
           <nav className="space-y-1">
@@ -76,9 +98,15 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
               const idleClass = isDark ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-100' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
 
               return (
-                <Link key={item.href} href={item.href} className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition ${active ? activeClass : idleClass}`}>
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`flex w-full items-center rounded-md py-2 text-sm font-medium transition ${sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${active ? activeClass : idleClass}`}
+                  title={sidebarCollapsed ? item.label : undefined}
+                  aria-label={item.label}
+                >
                   <Icon className="h-4 w-4" />
-                  {item.label}
+                  {!sidebarCollapsed && item.label}
                 </Link>
               )
             })}

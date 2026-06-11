@@ -2,11 +2,10 @@
 
 import { useAuth } from '@/context/AuthContext'
 import { CursorAiBackground } from '@/components/cursor-ai-background'
-import { ProjectCreateButton } from '@/components/project-create-button'
-import { TaskCreateButton } from '@/components/task-create-button'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
 import { type DashboardProject, type PipelineColumn } from '@/lib/dashboard-data'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   Bell,
   CheckCircle2,
@@ -15,6 +14,7 @@ import {
   Code2,
   FlaskConical,
   FolderOpen,
+  GitCommitHorizontal,
   GitPullRequest,
   LayoutDashboard,
   LogOut,
@@ -52,6 +52,16 @@ type JoinedTaskRow = {
   }>
 }
 
+type ProjectCommitActivity = {
+  sha: string
+  message: string
+  author: string
+  date: string | null
+  url: string
+  repo: string
+  repoLabel: string
+}
+
 const pipelineConfig = [
   { title: 'Planificación', statuses: ['Backlog', 'Pendiente', 'Planificacion', 'Planificación'], tone: 'bg-slate-100 text-slate-700' },
   { title: 'En desarrollo', statuses: ['En desarrollo'], tone: 'bg-blue-50 text-blue-700' },
@@ -77,6 +87,28 @@ function normalizeProjectStatus(status: string) {
   if (normalized === 'en produccion' || normalized === 'deployado' || normalized === 'produccion') return 'En Producción'
   if (normalized === 'pausado' || normalized === 'mantenimiento') return 'Pausado'
   return status
+}
+
+function projectPriorityCardClass(priority: string, isDark: boolean) {
+  if (priority === 'Alta' || priority === 'Critica') {
+    return isDark ? 'bg-red-950/45 hover:bg-red-950/55' : 'bg-red-100/80 hover:bg-red-100'
+  }
+
+  if (priority === 'Media') {
+    return isDark ? 'bg-sky-950/45 hover:bg-sky-950/55' : 'bg-sky-100/80 hover:bg-sky-100'
+  }
+
+  return isDark ? 'hover:bg-slate-800/60' : 'hover:bg-slate-50'
+}
+
+function formatCommitDate(value: string | null) {
+  if (!value) return 'Sin fecha'
+  return new Intl.DateTimeFormat('es-AR', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value))
 }
 
 function firstName(value: JoinedTaskRow['projects']) {
@@ -188,14 +220,15 @@ function SidebarItem({ icon, label, href, active }: { icon: React.ReactNode; lab
 }
 
 export function DashboardView() {
-  const { user, role, loading, authConfigured, signOut } = useAuth()
+  const { user, loading, authConfigured, signOut } = useAuth()
+  const router = useRouter()
   const [projects, setProjects] = useState<DashboardProject[]>([])
   const [pipeline, setPipeline] = useState<PipelineColumn[]>(pipelineConfig.map((column) => ({ title: column.title, tone: column.tone, tasks: [] })))
   const [activity, setActivity] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
-  const [githubStatus, setGithubStatus] = useState<string | null>(null)
+  const [commitsByProject, setCommitsByProject] = useState<Record<string, ProjectCommitActivity[]>>({})
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -249,6 +282,7 @@ export function DashboardView() {
 
       const nextProjects = ((projectRowsResult.data ?? []) as Partial<ProjectRow>[]).map((project) => {
         return {
+          id: project.id,
           name: project.name ?? 'Sin nombre',
           area: project.requester_area ?? 'Sin area',
           stack: project.stack ?? 'Sin stack',
@@ -290,6 +324,35 @@ export function DashboardView() {
   }, [authConfigured, loading, user])
 
   useEffect(() => {
+    const projectsWithRepos = projects.filter((project) => project.repositoryUrl || project.repositoryUrlSecondary)
+    if (projectsWithRepos.length === 0) return
+
+    async function fetchProjectCommits() {
+      try {
+        const response = await fetch('/api/github/project-commits', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            projects: projectsWithRepos.map((project) => ({
+              id: project.id ?? project.name,
+              repositoryUrl: project.repositoryUrl,
+              repositoryUrlSecondary: project.repositoryUrlSecondary,
+            })),
+          }),
+        })
+        const payload = (await response.json()) as {
+          commitsByProject?: Record<string, ProjectCommitActivity[]>
+        }
+        setCommitsByProject(payload.commitsByProject ?? {})
+      } catch {
+        setCommitsByProject({})
+      }
+    }
+
+    fetchProjectCommits()
+  }, [projects])
+
+  useEffect(() => {
     async function fetchGithubProjects() {
       try {
         const res = await fetch('/api/github/projects', { cache: 'no-store' })
@@ -302,14 +365,13 @@ export function DashboardView() {
         }
 
         if (payload.projects && payload.projects.length > 0) {
-          setGithubStatus(`${payload.projects.length} proyectos cargados desde GitHub`)
           setActivity((current) => [`${payload.projects?.length ?? 0} repositorios sincronizados desde GitHub`, ...current].slice(0, 5))
           return
         }
 
-        if (payload.error) setGithubStatus(null)
+        if (payload.error) return
       } catch {
-        setGithubStatus(null)
+        return
       }
     }
 
@@ -369,6 +431,20 @@ export function DashboardView() {
     if (!normalizedSearch) return activity
     return activity.filter((item) => item.toLowerCase().includes(normalizedSearch))
   }, [activity, normalizedSearch])
+
+  const recentProjectChanges = useMemo(() => {
+    return projects
+      .flatMap((project) =>
+        (commitsByProject[project.id ?? project.name] ?? []).map((commit) => ({
+          ...commit,
+          projectId: project.id,
+          projectName: project.name,
+          projectStatus: project.status,
+        })),
+      )
+      .sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime())
+      .slice(0, 4)
+  }, [commitsByProject, projects])
 
   const isDark = theme === 'dark'
   const shellClass = isDark ? 'bg-slate-950 text-slate-100' : 'bg-[#f6f8fb] text-slate-950'
@@ -461,26 +537,42 @@ export function DashboardView() {
               />
             </label>
 
-            <section className={`mb-5 flex flex-col justify-between gap-4 rounded-lg border p-5 md:flex-row md:items-center ${surfaceClass}`}>
-              <div>
-                <p className="text-xs font-semibold uppercase text-[#0d8f62]">Panel interno</p>
-                <h2 className={`mt-1 text-2xl font-bold ${textStrongClass}`}>Proyectos, revision y testing en un solo lugar</h2>
-                <p className={`mt-2 max-w-2xl text-sm ${textMutedClass}`}>
-                  Una vista compacta para entender que se esta desarrollando, que espera aprobacion y que necesita testeo antes de entregar.
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {!authConfigured && <span className="rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">Supabase sin configurar</span>}
-                  <Link href="/supabase" className={`rounded-md px-2 py-1 text-xs font-semibold ${isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>
-                    Supabase
-                  </Link>
-                  {githubStatus && <span className={`rounded-md px-2 py-1 text-xs font-semibold ${isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>{githubStatus}</span>}
-                  {user && <span className="rounded-md bg-[#e9f8f1] px-2 py-1 text-xs font-semibold text-[#08784f]">Sesion activa</span>}
-                  {role && <span className="rounded-md bg-[#e9f8f1] px-2 py-1 text-xs font-semibold text-[#08784f]">Rol: {role}</span>}
+            <section className={`mb-5 rounded-lg border p-5 ${surfaceClass}`}>
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase text-[#0d8f62]">Ultimas modificaciones</p>
+                  <h2 className={`mt-1 text-xl font-bold ${textStrongClass}`}>Resumen de lo trabajado en los proyectos</h2>
+                  <p className={`mt-2 max-w-2xl text-sm ${textMutedClass}`}>
+                    Cambios recientes detectados desde los repositorios vinculados. Selecciona uno para abrir el proyecto con mas detalle.
+                  </p>
                 </div>
               </div>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <TaskCreateButton onCreated={() => window.location.reload()} isDark={isDark} />
-                <ProjectCreateButton onCreated={() => window.location.reload()} isDark={isDark} />
+
+              <div className="mt-4 grid gap-3 xl:grid-cols-4">
+                {recentProjectChanges.length > 0 ? (
+                  recentProjectChanges.map((change) => (
+                    <Link
+                      key={`${change.projectName}-${change.repo}-${change.sha}`}
+                      href={change.projectId ? `/projects?proyecto=${change.projectId}` : `/projects?buscar=${encodeURIComponent(change.projectName)}`}
+                      className={`rounded-md border p-3 transition hover:-translate-y-0.5 ${
+                        isDark ? 'border-slate-800 bg-slate-950/70 hover:bg-slate-950' : 'border-slate-200 bg-slate-50 hover:bg-white'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={`truncate text-xs font-semibold ${isDark ? 'text-emerald-300' : 'text-[#0d8f62]'}`}>{change.projectName}</span>
+                        <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${isDark ? 'bg-slate-800 text-slate-300' : 'bg-white text-slate-500'}`}>{change.repoLabel}</span>
+                      </div>
+                      <p className={`mt-2 line-clamp-2 text-sm font-semibold leading-5 ${textStrongClass}`}>{change.message}</p>
+                      <p className={`mt-2 text-xs ${textMutedClass}`}>
+                        {change.author} - {formatCommitDate(change.date)}
+                      </p>
+                    </Link>
+                  ))
+                ) : (
+                  <div className={`rounded-md border p-4 text-sm xl:col-span-4 ${isDark ? 'border-slate-800 bg-slate-950/70 text-slate-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
+                    Todavia no hay commits recientes para mostrar. Cuando se actualicen los repos vinculados van a aparecer aca.
+                  </div>
+                )}
               </div>
             </section>
 
@@ -602,8 +694,21 @@ export function DashboardView() {
                   </Link>
                 </div>
                 <div className={`divide-y ${isDark ? 'divide-slate-800' : 'divide-slate-100'}`}>
-                  {filteredProjects.map((project) => (
-                    <Link key={project.name} href="/projects" className={`block p-5 transition ${isDark ? 'hover:bg-slate-800/60' : 'hover:bg-slate-50'}`}>
+                  {filteredProjects.map((project) => {
+                    const projectHref = project.id ? `/projects?proyecto=${project.id}` : `/projects?buscar=${encodeURIComponent(project.name)}`
+                    const latestCommit = commitsByProject[project.id ?? project.name]?.[0]
+
+                    return (
+                    <article
+                      key={project.name}
+                      className={`cursor-pointer p-5 transition ${projectPriorityCardClass(project.priority, isDark)}`}
+                      role="link"
+                      tabIndex={0}
+                      onClick={() => router.push(projectHref)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') router.push(projectHref)
+                      }}
+                    >
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div>
                           <h3 className={`font-semibold ${textStrongClass}`}>{project.name}</h3>
@@ -617,7 +722,7 @@ export function DashboardView() {
                                 [project.repositoryUrlSecondary, 'Repo 2'],
                               ].map(([url, label]) =>
                                 url ? (
-                                  <a key={label} className="block break-all text-xs font-semibold leading-5 text-[#0d8f62] hover:underline" href={url} target="_blank" rel="noreferrer">
+                                  <a key={label} className="block break-all text-xs font-semibold leading-5 text-[#0d8f62] hover:underline" href={url} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
                                     <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>{label}: </span>
                                     {url}
                                   </a>
@@ -628,6 +733,17 @@ export function DashboardView() {
                         </div>
                         <span className="rounded-md bg-[#eef8ff] px-2 py-1 text-xs font-semibold text-[#1677a8]">{project.status}</span>
                       </div>
+                      {latestCommit && (
+                        <div className={`mt-3 rounded-md border px-3 py-2 ${isDark ? 'border-slate-800 bg-slate-950/60' : 'border-slate-200 bg-white/75'}`}>
+                          <div className="flex items-center gap-2">
+                            <GitCommitHorizontal className={`h-3.5 w-3.5 ${isDark ? 'text-emerald-300' : 'text-[#0d8f62]'}`} />
+                            <p className={`line-clamp-1 text-xs font-semibold ${textStrongClass}`}>{latestCommit.message}</p>
+                          </div>
+                          <p className={`mt-1 text-[11px] ${textMutedClass}`}>
+                            {latestCommit.repoLabel} - {latestCommit.author} - {formatCommitDate(latestCommit.date)}
+                          </p>
+                        </div>
+                      )}
                       <div className="mt-4">
                         <div className="mb-1 flex justify-between text-xs text-slate-500">
                           <span>{project.priority}</span>
@@ -637,8 +753,9 @@ export function DashboardView() {
                           <div className="h-2 rounded-full bg-[#10b981]" style={{ width: `${project.progress}%` }} />
                         </div>
                       </div>
-                    </Link>
-                  ))}
+                    </article>
+                    )
+                  })}
                   {filteredProjects.length === 0 && <p className={`p-5 text-sm ${textMutedClass}`}>No hay proyectos que coincidan con la busqueda.</p>}
                 </div>
               </div>

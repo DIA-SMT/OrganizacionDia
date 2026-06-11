@@ -10,9 +10,25 @@ create table if not exists public.members (
   email text unique,
   role text not null default 'Dev' check (role in ('Admin', 'PM', 'Dev', 'QA', 'Viewer')),
   specialty text,
+  birthday date,
+  favorite_food text,
+  hobby text,
+  favorite_game text,
   active boolean not null default true,
   created_at timestamptz not null default now()
 );
+
+alter table public.members
+add column if not exists birthday date;
+
+alter table public.members
+add column if not exists favorite_food text;
+
+alter table public.members
+add column if not exists hobby text;
+
+alter table public.members
+add column if not exists favorite_game text;
 
 create table if not exists public.projects (
   id uuid primary key default gen_random_uuid(),

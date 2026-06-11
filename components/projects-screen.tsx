@@ -1,8 +1,9 @@
 'use client'
 
 import { AppShell } from '@/components/app-shell'
+import { ProjectCreateButton } from '@/components/project-create-button'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
-import { Check, ChevronDown, ExternalLink, Maximize2, Plus, Trash2, X } from 'lucide-react'
+import { Check, ChevronDown, ExternalLink, GitCommitHorizontal, Maximize2, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 type ProjectRow = {
@@ -20,6 +21,16 @@ type ProjectRow = {
   note: string | null
 }
 
+type ProjectCommitActivity = {
+  sha: string
+  message: string
+  author: string
+  date: string | null
+  url: string
+  repo: string
+  repoLabel: string
+}
+
 const projectStatuses = ['Planificación', 'En desarrollo', 'MVP aprobado', 'QA', 'En Producción', 'Pausado']
 const priorities = ['Baja', 'Media', 'Alta', 'Critica']
 
@@ -30,6 +41,28 @@ function statusTone(status: string, isDark: boolean) {
   if (status === 'En Producción') return isDark ? 'border-emerald-900/60 bg-emerald-950/40 text-emerald-300' : 'border-emerald-200 bg-emerald-50 text-emerald-700'
   if (status === 'En desarrollo') return isDark ? 'border-blue-900/60 bg-blue-950/40 text-blue-300' : 'border-blue-200 bg-blue-50 text-blue-700'
   return isDark ? 'border-amber-900/60 bg-amber-950/40 text-amber-300' : 'border-amber-200 bg-amber-50 text-amber-700'
+}
+
+function projectPriorityCardClass(priority: string, isDark: boolean) {
+  if (priority === 'Alta' || priority === 'Critica') {
+    return isDark ? 'border-red-800/80 bg-red-950/45 shadow-red-950/20' : 'border-red-300 bg-red-100/80 shadow-red-100/70'
+  }
+
+  if (priority === 'Media') {
+    return isDark ? 'border-sky-800/80 bg-sky-950/45 shadow-sky-950/20' : 'border-sky-300 bg-sky-100/80 shadow-sky-100/70'
+  }
+
+  return isDark ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-white'
+}
+
+function formatCommitDate(value: string | null) {
+  if (!value) return 'Sin fecha'
+  return new Intl.DateTimeFormat('es-AR', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value))
 }
 
 function useStoredTheme() {
@@ -117,6 +150,8 @@ export function ProjectsScreen({
   const [view, setView] = useState<'active' | 'finished'>('active')
   const [addingSecondaryRepoIds, setAddingSecondaryRepoIds] = useState<string[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(initialSelectedProjectId)
+  const [commitsByProject, setCommitsByProject] = useState<Record<string, ProjectCommitActivity[]>>({})
+  const [loadingCommits, setLoadingCommits] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const theme = useStoredTheme()
   const isDark = theme === 'dark'
@@ -166,6 +201,38 @@ export function ProjectsScreen({
 
     fetchProjects()
   }, [])
+
+  useEffect(() => {
+    const projectsWithRepos = projects.filter((project) => project.repository_url || project.repository_url_secondary)
+    if (projectsWithRepos.length === 0) return
+
+    async function fetchProjectCommits() {
+      setLoadingCommits(true)
+      try {
+        const response = await fetch('/api/github/project-commits', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            projects: projectsWithRepos.map((project) => ({
+              id: project.id,
+              repositoryUrl: project.repository_url,
+              repositoryUrlSecondary: project.repository_url_secondary,
+            })),
+          }),
+        })
+        const payload = (await response.json()) as {
+          commitsByProject?: Record<string, ProjectCommitActivity[]>
+        }
+        setCommitsByProject(payload.commitsByProject ?? {})
+      } catch {
+        setCommitsByProject({})
+      } finally {
+        setLoadingCommits(false)
+      }
+    }
+
+    fetchProjectCommits()
+  }, [projects])
 
   async function updateProject<K extends keyof Pick<ProjectRow, 'name' | 'status' | 'priority' | 'estimated_delivery' | 'note' | 'repository_url' | 'repository_url_secondary'>>(projectId: string, field: K, value: ProjectRow[K]) {
     setError(null)
@@ -262,31 +329,34 @@ export function ProjectsScreen({
         </div>
       )}
 
-      <div className={`mb-4 inline-flex rounded-lg border p-1 ${isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-200 bg-white'}`}>
-        {[
-          ['active', `Activos (${activeCount})`],
-          ['finished', `Finalizados (${finishedCount})`],
-        ].map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            className={`rounded-md px-3 py-2 text-sm font-semibold transition ${
-              view === key
-                ? isDark
-                  ? 'bg-emerald-500/15 text-emerald-300'
-                  : 'bg-[#e9f8f1] text-[#08784f]'
-                : isDark
-                  ? 'text-slate-400 hover:bg-slate-900'
-                  : 'text-slate-500 hover:bg-slate-50'
-            }`}
-            onClick={() => {
-              setStatusFilter(null)
-              setView(key as 'active' | 'finished')
-            }}
-          >
-            {label}
-          </button>
-        ))}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className={`inline-flex rounded-lg border p-1 ${isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-200 bg-white'}`}>
+          {[
+            ['active', `Activos (${activeCount})`],
+            ['finished', `Finalizados (${finishedCount})`],
+          ].map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              className={`rounded-md px-3 py-2 text-sm font-semibold transition ${
+                view === key
+                  ? isDark
+                    ? 'bg-emerald-500/15 text-emerald-300'
+                    : 'bg-[#e9f8f1] text-[#08784f]'
+                  : isDark
+                    ? 'text-slate-400 hover:bg-slate-900'
+                    : 'text-slate-500 hover:bg-slate-50'
+              }`}
+              onClick={() => {
+                setStatusFilter(null)
+                setView(key as 'active' | 'finished')
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <ProjectCreateButton onCreated={() => window.location.reload()} isDark={isDark} />
       </div>
 
       {loading ? (
@@ -295,10 +365,13 @@ export function ProjectsScreen({
         <div className={`rounded-lg border p-6 text-sm ${cardClass} ${mutedClass}`}>No hay proyectos cargados.</div>
       ) : (
         <div className="grid gap-4 xl:grid-cols-2">
-          {filtered.map((project) => (
+          {filtered.map((project) => {
+            const projectCommits = commitsByProject[project.id] ?? []
+
+            return (
             <article
               key={project.id}
-              className={`group cursor-zoom-in rounded-lg border p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg ${cardClass}`}
+              className={`group cursor-zoom-in rounded-lg border p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg ${projectPriorityCardClass(project.priority, isDark)}`}
               onClick={(event) => openProjectCard(event, project.id)}
             >
               <div className="flex items-start justify-between gap-4">
@@ -457,8 +530,44 @@ export function ProjectsScreen({
                   </div>
                 </div>
               </div>
+
+              <div className={`mt-4 rounded-md border p-3 ${panelClass}`}>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <GitCommitHorizontal className={`h-4 w-4 ${isDark ? 'text-emerald-300' : 'text-[#0d8f62]'}`} />
+                    <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Actividad GitHub</p>
+                  </div>
+                  <span className={`text-xs ${mutedClass}`}>{loadingCommits ? 'Actualizando...' : `${projectCommits.length} commits`}</span>
+                </div>
+
+                {projectCommits.length > 0 ? (
+                  <div className="mt-3 grid gap-2">
+                    {projectCommits.slice(0, 3).map((commit) => (
+                      <a
+                        key={`${commit.repo}-${commit.sha}`}
+                        className={`block rounded-md border px-3 py-2 transition ${
+                          isDark ? 'border-slate-800 bg-slate-900/70 hover:bg-slate-900' : 'border-slate-200 bg-white/80 hover:bg-white'
+                        }`}
+                        href={commit.url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <p className={`line-clamp-2 text-sm font-semibold ${titleClass}`}>{commit.message}</p>
+                        <p className={`mt-1 text-xs ${mutedClass}`}>
+                          {commit.repoLabel} - {commit.author} - {formatCommitDate(commit.date)}
+                        </p>
+                      </a>
+                    ))}
+                  </div>
+                ) : (
+                  <p className={`mt-3 text-sm ${mutedClass}`}>
+                    {loadingCommits ? 'Buscando commits recientes...' : 'Sin commits recientes en los repos vinculados.'}
+                  </p>
+                )}
+              </div>
             </article>
-          ))}
+            )
+          })}
         </div>
       )}
 
@@ -568,6 +677,39 @@ export function ProjectsScreen({
                       )
                     })}
                   </div>
+                </div>
+
+                <div className={`rounded-lg border p-4 ${panelClass}`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <GitCommitHorizontal className={`h-4 w-4 ${isDark ? 'text-emerald-300' : 'text-[#0d8f62]'}`} />
+                      <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Modificaciones recientes</p>
+                    </div>
+                    <span className={`text-xs ${mutedClass}`}>{(commitsByProject[selectedProject.id] ?? []).length} commits</span>
+                  </div>
+
+                  {(commitsByProject[selectedProject.id] ?? []).length > 0 ? (
+                    <div className="mt-3 grid gap-2">
+                      {(commitsByProject[selectedProject.id] ?? []).map((commit) => (
+                        <a
+                          key={`${commit.repo}-${commit.sha}`}
+                          className={`block rounded-md border px-3 py-2 transition ${
+                            isDark ? 'border-slate-800 bg-slate-900/70 hover:bg-slate-900' : 'border-slate-200 bg-white/80 hover:bg-white'
+                          }`}
+                          href={commit.url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <p className={`text-sm font-semibold leading-5 ${titleClass}`}>{commit.message}</p>
+                          <p className={`mt-1 text-xs ${mutedClass}`}>
+                            {commit.repoLabel} - {commit.author} - {formatCommitDate(commit.date)}
+                          </p>
+                        </a>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className={`mt-3 text-sm ${mutedClass}`}>No hay commits recientes en los repositorios vinculados.</p>
+                  )}
                 </div>
               </div>
 
