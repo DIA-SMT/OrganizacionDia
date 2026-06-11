@@ -10,6 +10,10 @@ create table public.members (
   email text unique,
   role text not null default 'Dev' check (role in ('Admin', 'PM', 'Dev', 'QA', 'Viewer')),
   specialty text,
+  birthday date,
+  favorite_food text,
+  hobby text,
+  favorite_game text,
   active boolean not null default true,
   created_at timestamptz not null default now()
 );
