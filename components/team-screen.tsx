@@ -2,7 +2,7 @@
 
 import { AppShell } from '@/components/app-shell'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
-import { CalendarDays, Gamepad2, Heart, Mail, Plus, Save, Sparkles, Utensils, UserRoundCheck, X } from 'lucide-react'
+import { CalendarDays, Gamepad2, Heart, ImageIcon, Mail, Plus, Save, Sparkles, Utensils, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 type MemberRow = {
@@ -11,6 +11,7 @@ type MemberRow = {
   email: string
   role: string | null
   specialty: string | null
+  avatar_url: string | null
   birthday: string | null
   favorite_food: string | null
   hobby: string | null
@@ -19,14 +20,21 @@ type MemberRow = {
   created_at: string
 }
 
-type MemberProfileField = 'birthday' | 'specialty' | 'favorite_food' | 'hobby' | 'favorite_game'
+type MemberProfileField = 'full_name' | 'email' | 'role' | 'birthday' | 'specialty' | 'avatar_url' | 'favorite_food' | 'hobby' | 'favorite_game'
 type MemberRole = 'Admin' | 'PM' | 'Dev' | 'QA' | 'Viewer'
 
 const emptyProfile = {
+  avatar_url: null,
   birthday: null,
   favorite_food: null,
   hobby: null,
   favorite_game: null,
+}
+
+function memberInitials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  const initials = parts.slice(0, 2).map((part) => part[0]?.toUpperCase()).join('')
+  return initials || 'DIA'
 }
 
 export function TeamScreen() {
@@ -42,6 +50,7 @@ export function TeamScreen() {
     email: '',
     role: 'Dev' as MemberRole,
     specialty: '',
+    avatar_url: '',
     birthday: '',
     favorite_food: '',
     hobby: '',
@@ -60,7 +69,7 @@ export function TeamScreen() {
 
     const { data, error: membersError } = await supabase
       .from('members')
-      .select('id, full_name, email, role, specialty, birthday, favorite_food, hobby, favorite_game, active, created_at')
+      .select('id, full_name, email, role, specialty, avatar_url, birthday, favorite_food, hobby, favorite_game, active, created_at')
       .eq('active', true)
       .order('created_at', { ascending: false })
 
@@ -121,7 +130,11 @@ export function TeamScreen() {
       .from('members')
       .update({
         birthday: member.birthday || null,
+        full_name: member.full_name.trim() || 'Sin nombre',
+        email: member.email.trim() || null,
+        role: member.role || 'Dev',
         specialty: member.specialty || null,
+        avatar_url: member.avatar_url || null,
         favorite_food: member.favorite_food || null,
         hobby: member.hobby || null,
         favorite_game: member.favorite_game || null,
@@ -152,6 +165,7 @@ export function TeamScreen() {
       email: newMember.email.trim() || null,
       role: newMember.role,
       specialty: newMember.specialty || null,
+      avatar_url: newMember.avatar_url || null,
       birthday: newMember.birthday || null,
       favorite_food: newMember.favorite_food || null,
       hobby: newMember.hobby || null,
@@ -178,6 +192,7 @@ export function TeamScreen() {
         email: '',
         role: 'Dev',
         specialty: '',
+        avatar_url: '',
         birthday: '',
         favorite_food: '',
         hobby: '',
@@ -224,12 +239,32 @@ export function TeamScreen() {
             <article key={member.id} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-start gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-[#e9f8f1] text-[#08784f] dark:bg-emerald-500/15 dark:text-emerald-300">
-                  <UserRoundCheck className="h-5 w-5" />
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#e9f8f1] text-sm font-bold text-[#08784f] ring-2 ring-white dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-slate-800">
+                  {member.avatar_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img className="h-full w-full object-cover" src={member.avatar_url} alt={`Foto de ${member.full_name}`} />
+                  ) : (
+                    memberInitials(member.full_name)
+                  )}
                 </div>
-                <div className="min-w-0">
-                  <h2 className="truncate text-base font-bold text-slate-950 dark:text-white">{member.full_name || 'Sin nombre'}</h2>
-                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{member.role ?? 'Sin rol'}</p>
+                <div className="min-w-0 flex-1">
+                  <input
+                    className="w-full rounded-md border border-transparent bg-transparent px-0 text-base font-bold text-slate-950 outline-none transition focus:border-slate-200 focus:bg-white focus:px-2 dark:text-white dark:focus:border-slate-700 dark:focus:bg-slate-950"
+                    value={member.full_name}
+                    onChange={(event) => updateLocalMember(member.id, 'full_name', event.target.value)}
+                    placeholder="Nombre"
+                  />
+                  <select
+                    className="mt-1 h-8 rounded-md border border-slate-200 bg-white px-2 text-sm font-semibold text-slate-500 outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
+                    value={member.role ?? 'Dev'}
+                    onChange={(event) => updateLocalMember(member.id, 'role', event.target.value)}
+                  >
+                    <option>Admin</option>
+                    <option>PM</option>
+                    <option>Dev</option>
+                    <option>QA</option>
+                    <option>Viewer</option>
+                  </select>
                 </div>
                 </div>
                 <button className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800" onClick={() => saveMember(member)} disabled={savingId === member.id} title="Guardar datos">
@@ -237,15 +272,19 @@ export function TeamScreen() {
                 </button>
               </div>
 
-              <a className="mt-5 flex items-center gap-2 text-sm font-medium text-[#0d8f62] dark:text-emerald-300" href={`mailto:${member.email}`}>
-                <Mail className="h-4 w-4" />
-                <span className="truncate">{member.email}</span>
-              </a>
+              <label className="mt-5 block text-xs font-semibold text-slate-500 dark:text-slate-400">
+                <span className="flex items-center gap-2"><Mail className="h-3.5 w-3.5" /> Email</span>
+                <input className={inputClass} type="email" value={member.email ?? ''} onChange={(event) => updateLocalMember(member.id, 'email', event.target.value)} placeholder="persona@dominio.com" />
+              </label>
 
               <div className="mt-5 grid gap-3">
                 <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
                   <span className="flex items-center gap-2"><Sparkles className="h-3.5 w-3.5" /> Skill</span>
                   <input className={inputClass} value={member.specialty ?? ''} onChange={(event) => updateLocalMember(member.id, 'specialty', event.target.value)} placeholder="Frontend, Backend, QA..." />
+                </label>
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  <span className="flex items-center gap-2"><ImageIcon className="h-3.5 w-3.5" /> Foto</span>
+                  <input className={inputClass} value={member.avatar_url ?? ''} onChange={(event) => updateLocalMember(member.id, 'avatar_url', event.target.value)} placeholder="https://..." />
                 </label>
                 <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
                   <span className="flex items-center gap-2"><CalendarDays className="h-3.5 w-3.5" /> Cumpleaños</span>
@@ -314,6 +353,10 @@ export function TeamScreen() {
               <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
                 Cumpleaños
                 <input className={inputClass} type="date" value={newMember.birthday} onChange={(event) => setNewMember({ ...newMember, birthday: event.target.value })} />
+              </label>
+              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                Foto
+                <input className={inputClass} value={newMember.avatar_url} onChange={(event) => setNewMember({ ...newMember, avatar_url: event.target.value })} placeholder="https://..." />
               </label>
               <div className="grid gap-4 md:grid-cols-3">
                 <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">

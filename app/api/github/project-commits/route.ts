@@ -62,10 +62,10 @@ async function fetchRepoCommits(repoUrl: string | null | undefined, repoLabel: s
   since.setDate(since.getDate() - 3)
 
   const response = await fetch(
-    `https://api.github.com/repos/${repo.owner}/${repo.repo}/commits?per_page=5&since=${encodeURIComponent(since.toISOString())}`,
+    `https://api.github.com/repos/${repo.owner}/${repo.repo}/commits?per_page=20&since=${encodeURIComponent(since.toISOString())}`,
     {
       headers,
-      next: { revalidate: 300 },
+      cache: 'no-store',
     },
   )
 
@@ -106,7 +106,7 @@ export async function POST(request: Request) {
       )
         .flat()
         .sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime())
-        .slice(0, 6)
+        .slice(0, 20)
 
       return [project.id, commits] as const
     }),

@@ -2,9 +2,9 @@
 
 import { useAuth } from '@/context/AuthContext'
 import { CursorAiBackground } from '@/components/cursor-ai-background'
-import { Bell, Code2, FlaskConical, GitPullRequest, LayoutDashboard, LogOut, Menu, PanelLeftClose, Search, Settings, Sun, Moon, Trash2, Users } from 'lucide-react'
+import { Bell, Code2, FlaskConical, GitPullRequest, History, LayoutDashboard, LogOut, Menu, PanelLeftClose, Search, Settings, Sun, Moon, Trash2, Users } from 'lucide-react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
 type AppShellProps = {
@@ -21,12 +21,14 @@ const navItems = [
   { href: '/tasks', label: 'Tareas', icon: GitPullRequest },
   { href: '/testing', label: 'Testing', icon: FlaskConical },
   { href: '/team', label: 'Equipo', icon: Users },
+  { href: '/commit-history', label: 'Historial', icon: History },
   { href: '/papelera', label: 'Papelera', icon: Trash2 },
 ]
 
 export function AppShell({ title, subtitle, search = '', onSearchChange, children }: AppShellProps) {
   const pathname = usePathname()
-  const { user, signOut } = useAuth()
+  const router = useRouter()
+  const { user, loading, authConfigured, signOut } = useAuth()
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -58,10 +60,25 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
     })
   }
 
+  useEffect(() => {
+    if (!authConfigured || loading || user) return
+    router.replace(`/login?next=${encodeURIComponent(pathname)}`)
+  }, [authConfigured, loading, pathname, router, user])
+
   const isDark = theme === 'dark'
   const shellClass = isDark ? 'dark bg-slate-950 text-slate-100' : 'bg-[#f6f8fb] text-slate-950'
   const textStrongClass = isDark ? 'text-white' : 'text-slate-950'
   const textMutedClass = isDark ? 'text-slate-400' : 'text-slate-500'
+
+  if (authConfigured && (loading || !user)) {
+    return (
+      <main className={`relative isolate flex min-h-screen items-center justify-center transition-colors ${shellClass}`}>
+        <div className={`rounded-lg border px-4 py-3 text-sm font-semibold ${isDark ? 'border-slate-800 bg-slate-900 text-slate-300' : 'border-slate-200 bg-white text-slate-600'}`}>
+          Verificando sesion...
+        </div>
+      </main>
+    )
+  }
 
   return (
     <main className={`relative isolate min-h-screen overflow-hidden transition-colors ${shellClass}`}>

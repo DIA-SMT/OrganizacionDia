@@ -65,6 +65,15 @@ function formatCommitDate(value: string | null) {
   }).format(new Date(value))
 }
 
+function sortPausedLast(projects: ProjectRow[]) {
+  return [...projects].sort((a, b) => {
+    const aPaused = a.status === 'Pausado'
+    const bPaused = b.status === 'Pausado'
+    if (aPaused === bPaused) return 0
+    return aPaused ? 1 : -1
+  })
+}
+
 function useStoredTheme() {
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     if (typeof window === 'undefined') return 'light'
@@ -149,6 +158,7 @@ export function ProjectsScreen({
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [view, setView] = useState<'active' | 'finished'>('active')
   const [addingSecondaryRepoIds, setAddingSecondaryRepoIds] = useState<string[]>([])
+  const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(initialSelectedProjectId)
   const [commitsByProject, setCommitsByProject] = useState<Record<string, ProjectCommitActivity[]>>({})
   const [loadingCommits, setLoadingCommits] = useState(false)
@@ -301,6 +311,10 @@ export function ProjectsScreen({
     setSelectedProjectId(projectId)
   }
 
+  function toggleProjectExpanded(projectId: string) {
+    setExpandedProjectIds((current) => (current.includes(projectId) ? current.filter((id) => id !== projectId) : [...current, projectId]))
+  }
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     const byView = statusFilter
@@ -308,8 +322,9 @@ export function ProjectsScreen({
         ? projects
         : projects.filter((project) => (statusFilter === 'Activos' ? project.status !== 'En Producción' : project.status === statusFilter))
       : projects.filter((project) => (view === 'finished' ? project.status === 'En Producción' : project.status !== 'En Producción'))
-    if (!q) return byView
-    return byView.filter((project) => [project.name, project.description, project.note, project.requester_area, project.stack, project.repository_url, project.repository_url_secondary, project.status, project.priority].filter(Boolean).join(' ').toLowerCase().includes(q))
+    const orderedByView = statusFilter && statusFilter !== 'Todos' ? byView : sortPausedLast(byView)
+    if (!q) return orderedByView
+    return orderedByView.filter((project) => [project.name, project.description, project.note, project.requester_area, project.stack, project.repository_url, project.repository_url_secondary, project.status, project.priority].filter(Boolean).join(' ').toLowerCase().includes(q))
   }, [projects, search, statusFilter, view])
 
   const activeCount = projects.filter((project) => project.status !== 'En Producción').length
@@ -367,6 +382,7 @@ export function ProjectsScreen({
         <div className="grid gap-4 xl:grid-cols-2">
           {filtered.map((project) => {
             const projectCommits = commitsByProject[project.id] ?? []
+            const isExpanded = expandedProjectIds.includes(project.id)
 
             return (
             <article
@@ -389,6 +405,16 @@ export function ProjectsScreen({
                   <button
                     type="button"
                     className={`flex h-9 w-9 items-center justify-center rounded-md border transition ${isDark ? 'border-slate-700 text-slate-300 hover:bg-slate-950' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+                    onClick={() => toggleProjectExpanded(project.id)}
+                    title={isExpanded ? 'Plegar proyecto' : 'Desplegar proyecto'}
+                    aria-label={isExpanded ? 'Plegar proyecto' : 'Desplegar proyecto'}
+                    aria-expanded={isExpanded}
+                  >
+                    <ChevronDown className={`h-4 w-4 transition ${isExpanded ? 'rotate-180' : ''}`} />
+                  </button>
+                  <button
+                    type="button"
+                    className={`flex h-9 w-9 items-center justify-center rounded-md border transition ${isDark ? 'border-slate-700 text-slate-300 hover:bg-slate-950' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}
                     onClick={() => setSelectedProjectId(project.id)}
                     title="Ver detalle"
                   >
@@ -407,6 +433,18 @@ export function ProjectsScreen({
                 </div>
               </div>
 
+              <div className="mt-4">
+                <div className="mb-1 flex justify-between text-xs font-semibold text-slate-500">
+                  <span>{project.priority}</span>
+                  <span>{savingProgressId === project.id ? 'Guardando...' : `${project.progress}%`}</span>
+                </div>
+                <div className={`h-2 overflow-hidden rounded-full ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
+                  <div className="h-full rounded-full bg-[#10b981]" style={{ width: `${project.progress}%` }} />
+                </div>
+              </div>
+
+              {isExpanded && (
+              <div className="mt-4">
               {project.description && <p className={`mt-4 text-sm leading-6 ${bodyClass}`}>{project.description}</p>}
 
               <label className={`mt-4 block rounded-md border p-3 ${panelClass}`}>
@@ -565,6 +603,8 @@ export function ProjectsScreen({
                   </p>
                 )}
               </div>
+              </div>
+              )}
             </article>
             )
           })}

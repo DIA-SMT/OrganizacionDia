@@ -10,6 +10,7 @@ create table public.members (
   email text unique,
   role text not null default 'Dev' check (role in ('Admin', 'PM', 'Dev', 'QA', 'Viewer')),
   specialty text,
+  avatar_url text,
   birthday date,
   favorite_food text,
   hobby text,

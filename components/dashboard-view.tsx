@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation'
 import {
   Bell,
   CheckCircle2,
+  Check,
   ChevronDown,
   CircleDot,
   Code2,
@@ -16,6 +17,7 @@ import {
   FolderOpen,
   GitCommitHorizontal,
   GitPullRequest,
+  History,
   LayoutDashboard,
   LogOut,
   Moon,
@@ -62,6 +64,13 @@ type ProjectCommitActivity = {
   repoLabel: string
 }
 
+type ProjectCommitChange = ProjectCommitActivity & {
+  projectId?: string
+  projectName: string
+  projectStatus: string
+  seenAt?: string
+}
+
 const pipelineConfig = [
   { title: 'Planificación', statuses: ['Backlog', 'Pendiente', 'Planificacion', 'Planificación'], tone: 'bg-slate-100 text-slate-700' },
   { title: 'En desarrollo', statuses: ['En desarrollo'], tone: 'bg-blue-50 text-blue-700' },
@@ -70,6 +79,12 @@ const pipelineConfig = [
 ]
 
 const projectStatusOrder = ['Planificación', 'En desarrollo', 'MVP aprobado', 'QA', 'En Producción', 'Pausado'] as const
+const seenCommitsStorageKey = 'organizacion-dia-seen-commits'
+const commitHistoryStorageKey = 'organizacion-dia-commit-history'
+
+function commitStorageId(commit: Pick<ProjectCommitChange, 'projectId' | 'projectName' | 'repo' | 'sha'>) {
+  return `${commit.projectId ?? commit.projectName}:${commit.repo}:${commit.sha}`
+}
 
 function normalizeText(value: string) {
   return value
@@ -229,11 +244,15 @@ export function DashboardView() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
   const [commitsByProject, setCommitsByProject] = useState<Record<string, ProjectCommitActivity[]>>({})
+  const [seenCommitIds, setSeenCommitIds] = useState<string[]>([])
+  const [lastCommitSync, setLastCommitSync] = useState<string | null>(null)
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const savedTheme = window.localStorage.getItem('organizacion-dia-theme')
       if (savedTheme === 'dark' || savedTheme === 'light') setTheme(savedTheme)
+      const savedSeenCommitIds = window.localStorage.getItem(seenCommitsStorageKey)
+      if (savedSeenCommitIds) setSeenCommitIds(JSON.parse(savedSeenCommitIds) as string[])
     }, 0)
 
     return () => window.clearTimeout(timer)
@@ -246,6 +265,11 @@ export function DashboardView() {
       return next
     })
   }
+
+  useEffect(() => {
+    if (!authConfigured || loading || user) return
+    router.replace('/login?next=/')
+  }, [authConfigured, loading, router, user])
 
   useEffect(() => {
     if (!authConfigured || loading || !user) return
@@ -331,6 +355,7 @@ export function DashboardView() {
       try {
         const response = await fetch('/api/github/project-commits', {
           method: 'POST',
+          cache: 'no-store',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             projects: projectsWithRepos.map((project) => ({
@@ -343,13 +368,19 @@ export function DashboardView() {
         const payload = (await response.json()) as {
           commitsByProject?: Record<string, ProjectCommitActivity[]>
         }
-        setCommitsByProject(payload.commitsByProject ?? {})
+        if (payload.commitsByProject) {
+          setCommitsByProject(payload.commitsByProject)
+          setLastCommitSync(new Date().toISOString())
+        }
       } catch {
-        setCommitsByProject({})
+        return
       }
     }
 
     fetchProjectCommits()
+    const interval = window.setInterval(fetchProjectCommits, 60000)
+
+    return () => window.clearInterval(interval)
   }, [projects])
 
   useEffect(() => {
@@ -443,8 +474,25 @@ export function DashboardView() {
         })),
       )
       .sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime())
-      .slice(0, 4)
-  }, [commitsByProject, projects])
+      .filter((commit) => !seenCommitIds.includes(commitStorageId(commit)))
+      .slice(0, 30)
+  }, [commitsByProject, projects, seenCommitIds])
+
+  function markCommitAsSeen(commit: ProjectCommitChange) {
+    const id = commitStorageId(commit)
+    const historyCommit = { ...commit, seenAt: new Date().toISOString() }
+
+    setSeenCommitIds((current) => {
+      const next = Array.from(new Set([id, ...current]))
+      window.localStorage.setItem(seenCommitsStorageKey, JSON.stringify(next))
+      return next
+    })
+
+    const savedHistory = window.localStorage.getItem(commitHistoryStorageKey)
+    const history = savedHistory ? (JSON.parse(savedHistory) as ProjectCommitChange[]) : []
+    const nextHistory = [historyCommit, ...history.filter((item) => commitStorageId(item) !== id)].slice(0, 300)
+    window.localStorage.setItem(commitHistoryStorageKey, JSON.stringify(nextHistory))
+  }
 
   const isDark = theme === 'dark'
   const shellClass = isDark ? 'bg-slate-950 text-slate-100' : 'bg-[#f6f8fb] text-slate-950'
@@ -453,6 +501,16 @@ export function DashboardView() {
   const textStrongClass = isDark ? 'text-white' : 'text-slate-950'
   const textMutedClass = isDark ? 'text-slate-400' : 'text-slate-500'
   const dividerClass = isDark ? 'border-slate-800' : 'border-slate-100'
+
+  if (authConfigured && (loading || !user)) {
+    return (
+      <main className={`relative isolate flex min-h-screen items-center justify-center transition-colors ${shellClass}`}>
+        <div className={`rounded-lg border px-4 py-3 text-sm font-semibold ${isDark ? 'border-slate-800 bg-slate-900 text-slate-300' : 'border-slate-200 bg-white text-slate-600'}`}>
+          Verificando sesion...
+        </div>
+      </main>
+    )
+  }
 
   return (
     <main className={`relative isolate min-h-screen overflow-hidden transition-colors ${shellClass}`}>
@@ -475,6 +533,7 @@ export function DashboardView() {
             <SidebarItem icon={<GitPullRequest className="h-4 w-4" />} label="Tareas" href="/tareas" />
             <SidebarItem icon={<FlaskConical className="h-4 w-4" />} label="Testing" href="/testing" />
             <SidebarItem icon={<Users className="h-4 w-4" />} label="Equipo" href="/equipo" />
+            <SidebarItem icon={<History className="h-4 w-4" />} label="Historial" href="/commit-history" />
             <SidebarItem icon={<Trash2 className="h-4 w-4" />} label="Papelera" href="/papelera" />
           </nav>
         </aside>
@@ -546,17 +605,31 @@ export function DashboardView() {
                     Cambios recientes detectados desde los repositorios vinculados. Selecciona uno para abrir el proyecto con mas detalle.
                   </p>
                 </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`rounded-md px-2 py-1 text-xs font-semibold ${isDark ? 'bg-emerald-500/15 text-emerald-300' : 'bg-[#e9f8f1] text-[#08784f]'}`}>
+                    En vivo
+                  </span>
+                  <Link href="/commit-history" className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm font-semibold ${isDark ? 'border-slate-700 text-slate-300 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                    <History className="h-4 w-4" />
+                    Historial
+                  </Link>
+                </div>
               </div>
 
-              <div className="mt-4 grid gap-3 xl:grid-cols-4">
+              <div className="mt-4 flex gap-3 overflow-x-auto pb-2 [scrollbar-width:thin]">
                 {recentProjectChanges.length > 0 ? (
                   recentProjectChanges.map((change) => (
-                    <Link
+                    <article
                       key={`${change.projectName}-${change.repo}-${change.sha}`}
-                      href={change.projectId ? `/projects?proyecto=${change.projectId}` : `/projects?buscar=${encodeURIComponent(change.projectName)}`}
-                      className={`rounded-md border p-3 transition hover:-translate-y-0.5 ${
+                      className={`min-h-[172px] w-[310px] shrink-0 cursor-pointer rounded-md border p-3 transition hover:-translate-y-0.5 ${
                         isDark ? 'border-slate-800 bg-slate-950/70 hover:bg-slate-950' : 'border-slate-200 bg-slate-50 hover:bg-white'
                       }`}
+                      role="link"
+                      tabIndex={0}
+                      onClick={() => router.push(change.projectId ? `/projects?proyecto=${change.projectId}` : `/projects?buscar=${encodeURIComponent(change.projectName)}`)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') router.push(change.projectId ? `/projects?proyecto=${change.projectId}` : `/projects?buscar=${encodeURIComponent(change.projectName)}`)
+                      }}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className={`truncate text-xs font-semibold ${isDark ? 'text-emerald-300' : 'text-[#0d8f62]'}`}>{change.projectName}</span>
@@ -566,14 +639,31 @@ export function DashboardView() {
                       <p className={`mt-2 text-xs ${textMutedClass}`}>
                         {change.author} - {formatCommitDate(change.date)}
                       </p>
-                    </Link>
+                      <button
+                        className={`mt-4 flex h-8 w-8 items-center justify-center rounded-full border transition ${isDark ? 'border-sky-800/80 bg-sky-950/30 text-sky-300 hover:bg-sky-950/60' : 'border-sky-200 bg-white text-sky-500 hover:bg-sky-50'}`}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          markCommitAsSeen(change)
+                        }}
+                        title="Marcar como visto"
+                        aria-label="Marcar como visto"
+                      >
+                        <span className="relative flex h-4 w-5 items-center justify-center" aria-hidden="true">
+                          <Check className="absolute left-0 h-3.5 w-3.5" strokeWidth={3} />
+                          <Check className="absolute left-1.5 h-3.5 w-3.5" strokeWidth={3} />
+                        </span>
+                      </button>
+                    </article>
                   ))
                 ) : (
-                  <div className={`rounded-md border p-4 text-sm xl:col-span-4 ${isDark ? 'border-slate-800 bg-slate-950/70 text-slate-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
+                  <div className={`w-full rounded-md border p-4 text-sm ${isDark ? 'border-slate-800 bg-slate-950/70 text-slate-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
                     Todavia no hay commits recientes para mostrar. Cuando se actualicen los repos vinculados van a aparecer aca.
                   </div>
                 )}
               </div>
+              <p className={`mt-2 text-xs ${textMutedClass}`}>
+                {lastCommitSync ? `Ultima actualizacion: ${formatCommitDate(lastCommitSync)}. Los commits vistos se guardan en Historial.` : 'Sincronizando commits...'}
+              </p>
             </section>
 
             <section className="grid gap-4 md:grid-cols-3 2xl:grid-cols-6">
