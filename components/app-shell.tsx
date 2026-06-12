@@ -2,7 +2,7 @@
 
 import { useAuth } from '@/context/AuthContext'
 import { CursorAiBackground } from '@/components/cursor-ai-background'
-import { Bell, Code2, FlaskConical, GitPullRequest, History, LayoutDashboard, LogOut, Menu, PanelLeftClose, Search, Settings, Sun, Moon, Trash2, Users } from 'lucide-react'
+import { Bell, Code2, GitPullRequest, History, LayoutDashboard, LogOut, Menu, PanelLeftClose, Search, Settings, Sun, Moon, Trash2, Users } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
@@ -19,7 +19,6 @@ const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/projects', label: 'Proyectos', icon: Code2 },
   { href: '/tasks', label: 'Tareas', icon: GitPullRequest },
-  { href: '/testing', label: 'Testing', icon: FlaskConical },
   { href: '/team', label: 'Equipo', icon: Users },
   { href: '/commit-history', label: 'Historial', icon: History },
   { href: '/papelera', label: 'Papelera', icon: Trash2 },
@@ -93,8 +92,8 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
             </div>
             {!sidebarCollapsed && (
             <div className="min-w-0">
-              <p className={`truncate text-sm font-bold ${textStrongClass}`}>Organizacion DIA</p>
-              <p className="text-xs text-slate-400">Equipo de desarrollo</p>
+              <p className={`text-sm font-bold ${textStrongClass}`}>DIA</p>
+              <p className="text-xs leading-tight text-slate-400">Direccion de Inteligencia Artificial</p>
             </div>
             )}
             </div>
