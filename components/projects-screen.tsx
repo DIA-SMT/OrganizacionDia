@@ -3,7 +3,7 @@
 import { AppShell } from '@/components/app-shell'
 import { ProjectCreateButton } from '@/components/project-create-button'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
-import { Check, ChevronDown, ExternalLink, GitCommitHorizontal, Maximize2, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { Check, ChevronDown, ExternalLink, GitCommitHorizontal, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 type ProjectRow = {
@@ -157,12 +157,9 @@ export function ProjectsScreen({
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [view, setView] = useState<'active' | 'finished'>('active')
   const [addingSecondaryRepoIds, setAddingSecondaryRepoIds] = useState<string[]>([])
-  const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>([])
-  const [multiExpandEnabled, setMultiExpandEnabled] = useState(false)
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(initialSelectedProjectId)
   const [selectedProjectEditing, setSelectedProjectEditing] = useState(false)
   const [commitsByProject, setCommitsByProject] = useState<Record<string, ProjectCommitActivity[]>>({})
-  const [loadingCommits, setLoadingCommits] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const theme = useStoredTheme()
   const isDark = theme === 'dark'
@@ -213,37 +210,52 @@ export function ProjectsScreen({
     fetchProjects()
   }, [])
 
+  const projectCommitSources = useMemo(
+    () =>
+      projects
+        .filter((project) => project.repository_url || project.repository_url_secondary)
+        .map((project) => ({
+          id: project.id,
+          repositoryUrl: project.repository_url,
+          repositoryUrlSecondary: project.repository_url_secondary,
+        })),
+    [projects],
+  )
+
+  const projectCommitSourceSignature = useMemo(
+    () => projectCommitSources.map((project) => `${project.id}:${project.repositoryUrl ?? ''}:${project.repositoryUrlSecondary ?? ''}`).join('|'),
+    [projectCommitSources],
+  )
+
   useEffect(() => {
-    const projectsWithRepos = projects.filter((project) => project.repository_url || project.repository_url_secondary)
-    if (projectsWithRepos.length === 0) return
+    if (projectCommitSources.length === 0) return
+
+    let cancelled = false
 
     async function fetchProjectCommits() {
-      setLoadingCommits(true)
       try {
         const response = await fetch('/api/github/project-commits', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            projects: projectsWithRepos.map((project) => ({
-              id: project.id,
-              repositoryUrl: project.repository_url,
-              repositoryUrlSecondary: project.repository_url_secondary,
-            })),
+            projects: projectCommitSources,
           }),
         })
         const payload = (await response.json()) as {
           commitsByProject?: Record<string, ProjectCommitActivity[]>
         }
-        setCommitsByProject(payload.commitsByProject ?? {})
+        if (!cancelled) setCommitsByProject(payload.commitsByProject ?? {})
       } catch {
-        setCommitsByProject({})
-      } finally {
-        setLoadingCommits(false)
+        if (!cancelled) setCommitsByProject({})
       }
     }
 
     fetchProjectCommits()
-  }, [projects])
+
+    return () => {
+      cancelled = true
+    }
+  }, [projectCommitSourceSignature, projectCommitSources])
 
   async function updateProject<K extends keyof Pick<ProjectRow, 'name' | 'status' | 'priority' | 'estimated_delivery' | 'note' | 'repository_url' | 'repository_url_secondary'>>(projectId: string, field: K, value: ProjectRow[K]) {
     setError(null)
@@ -309,15 +321,8 @@ export function ProjectsScreen({
   function openProjectCard(event: React.MouseEvent<HTMLElement>, projectId: string) {
     const target = event.target as HTMLElement
     if (target.closest('input, textarea, select, button, a, [data-no-project-open]')) return
-    toggleProjectExpanded(projectId)
-  }
-
-  function toggleProjectExpanded(projectId: string) {
-    setExpandedProjectIds((current) => {
-      const isOpen = current.includes(projectId)
-      if (isOpen) return current.filter((id) => id !== projectId)
-      return multiExpandEnabled ? [...current, projectId] : [projectId]
-    })
+    setSelectedProjectEditing(false)
+    setSelectedProjectId(projectId)
   }
 
   const filtered = useMemo(() => {
@@ -336,21 +341,6 @@ export function ProjectsScreen({
     if (!q) return orderedByView
     return orderedByView.filter((project) => [project.name, project.description, project.note, project.requester_area, project.stack, project.repository_url, project.repository_url_secondary, project.status, project.priority].filter(Boolean).join(' ').toLowerCase().includes(q))
   }, [projects, search, statusFilter, view])
-
-  const displayedProjects = useMemo(() => {
-    const ordered = [...filtered]
-
-    expandedProjectIds.forEach((projectId) => {
-      const index = ordered.findIndex((project) => project.id === projectId)
-      if (index > 0 && index % 2 === 1) {
-        const previous = ordered[index - 1]
-        ordered[index - 1] = ordered[index]
-        ordered[index] = previous
-      }
-    })
-
-    return ordered
-  }, [expandedProjectIds, filtered])
 
   const finishedCount = projects.filter((project) => project.status === 'En Producción').length
   const activeVisibleCount = projects.filter((project) => !isProduction(project) && !isPaused(project)).length
@@ -400,38 +390,6 @@ export function ProjectsScreen({
         <div className="flex flex-wrap items-center justify-end gap-2">
           <button
             type="button"
-            className={`inline-flex h-10 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition ${
-              multiExpandEnabled
-                ? isDark
-                  ? 'border-sky-800/70 bg-sky-950/40 text-sky-300'
-                  : 'border-sky-200 bg-sky-50 text-sky-700'
-                : isDark
-                  ? 'border-slate-700 text-slate-400 hover:bg-slate-900 hover:text-slate-200'
-                  : 'border-slate-200 bg-white/70 text-slate-500 hover:bg-slate-50 hover:text-slate-700'
-            }`}
-            onClick={() => {
-              setMultiExpandEnabled((current) => {
-                const next = !current
-                if (!next) setExpandedProjectIds((ids) => ids.slice(0, 1))
-                return next
-              })
-            }}
-            title={multiExpandEnabled ? 'Desactivar selección múltiple' : 'Activar selección múltiple'}
-            aria-pressed={multiExpandEnabled}
-          >
-            <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition ${
-              multiExpandEnabled
-                ? 'border-sky-500 bg-sky-500'
-                : isDark
-                  ? 'border-slate-600'
-                  : 'border-slate-300'
-            }`}>
-              {multiExpandEnabled && <span className="h-1.5 w-1.5 rounded-full bg-white" />}
-            </span>
-            <span className="whitespace-nowrap">Seleccion multiple</span>
-          </button>
-          <button
-            type="button"
             className={`h-10 rounded-md border px-3 text-sm font-semibold transition ${
               statusFilter === 'Pausado'
                 ? isDark
@@ -458,17 +416,21 @@ export function ProjectsScreen({
         <div className={`rounded-lg border p-6 text-sm ${cardClass} ${mutedClass}`}>No hay proyectos cargados.</div>
       ) : (
         <div className="grid gap-4 xl:grid-cols-2">
-          {displayedProjects.map((project) => {
-            const projectCommits = commitsByProject[project.id] ?? []
-            const isExpanded = expandedProjectIds.includes(project.id)
-
+          {filtered.map((project) => {
             return (
             <article
               key={project.id}
-              className={`group cursor-pointer rounded-lg border p-5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg ${
-                isExpanded ? 'xl:col-span-2 xl:col-start-1' : ''
-              } ${projectPriorityCardClass(project.priority, isDark)}`}
+              className={`group cursor-pointer rounded-lg border p-5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg [content-visibility:auto] [contain-intrinsic-size:180px] ${projectPriorityCardClass(project.priority, isDark)}`}
               onClick={(event) => openProjectCard(event, project.id)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  setSelectedProjectEditing(false)
+                  setSelectedProjectId(project.id)
+                }
+              }}
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
@@ -490,122 +452,7 @@ export function ProjectsScreen({
                 </div>
               </div>
 
-              <div className={`grid transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
-              <div className="overflow-hidden">
-              <div className={`transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${isExpanded ? 'translate-y-0' : '-translate-y-2'}`}>
-              {project.description && <p className={`mt-4 text-sm leading-6 ${bodyClass}`}>{project.description}</p>}
-
-              <div className={`mt-4 rounded-md border p-3 ${panelClass}`}>
-                <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Nota</p>
-                <p className={`mt-2 text-sm leading-6 ${project.note ? bodyClass : mutedClass}`}>
-                  {project.note || 'Sin nota cargada.'}
-                </p>
-              </div>
-
-              <div className={`mt-4 rounded-md border p-3 ${panelClass}`}>
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Desarrollo</p>
-                    <p className={`mt-0.5 text-xs ${mutedClass}`}>Avance general del proyecto</p>
-                  </div>
-                  <p className={`rounded-md px-2.5 py-1 text-sm font-bold ${isDark ? 'bg-emerald-500/15 text-emerald-300' : 'bg-[#e9f8f1] text-[#08784f]'}`}>
-                    {savingProgressId === project.id ? 'Guardando...' : `${project.progress}%`}
-                  </p>
-                </div>
-                <div className={`mt-4 h-2 overflow-hidden rounded-full ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
-                  <div className="h-full rounded-full bg-[#10b981]" style={{ width: `${project.progress}%` }} />
-                </div>
-              </div>
-
-              <div className="mt-4 grid gap-3 text-sm md:grid-cols-2">
-                <div className={`rounded-md p-3 ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}>
-                  <p className={`text-xs ${labelClass}`}>Prioridad</p>
-                  <p className={`mt-1 text-sm font-semibold ${titleClass}`}>{project.priority}</p>
-                </div>
-
-                <div className={`rounded-md p-3 ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}>
-                  <p className={`text-xs ${labelClass}`}>Entrega</p>
-                  <p className={`mt-1 text-sm font-semibold ${titleClass}`}>{project.estimated_delivery || 'Sin fecha'}</p>
-                </div>
-
-                <div className={`rounded-md p-3 md:col-span-2 ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}>
-                  <p className={`text-xs ${labelClass}`}>Repositorios</p>
-                  <div className="mt-2 grid gap-2">
-                    {[
-                      ['repository_url', 'Repo 1'],
-                      ['repository_url_secondary', 'Repo 2'],
-                    ].map(([field, label]) => {
-                      const repoField = field as 'repository_url' | 'repository_url_secondary'
-                      const value = project[repoField] ?? ''
-                      if (!value) return null
-                      return (
-                        <a key={field} className="block break-all text-xs font-semibold leading-5 text-[#0d8f62] hover:underline" href={value} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
-                          <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>{label}: </span>
-                          {value}
-                        </a>
-                      )
-                    })}
-                    {!project.repository_url && !project.repository_url_secondary && <p className={`text-sm ${mutedClass}`}>Sin repositorios cargados.</p>}
-                  </div>
-                </div>
-              </div>
-
-              <div className={`mt-4 rounded-md border p-3 ${panelClass}`}>
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <GitCommitHorizontal className={`h-4 w-4 ${isDark ? 'text-emerald-300' : 'text-[#0d8f62]'}`} />
-                    <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Actividad GitHub</p>
-                  </div>
-                  <span className={`text-xs ${mutedClass}`}>{loadingCommits ? 'Actualizando...' : `${projectCommits.length} commits`}</span>
-                </div>
-
-                {projectCommits.length > 0 ? (
-                  <div className="mt-3 grid gap-2">
-                    {projectCommits.slice(0, 3).map((commit) => (
-                      <a
-                        key={`${commit.repo}-${commit.sha}`}
-                        className={`block rounded-md border px-3 py-2 transition ${
-                          isDark ? 'border-slate-800 bg-slate-900/70 hover:bg-slate-900' : 'border-slate-200 bg-white/80 hover:bg-white'
-                        }`}
-                        href={commit.url}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        <p className={`line-clamp-2 text-sm font-semibold ${titleClass}`}>{commit.message}</p>
-                        <p className={`mt-1 text-xs ${mutedClass}`}>
-                          {commit.repoLabel} - {commit.author} - {formatCommitDate(commit.date)}
-                        </p>
-                      </a>
-                    ))}
-                  </div>
-                ) : (
-                  <p className={`mt-3 text-sm ${mutedClass}`}>
-                    {loadingCommits ? 'Buscando commits recientes...' : 'Sin commits recientes en los repos vinculados.'}
-                  </p>
-                )}
-              </div>
-
-              <div className="mt-5 flex justify-center">
-                <button
-                  type="button"
-                  className={`group/zoom relative flex h-12 w-12 items-center justify-center rounded-full border shadow-sm transition duration-300 hover:-translate-y-0.5 hover:scale-105 hover:shadow-md ${
-                    isDark ? 'border-slate-700 bg-slate-950 text-emerald-300 hover:bg-slate-900' : 'border-slate-200 bg-white text-[#0d8f62] hover:bg-emerald-50'
-                  }`}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    setSelectedProjectEditing(false)
-                    setSelectedProjectId(project.id)
-                  }}
-                  title="Abrir proyecto ampliado"
-                  aria-label="Abrir proyecto ampliado"
-                >
-                  <span className="absolute inset-0 rounded-full bg-emerald-400/0 transition duration-300 group-hover/zoom:scale-150 group-hover/zoom:bg-emerald-400/10" />
-                  <Maximize2 className="h-5 w-5 transition-transform duration-300 group-hover/zoom:scale-110" />
-                </button>
-              </div>
-              </div>
-              </div>
-              </div>
+              {project.note && <p className={`mt-3 line-clamp-2 text-sm leading-6 ${bodyClass}`}>{project.note}</p>}
             </article>
             )
           })}

@@ -243,7 +243,6 @@ export function DashboardView() {
   const router = useRouter()
   const [projects, setProjects] = useState<DashboardProject[]>([])
   const [pipeline, setPipeline] = useState<PipelineColumn[]>(pipelineConfig.map((column) => ({ title: column.title, tone: column.tone, tasks: [] })))
-  const [activity, setActivity] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
@@ -287,10 +286,8 @@ export function DashboardView() {
 
   useEffect(() => {
     if (!authConfigured || loading || !user) return
-    const currentUser = user
 
     async function fetchDashboard() {
-      const userEmail = currentUser.email ?? 'usuario interno'
       const supabase = getSupabaseBrowserClient()
       if (!supabase) return
 
@@ -348,41 +345,51 @@ export function DashboardView() {
 
       setProjects(nextProjects)
       setPipeline(nextPipeline)
-      setActivity([
-        `Sesion iniciada como ${userEmail}`,
-        `${nextProjects.length} proyectos activos cargados`,
-        `${tasks.length} tareas tecnicas en seguimiento`,
-      ])
     }
 
     fetchDashboard().catch((error) => {
       console.error('Error loading dashboard:', error)
-      setActivity(['No se pudieron cargar datos desde Supabase'])
     })
   }, [authConfigured, loading, user])
 
+  const projectCommitSources = useMemo(
+    () =>
+      projects
+        .filter((project) => project.repositoryUrl || project.repositoryUrlSecondary)
+        .map((project) => ({
+          id: project.id ?? project.name,
+          repositoryUrl: project.repositoryUrl,
+          repositoryUrlSecondary: project.repositoryUrlSecondary,
+        })),
+    [projects],
+  )
+
+  const projectCommitSourceSignature = useMemo(
+    () => projectCommitSources.map((project) => `${project.id}:${project.repositoryUrl ?? ''}:${project.repositoryUrlSecondary ?? ''}`).join('|'),
+    [projectCommitSources],
+  )
+
   useEffect(() => {
-    const projectsWithRepos = projects.filter((project) => project.repositoryUrl || project.repositoryUrlSecondary)
-    if (projectsWithRepos.length === 0) return
+    if (projectCommitSources.length === 0) return
+
+    let cancelled = false
 
     async function fetchProjectCommits() {
+      if (document.visibilityState === 'hidden') return
+
       try {
         const response = await fetch('/api/github/project-commits', {
           method: 'POST',
           cache: 'no-store',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            projects: projectsWithRepos.map((project) => ({
-              id: project.id ?? project.name,
-              repositoryUrl: project.repositoryUrl,
-              repositoryUrlSecondary: project.repositoryUrlSecondary,
-            })),
+            projects: projectCommitSources,
           }),
         })
         const payload = (await response.json()) as {
           commitsByProject?: Record<string, ProjectCommitActivity[]>
         }
-        if (payload.commitsByProject) {
+        if (!cancelled && payload.commitsByProject) {
           setCommitsByProject(payload.commitsByProject)
           setLastCommitSync(new Date().toISOString())
         }
@@ -392,36 +399,16 @@ export function DashboardView() {
     }
 
     fetchProjectCommits()
-    const interval = window.setInterval(fetchProjectCommits, 60000)
+    const interval = window.setInterval(fetchProjectCommits, 180000)
 
-    return () => window.clearInterval(interval)
-  }, [projects])
-
-  useEffect(() => {
-    async function fetchGithubProjects() {
-      try {
-        const res = await fetch('/api/github/projects', { cache: 'no-store' })
-        if (!res.ok) return
-
-        const payload = (await res.json()) as {
-          projects?: DashboardProject[]
-          configured?: boolean
-          error?: string | null
-        }
-
-        if (payload.projects && payload.projects.length > 0) {
-          setActivity((current) => [`${payload.projects?.length ?? 0} repositorios sincronizados desde GitHub`, ...current].slice(0, 5))
-          return
-        }
-
-        if (payload.error) return
-      } catch {
-        return
-      }
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
     }
-
-    fetchGithubProjects()
-  }, [])
+  }, [
+    projectCommitSourceSignature,
+    projectCommitSources,
+  ])
 
   const metrics = useMemo(() => {
     const statusCounts = Object.fromEntries(projectStatusOrder.map((status) => [status, 0])) as Record<(typeof projectStatusOrder)[number], number>
@@ -472,11 +459,6 @@ export function DashboardView() {
     }))
   }, [normalizedSearch, pipeline])
 
-  const filteredActivity = useMemo(() => {
-    if (!normalizedSearch) return activity
-    return activity.filter((item) => item.toLowerCase().includes(normalizedSearch))
-  }, [activity, normalizedSearch])
-
   const recentProjectChanges = useMemo(() => {
     return projects
       .flatMap((project) =>
@@ -506,6 +488,14 @@ export function DashboardView() {
     const history = savedHistory ? (JSON.parse(savedHistory) as ProjectCommitChange[]) : []
     const nextHistory = [historyCommit, ...history.filter((item) => commitStorageId(item) !== id)].slice(0, 300)
     window.localStorage.setItem(commitHistoryStorageKey, JSON.stringify(nextHistory))
+  }
+
+  function scrollCommitsHorizontally(event: React.WheelEvent<HTMLDivElement>) {
+    const container = event.currentTarget
+    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX) || container.scrollWidth <= container.clientWidth) return
+
+    event.preventDefault()
+    container.scrollLeft += event.deltaY
   }
 
   const isDark = theme === 'dark'
@@ -539,8 +529,8 @@ export function DashboardView() {
               </div>
               {!sidebarCollapsed && (
                 <div className="min-w-0">
-                  <p className={`truncate text-sm font-bold ${textStrongClass}`}>Organizacion DIA</p>
-                  <p className="text-xs text-slate-400">Equipo de desarrollo</p>
+                  <p className={`text-sm font-bold ${textStrongClass}`}>DIA</p>
+                  <p className="text-xs leading-tight text-slate-400">Direccion de Inteligencia Artificial</p>
                 </div>
               )}
             </div>
@@ -558,7 +548,6 @@ export function DashboardView() {
             <SidebarItem icon={<LayoutDashboard className="h-4 w-4 shrink-0" />} label="Dashboard" href="/" active collapsed={sidebarCollapsed} />
             <SidebarItem icon={<Code2 className="h-4 w-4 shrink-0" />} label="Proyectos" href="/projects" collapsed={sidebarCollapsed} />
             <SidebarItem icon={<GitPullRequest className="h-4 w-4 shrink-0" />} label="Tareas" href="/tasks" collapsed={sidebarCollapsed} />
-            <SidebarItem icon={<FlaskConical className="h-4 w-4 shrink-0" />} label="Testing" href="/testing" collapsed={sidebarCollapsed} />
             <SidebarItem icon={<Users className="h-4 w-4 shrink-0" />} label="Equipo" href="/team" collapsed={sidebarCollapsed} />
             <SidebarItem icon={<History className="h-4 w-4 shrink-0" />} label="Historial" href="/commit-history" collapsed={sidebarCollapsed} />
             <SidebarItem icon={<Trash2 className="h-4 w-4 shrink-0" />} label="Papelera" href="/papelera" collapsed={sidebarCollapsed} />
@@ -643,7 +632,7 @@ export function DashboardView() {
                 </div>
               </div>
 
-              <div className="mt-4 flex gap-3 overflow-x-auto pb-2 [scrollbar-width:thin]">
+              <div className="mt-4 flex gap-3 overflow-x-auto pb-2 [scrollbar-width:thin]" onWheel={scrollCommitsHorizontally}>
                 {recentProjectChanges.length > 0 ? (
                   recentProjectChanges.map((change) => (
                     <article
@@ -762,43 +751,8 @@ export function DashboardView() {
               />
             </section>
 
-            <section className="mt-5">
-              <div className={`rounded-lg border p-5 ${surfaceClass}`}>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className={`font-semibold ${textStrongClass}`}>Distribucion operativa</h2>
-                    <p className={`text-sm ${textMutedClass}`}>Donde esta concentrado el trabajo ahora</p>
-                  </div>
-                  <span className="rounded-md bg-[#e9f8f1] px-2 py-1 text-xs font-semibold text-[#08784f]">En vivo</span>
-                </div>
-                <div className="mt-5 space-y-4">
-                  {[
-                    ['Planificación', metrics.statusCounts['Planificación'], 'bg-amber-500'],
-                    ['En desarrollo', metrics.statusCounts['En desarrollo'], 'bg-[#10b981]'],
-                    ['MVP aprobado', metrics.statusCounts['MVP aprobado'], 'bg-violet-500'],
-                    ['QA', metrics.statusCounts.QA, 'bg-sky-500'],
-                    ['En Producción', metrics.statusCounts['En Producción'], 'bg-emerald-600'],
-                    ['Pausado', metrics.statusCounts.Pausado, 'bg-red-500'],
-                  ].map(([label, count, color]) => {
-                    const total = Math.max(projects.length, 1)
-                    const value = Math.round((Number(count) / total) * 100)
-                    return (
-                    <div key={label as string}>
-                      <div className="mb-1 flex justify-between text-xs font-medium text-slate-500">
-                        <span>{label}</span>
-                        <span>{count} - {value}%</span>
-                      </div>
-                      <div className="h-3 overflow-hidden rounded-full bg-slate-100">
-                        <div className={`h-3 rounded-full ${color}`} style={{ width: `${value}%` }} />
-                      </div>
-                    </div>
-                    )
-                  })}
-                </div>
-              </div>
-            </section>
 
-            <section className="mt-5 grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+            <section className="mt-5">
               <div className={`rounded-lg border ${surfaceClass}`}>
                 <div className={`flex items-center justify-between border-b px-5 py-4 ${dividerClass}`}>
                   <div>
@@ -818,7 +772,7 @@ export function DashboardView() {
                     return (
                     <article
                       key={project.name}
-                      className={`cursor-pointer p-5 transition ${projectPriorityCardClass(project.priority, isDark)}`}
+                      className={`cursor-pointer p-5 transition [content-visibility:auto] [contain-intrinsic-size:220px] ${projectPriorityCardClass(project.priority, isDark)}`}
                       role="link"
                       tabIndex={0}
                       onClick={() => router.push(projectHref)}
@@ -877,23 +831,6 @@ export function DashboardView() {
                 </div>
               </div>
 
-              <div className={`rounded-lg border ${surfaceClass}`}>
-                <div className={`border-b px-5 py-4 ${dividerClass}`}>
-                  <h2 className={`font-semibold ${textStrongClass}`}>Actividad reciente</h2>
-                  <p className={`text-sm ${textMutedClass}`}>Movimientos del equipo</p>
-                </div>
-                <div className="space-y-4 p-5">
-                  {filteredActivity.map((item) => (
-                    <div key={item} className="flex gap-3">
-                      <div className="mt-1 flex h-7 w-7 items-center justify-center rounded-md bg-[#e9f8f1] text-[#0d8f62]">
-                        <CircleDot className="h-4 w-4" />
-                      </div>
-                      <p className={`text-sm leading-6 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>{item}</p>
-                    </div>
-                  ))}
-                  {filteredActivity.length === 0 && <p className={`text-sm ${textMutedClass}`}>No hay actividad que coincida con la busqueda.</p>}
-                </div>
-              </div>
             </section>
 
             <section className={`mt-5 rounded-lg border ${surfaceClass}`}>

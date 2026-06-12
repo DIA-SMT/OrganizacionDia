@@ -8,6 +8,8 @@ export function CursorAiBackground({ isDark }: { isDark: boolean }) {
 
   useEffect(() => {
     let frame = 0
+    let idleTimer = 0
+    let running = false
     let targetX = 0
     let targetY = 0
     let currentX = 0
@@ -16,6 +18,17 @@ export function CursorAiBackground({ isDark }: { isDark: boolean }) {
     function handlePointerMove(event: PointerEvent) {
       targetX = (event.clientX / window.innerWidth - 0.5) * 2
       targetY = (event.clientY / window.innerHeight - 0.5) * 2
+
+      if (!running) {
+        running = true
+        frame = window.requestAnimationFrame(animate)
+      }
+
+      window.clearTimeout(idleTimer)
+      idleTimer = window.setTimeout(() => {
+        running = false
+        window.cancelAnimationFrame(frame)
+      }, 900)
     }
 
     function animate() {
@@ -26,14 +39,14 @@ export function CursorAiBackground({ isDark }: { isDark: boolean }) {
         faceRef.current.style.transform = `translate3d(${currentX * 48}px, ${currentY * 34}px, 0) rotateX(${currentY * -4}deg) rotateY(${currentX * 5}deg)`
       }
 
-      frame = window.requestAnimationFrame(animate)
+      if (running) frame = window.requestAnimationFrame(animate)
     }
 
-    window.addEventListener('pointermove', handlePointerMove)
-    frame = window.requestAnimationFrame(animate)
+    window.addEventListener('pointermove', handlePointerMove, { passive: true })
 
     return () => {
       window.removeEventListener('pointermove', handlePointerMove)
+      window.clearTimeout(idleTimer)
       window.cancelAnimationFrame(frame)
     }
   }, [])
