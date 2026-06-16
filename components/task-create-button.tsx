@@ -158,6 +158,7 @@ export function TaskCreateButton({
           priority: form.priority,
           branch_name: form.branch_name || null,
           pr_url: form.pr_url || null,
+          created_at: new Date().toISOString(),
         })
         .select('id')
         .single()

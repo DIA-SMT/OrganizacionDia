@@ -3,7 +3,6 @@
 import { useEffect, useRef } from 'react'
 
 export function CursorAiBackground({ isDark }: { isDark: boolean }) {
-  const layerRef = useRef<HTMLDivElement | null>(null)
   const faceRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -36,7 +35,7 @@ export function CursorAiBackground({ isDark }: { isDark: boolean }) {
       currentY += (targetY - currentY) * 0.06
 
       if (faceRef.current) {
-        faceRef.current.style.transform = `translate3d(${currentX * 48}px, ${currentY * 34}px, 0) rotateX(${currentY * -4}deg) rotateY(${currentX * 5}deg)`
+        faceRef.current.style.transform = `translate3d(calc(-50% + ${currentX * 48}px), ${currentY * 34}px, 0) rotateX(${currentY * -4}deg) rotateY(${currentX * 5}deg)`
       }
 
       if (running) frame = window.requestAnimationFrame(animate)
@@ -52,12 +51,12 @@ export function CursorAiBackground({ isDark }: { isDark: boolean }) {
   }, [])
 
   return (
-    <div ref={layerRef} className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden="true">
+    <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden="true">
       <div className={`absolute inset-0 ${isDark ? 'ai-grid-dark' : 'ai-grid-light'}`} />
 
       <div
         ref={faceRef}
-        className={`absolute right-[-18px] top-16 hidden h-[650px] w-[540px] transition-opacity duration-500 lg:block ${
+        className={`absolute left-1/2 top-14 hidden h-[650px] w-[540px] transition-opacity duration-500 lg:block ${
           isDark ? 'opacity-70' : 'opacity-80'
         }`}
       >
