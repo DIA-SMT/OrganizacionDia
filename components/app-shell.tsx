@@ -2,7 +2,7 @@
 
 import { useAuth } from '@/context/AuthContext'
 import { CursorAiBackground } from '@/components/cursor-ai-background'
-import { Bell, Code2, GitPullRequest, History, LayoutDashboard, LogOut, Menu, PanelLeftClose, Search, Settings, Sun, Moon, Trash2, Users } from 'lucide-react'
+import { Code2, GitPullRequest, History, LayoutDashboard, LogOut, Search, Settings, Sun, Moon, Trash2, Users } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
@@ -30,13 +30,11 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
   const { user, loading, authConfigured, signOut } = useAuth()
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const savedTheme = window.localStorage.getItem('organizacion-dia-theme')
       if (savedTheme === 'dark' || savedTheme === 'light') setTheme(savedTheme)
-      setSidebarCollapsed(window.localStorage.getItem('organizacion-dia-sidebar-collapsed') === 'true')
     }, 0)
 
     return () => window.clearTimeout(timer)
@@ -47,14 +45,6 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
       const next = current === 'dark' ? 'light' : 'dark'
       window.localStorage.setItem('organizacion-dia-theme', next)
       window.dispatchEvent(new CustomEvent('organizacion-dia-theme-change', { detail: next }))
-      return next
-    })
-  }
-
-  function toggleSidebar() {
-    setSidebarCollapsed((current) => {
-      const next = !current
-      window.localStorage.setItem('organizacion-dia-sidebar-collapsed', String(next))
       return next
     })
   }
@@ -82,66 +72,45 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
   return (
     <main className={`relative isolate min-h-screen overflow-hidden transition-colors ${shellClass}`}>
       <CursorAiBackground isDark={isDark} />
-      <div className="relative z-10 flex min-h-screen">
-        <aside className={`relative hidden border-r px-3 py-4 transition-[width] duration-200 lg:block ${sidebarCollapsed ? 'w-16' : 'w-52'} ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-[#fbfcfd]/95'}`}>
-          <div className={`mb-7 flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between gap-2 px-1'}`}>
-            <div className={`flex min-w-0 items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'}`}>
-            <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-[#061e3d] ring-1 ring-white/10">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img className="h-full w-full object-cover" src="/logo-dia.png" alt="DIA" />
-            </div>
-            {!sidebarCollapsed && (
-            <div className="min-w-0">
-              <p className={`text-sm font-bold ${textStrongClass}`}>DIA</p>
-              <p className="text-xs leading-tight text-slate-400">Direccion de Inteligencia Artificial</p>
-            </div>
-            )}
-            </div>
-            <button
-              className={`flex h-8 w-8 items-center justify-center rounded-md border transition ${sidebarCollapsed ? 'absolute left-[50px] top-5 shadow-sm' : ''} ${isDark ? 'border-slate-700 bg-slate-950 text-slate-300 hover:bg-slate-800' : 'border-slate-200 bg-[#fbfcfd] text-slate-500 hover:bg-slate-50'}`}
-              onClick={toggleSidebar}
-              title={sidebarCollapsed ? 'Desplegar menu' : 'Plegar menu'}
-              aria-label={sidebarCollapsed ? 'Desplegar menu' : 'Plegar menu'}
-            >
-              {sidebarCollapsed ? <Menu className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-            </button>
-          </div>
-
-          <nav className="space-y-0.5">
-            {navItems.map((item) => {
-              const Icon = item.icon
-              const active = pathname === item.href
-              const activeClass = isDark ? 'bg-emerald-500/15 text-emerald-300' : 'bg-[#e9f8f1] text-[#08784f]'
-              const idleClass = isDark ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-100' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
-
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`flex w-full items-center rounded-md py-1.5 text-sm font-medium transition ${sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${active ? activeClass : idleClass}`}
-                  title={sidebarCollapsed ? item.label : undefined}
-                  aria-label={item.label}
-                >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  {!sidebarCollapsed && item.label}
-                </Link>
-              )
-            })}
-          </nav>
-        </aside>
-
-        <section className="flex min-w-0 flex-1 flex-col">
+      <div className="relative z-10 flex min-h-screen flex-col">
           <header className={`border-b backdrop-blur ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-[#fbfcfd]/90'}`}>
-            <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
-              <div>
-                <h1 className={`text-xl font-bold ${textStrongClass}`}>{title}</h1>
-                <p className={`text-sm ${textMutedClass}`}>{subtitle}</p>
+            <div className="flex flex-col gap-3 px-4 py-3 xl:flex-row xl:items-center xl:justify-between">
+              <div className="flex min-w-0 flex-wrap items-center gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex aspect-square h-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#061e3d] ring-1 ring-white/10">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img className="h-full w-full object-cover" src="/logo-dia.png" alt="DIA" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className={`text-sm font-bold ${textStrongClass}`}>DIA</p>
+                    <p className="max-w-[11rem] truncate text-xs leading-tight text-slate-400">Direccion de Inteligencia Artificial</p>
+                  </div>
+                </div>
+                <nav className="flex max-w-full gap-1 overflow-x-auto rounded-lg p-1 [scrollbar-width:none]">
+                  {navItems.map((item) => {
+                    const Icon = item.icon
+                    const active = pathname === item.href
+                    const activeClass = isDark ? 'bg-emerald-500/15 text-emerald-300' : 'bg-[#e9f8f1] text-[#08784f]'
+                    const idleClass = isDark ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-100' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className={`flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium transition ${active ? activeClass : idleClass}`}
+                      >
+                        <Icon className="h-4 w-4 shrink-0" />
+                        {item.label}
+                      </Link>
+                    )
+                  })}
+                </nav>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
                 {onSearchChange && (
-                  <label className={`hidden h-10 items-center gap-2 rounded-md border px-3 text-sm md:flex ${isDark ? 'border-slate-700 bg-slate-950 text-slate-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
+                  <label className={`flex h-10 min-w-[12rem] flex-1 items-center gap-2 rounded-md border px-3 text-sm sm:min-w-[18rem] ${isDark ? 'border-slate-700 bg-slate-950 text-slate-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
                     <Search className="h-4 w-4" />
-                    <input className="w-56 bg-transparent outline-none placeholder:text-inherit" value={search} onChange={(event) => onSearchChange(event.target.value)} placeholder="Buscar" />
+                    <input className="w-full bg-transparent outline-none placeholder:text-inherit" value={search} onChange={(event) => onSearchChange(event.target.value)} placeholder="Buscar" />
                   </label>
                 )}
                 <button className={`flex h-10 w-10 items-center justify-center rounded-md border ${isDark ? 'border-slate-700 bg-slate-950 text-slate-300' : 'border-slate-200 bg-white text-slate-500'}`} onClick={toggleTheme} title={isDark ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}>
@@ -153,18 +122,18 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
                     Salir
                   </button>
                 )}
-                <button className={`flex h-10 w-10 items-center justify-center rounded-md border ${isDark ? 'border-slate-700 bg-slate-950 text-slate-300' : 'border-slate-200 bg-white text-slate-500'}`}>
-                  <Bell className="h-4 w-4" />
-                </button>
                 <button className={`flex h-10 w-10 items-center justify-center rounded-md border ${isDark ? 'border-slate-700 bg-slate-950 text-slate-300' : 'border-slate-200 bg-white text-slate-500'}`} onClick={() => setSettingsOpen(true)}>
                   <Settings className="h-4 w-4" />
                 </button>
               </div>
             </div>
+            <div className="px-4 pb-3">
+              <h1 className={`truncate text-xl font-bold ${textStrongClass}`}>{title}</h1>
+              <p className={`truncate text-sm ${textMutedClass}`}>{subtitle}</p>
+            </div>
           </header>
 
           <div className="flex-1 px-5 py-5">{children}</div>
-        </section>
       </div>
 
       {settingsOpen && (
