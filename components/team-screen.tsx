@@ -2,7 +2,7 @@
 
 import { AppShell } from '@/components/app-shell'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
-import { CalendarDays, Gamepad2, Heart, ImageIcon, Mail, Pencil, Plus, Save, Utensils, X } from 'lucide-react'
+import { CalendarDays, Gamepad2, Heart, Mail, Pencil, Plus, Save, Trash2, Utensils, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 type MemberRow = {
@@ -175,11 +175,37 @@ export function TeamScreen() {
     setSavingId(null)
   }
 
+  async function deleteMember(member: MemberRow) {
+    const confirmed = window.confirm(`Eliminar el perfil de "${member.full_name || 'Sin nombre'}"?`)
+    if (!confirmed) return
+
+    const supabase = getSupabaseBrowserClient()
+    if (!supabase) {
+      setError('Supabase no esta configurado.')
+      return
+    }
+
+    setSavingId(member.id)
+    setError(null)
+
+    const { error: deleteError } = await supabase.from('members').update({ active: false }).eq('id', member.id)
+
+    if (deleteError) {
+      setError(deleteError.message)
+    } else {
+      setMembers((current) => current.filter((item) => item.id !== member.id))
+      setSelectedMemberId(null)
+      setEditingMemberId(null)
+    }
+
+    setSavingId(null)
+  }
+
   function handleAvatarFile(member: MemberRow, file: File | null) {
     if (!file) return
 
-    if (file.type !== 'image/jpeg') {
-      setError('La foto tiene que ser un archivo JPG.')
+    if (!file.type.startsWith('image/')) {
+      setError('La foto tiene que ser una imagen.')
       return
     }
 
@@ -293,7 +319,7 @@ export function TeamScreen() {
           id={inputId}
           className="hidden"
           type="file"
-          accept=".jpg,.jpeg,image/jpeg"
+          accept="image/*"
           onClick={(event) => {
             event.stopPropagation()
             event.currentTarget.value = ''
@@ -347,8 +373,8 @@ export function TeamScreen() {
                   {renderAvatarPicker(member, `avatar-card-${member.id}`)}
                 </div>
               </div>
-              <p className="mt-4 text-sm font-semibold text-[#0d8f62] dark:text-emerald-300">{member.role ?? 'Sin rol'}</p>
-              {member.specialty && <p className="mt-2 line-clamp-1 text-sm text-slate-500 dark:text-slate-400">{member.specialty}</p>}
+              <p className="mt-4 line-clamp-1 text-base font-bold text-slate-950 dark:text-white">{member.full_name || 'Sin nombre'}</p>
+              <p className="mt-1 text-sm font-semibold text-[#0d8f62] dark:text-emerald-300">{member.role ?? 'Sin rol'}</p>
             </article>
           ))}
         </div>
@@ -358,6 +384,9 @@ export function TeamScreen() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm" onClick={() => setSelectedMemberId(null)}>
           <section className="relative max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-slate-200 bg-white p-6 text-center shadow-2xl dark:border-slate-800 dark:bg-slate-900" onClick={(event) => event.stopPropagation()}>
             <div className="absolute right-4 top-4 flex gap-2">
+              <button className="flex h-10 w-10 items-center justify-center rounded-full border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300 dark:hover:bg-red-950/60" onClick={() => deleteMember(selectedMember)} title="Eliminar perfil" disabled={savingId === selectedMember.id}>
+                <Trash2 className="h-4 w-4" />
+              </button>
               <button className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800" onClick={() => setEditingMemberId(selectedMember.id)} title="Editar perfil">
                 <Pencil className="h-4 w-4" />
               </button>
@@ -382,7 +411,6 @@ export function TeamScreen() {
               <ProfileInfo icon={<Utensils className="h-3.5 w-3.5" />} label="Comida favorita" value={selectedMember.favorite_food} />
               <ProfileInfo icon={<Heart className="h-3.5 w-3.5" />} label="Hobby" value={selectedMember.hobby} />
               <ProfileInfo icon={<Gamepad2 className="h-3.5 w-3.5" />} label="Juego favorito" value={selectedMember.favorite_game} />
-              <ProfileInfo icon={<ImageIcon className="h-3.5 w-3.5" />} label="Foto" value={selectedMember.avatar_url} />
             </div>
           </section>
         </div>

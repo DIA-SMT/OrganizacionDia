@@ -3,19 +3,16 @@
 import { useAuth } from '@/context/AuthContext'
 import { CursorAiBackground } from '@/components/cursor-ai-background'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
-import { type DashboardProject, type PipelineColumn } from '@/lib/dashboard-data'
+import { type DashboardProject } from '@/lib/dashboard-data'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   Bell,
-  CheckCircle2,
   Check,
-  ChevronDown,
   CircleDot,
   Code2,
   FlaskConical,
   FolderOpen,
-  GitCommitHorizontal,
   GitPullRequest,
   History,
   LayoutDashboard,
@@ -47,14 +44,6 @@ type ProjectRow = {
   estimated_delivery: string | null
 }
 
-type JoinedTaskRow = {
-  title: string
-  status: string
-  projects: { name: string } | { name: string }[] | null
-  task_assignees?: Array<{
-    members?: { full_name: string } | { full_name: string }[] | null
-  }>
-}
 
 type ProjectCommitActivity = {
   sha: string
@@ -73,12 +62,6 @@ type ProjectCommitChange = ProjectCommitActivity & {
   seenAt?: string
 }
 
-const pipelineConfig = [
-  { title: 'Planificación', statuses: ['Backlog', 'Pendiente', 'Planificacion', 'Planificación'], tone: 'bg-slate-100 text-slate-700' },
-  { title: 'En desarrollo', statuses: ['En desarrollo'], tone: 'bg-blue-50 text-blue-700' },
-  { title: 'MVP aprobado', statuses: ['En aprobacion', 'En aprobación', 'En revision', 'En revisión', 'MVP aprobado'], tone: 'bg-violet-50 text-violet-700' },
-  { title: 'Para testear', statuses: ['QA'], tone: 'bg-emerald-50 text-emerald-700' },
-]
 
 const projectStatusOrder = ['Planificación', 'En desarrollo', 'MVP aprobado', 'QA', 'En Producción', 'Pausado'] as const
 const seenCommitsStorageKey = 'organizacion-dia-seen-commits'
@@ -106,18 +89,6 @@ function normalizeProjectStatus(status: string) {
   return status
 }
 
-function projectPriorityCardClass(priority: string, isDark: boolean) {
-  if (priority === 'Alta' || priority === 'Critica') {
-    return isDark ? 'bg-red-950/45 hover:bg-red-950/55' : 'bg-red-100/80 hover:bg-red-100'
-  }
-
-  if (priority === 'Media') {
-    return isDark ? 'bg-sky-950/45 hover:bg-sky-950/55' : 'bg-sky-100/80 hover:bg-sky-100'
-  }
-
-  return isDark ? 'hover:bg-slate-800/60' : 'hover:bg-slate-50'
-}
-
 function formatCommitDate(value: string | null) {
   if (!value) return 'Sin fecha'
   return new Intl.DateTimeFormat('es-AR', {
@@ -128,16 +99,6 @@ function formatCommitDate(value: string | null) {
   }).format(new Date(value))
 }
 
-function firstName(value: JoinedTaskRow['projects']) {
-  if (!value) return null
-  return Array.isArray(value) ? value[0]?.name ?? null : value.name
-}
-
-function firstAssignee(task: JoinedTaskRow) {
-  const assignee = task.task_assignees?.[0]?.members
-  if (!assignee) return 'Sin responsable'
-  return Array.isArray(assignee) ? assignee[0]?.full_name ?? 'Sin responsable' : assignee.full_name
-}
 
 function MetricCard({
   icon,
@@ -242,7 +203,6 @@ export function DashboardView() {
   const { user, loading, authConfigured, signOut } = useAuth()
   const router = useRouter()
   const [projects, setProjects] = useState<DashboardProject[]>([])
-  const [pipeline, setPipeline] = useState<PipelineColumn[]>(pipelineConfig.map((column) => ({ title: column.title, tone: column.tone, tasks: [] })))
   const [searchQuery, setSearchQuery] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
@@ -305,16 +265,6 @@ export function DashboardView() {
             .order('estimated_delivery', { ascending: true })
         : projectQuery
 
-      const [{ data: joinedTaskRows }] = await Promise.all([
-        supabase
-          .from('tasks')
-          .select('title, status, projects(name), task_assignees(members(full_name))')
-          .eq('active', true)
-          .neq('status', 'Terminada')
-          .order('updated_at', { ascending: false })
-          .limit(20),
-      ])
-
       const nextProjects = ((projectRowsResult.data ?? []) as Partial<ProjectRow>[]).map((project) => {
         return {
           id: project.id,
@@ -330,21 +280,7 @@ export function DashboardView() {
         }
       })
 
-      const tasks = (joinedTaskRows ?? []) as JoinedTaskRow[]
-      const nextPipeline = pipelineConfig.map((column) => ({
-        title: column.title,
-        tone: column.tone,
-        tasks: tasks
-          .filter((task) => column.statuses.includes(task.status))
-          .map((task) => ({
-            title: task.title,
-            project: firstName(task.projects) ?? 'Sin proyecto',
-            owner: firstAssignee(task),
-          })),
-      }))
-
       setProjects(nextProjects)
-      setPipeline(nextPipeline)
     }
 
     fetchDashboard().catch((error) => {
@@ -390,7 +326,8 @@ export function DashboardView() {
           commitsByProject?: Record<string, ProjectCommitActivity[]>
         }
         if (!cancelled && payload.commitsByProject) {
-          setCommitsByProject(payload.commitsByProject)
+          const hasCommits = Object.values(payload.commitsByProject).some((commits) => commits.length > 0)
+          if (hasCommits) setCommitsByProject(payload.commitsByProject)
           setLastCommitSync(new Date().toISOString())
         }
       } catch {
@@ -439,26 +376,6 @@ export function DashboardView() {
   }, [projects])
 
   const normalizedSearch = searchQuery.trim().toLowerCase()
-  const filteredProjects = useMemo(() => {
-    if (!normalizedSearch) return projects
-    return projects.filter((project) =>
-      [project.name, project.area, project.stack, project.status, project.priority]
-        .join(' ')
-        .toLowerCase()
-        .includes(normalizedSearch)
-    )
-  }, [normalizedSearch, projects])
-
-  const filteredPipeline = useMemo(() => {
-    if (!normalizedSearch) return pipeline
-    return pipeline.map((column) => ({
-      ...column,
-      tasks: column.tasks.filter((task) =>
-        [task.title, task.project, task.owner, column.title].join(' ').toLowerCase().includes(normalizedSearch)
-      ),
-    }))
-  }, [normalizedSearch, pipeline])
-
   const recentProjectChanges = useMemo(() => {
     return projects
       .flatMap((project) =>
@@ -504,7 +421,6 @@ export function DashboardView() {
   const mutedSurfaceClass = isDark ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-[#fbfcfd]'
   const textStrongClass = isDark ? 'text-white' : 'text-slate-950'
   const textMutedClass = isDark ? 'text-slate-400' : 'text-slate-500'
-  const dividerClass = isDark ? 'border-slate-800' : 'border-slate-100'
 
   if (authConfigured && (loading || !user)) {
     return (
@@ -751,116 +667,6 @@ export function DashboardView() {
               />
             </section>
 
-
-            <section className="mt-5">
-              <div className={`rounded-lg border ${surfaceClass}`}>
-                <div className={`flex items-center justify-between border-b px-5 py-4 ${dividerClass}`}>
-                  <div>
-                    <h2 className={`font-semibold ${textStrongClass}`}>Proyectos principales</h2>
-                    <p className={`text-sm ${textMutedClass}`}>Estado, stack y avance general</p>
-                  </div>
-                  <Link href="/projects" className={`flex items-center gap-1 rounded-md border px-3 py-2 text-sm ${isDark ? 'border-slate-700 text-slate-300 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-                    {normalizedSearch ? `${filteredProjects.length} resultados` : 'Todos'}
-                    <ChevronDown className="h-4 w-4" />
-                  </Link>
-                </div>
-                <div className={`divide-y ${isDark ? 'divide-slate-800' : 'divide-slate-100'}`}>
-                  {filteredProjects.map((project) => {
-                    const projectHref = project.id ? `/projects?proyecto=${project.id}` : `/projects?buscar=${encodeURIComponent(project.name)}`
-                    const latestCommit = commitsByProject[project.id ?? project.name]?.[0]
-
-                    return (
-                    <article
-                      key={project.name}
-                      className={`cursor-pointer p-5 transition [content-visibility:auto] [contain-intrinsic-size:220px] ${projectPriorityCardClass(project.priority, isDark)}`}
-                      role="link"
-                      tabIndex={0}
-                      onClick={() => router.push(projectHref)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter') router.push(projectHref)
-                      }}
-                    >
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div>
-                          <h3 className={`font-semibold ${textStrongClass}`}>{project.name}</h3>
-                          <p className={`mt-1 text-sm ${textMutedClass}`}>
-                            {project.area} - {project.stack}
-                          </p>
-                          {(project.repositoryUrl || project.repositoryUrlSecondary) && (
-                            <div className="mt-2 grid max-w-xl gap-1.5">
-                              {[
-                                [project.repositoryUrl, 'Repo 1'],
-                                [project.repositoryUrlSecondary, 'Repo 2'],
-                              ].map(([url, label]) =>
-                                url ? (
-                                  <a key={label} className="block break-all text-xs font-semibold leading-5 text-[#0d8f62] hover:underline" href={url} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
-                                    <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>{label}: </span>
-                                    {url}
-                                  </a>
-                                ) : null,
-                              )}
-                            </div>
-                          )}
-                        </div>
-                        <span className="rounded-md bg-[#eef8ff] px-2 py-1 text-xs font-semibold text-[#1677a8]">{project.status}</span>
-                      </div>
-                      {latestCommit && (
-                        <div className={`mt-3 rounded-md border px-3 py-2 ${isDark ? 'border-slate-800 bg-slate-950/60' : 'border-slate-200 bg-white/75'}`}>
-                          <div className="flex items-center gap-2">
-                            <GitCommitHorizontal className={`h-3.5 w-3.5 ${isDark ? 'text-emerald-300' : 'text-[#0d8f62]'}`} />
-                            <p className={`line-clamp-1 text-xs font-semibold ${textStrongClass}`}>{latestCommit.message}</p>
-                          </div>
-                          <p className={`mt-1 text-[11px] ${textMutedClass}`}>
-                            {latestCommit.repoLabel} - {latestCommit.author} - {formatCommitDate(latestCommit.date)}
-                          </p>
-                        </div>
-                      )}
-                      <div className="mt-4">
-                        <div className="mb-1 flex justify-between text-xs text-slate-500">
-                          <span>{project.priority}</span>
-                          <span>{project.progress}%</span>
-                        </div>
-                        <div className="h-2 rounded-full bg-slate-100">
-                          <div className="h-2 rounded-full bg-[#10b981]" style={{ width: `${project.progress}%` }} />
-                        </div>
-                      </div>
-                    </article>
-                    )
-                  })}
-                  {filteredProjects.length === 0 && <p className={`p-5 text-sm ${textMutedClass}`}>No hay proyectos que coincidan con la busqueda.</p>}
-                </div>
-              </div>
-
-            </section>
-
-            <section className={`mt-5 rounded-lg border ${surfaceClass}`}>
-              <div className={`border-b px-5 py-4 ${dividerClass}`}>
-                <h2 className={`font-semibold ${textStrongClass}`}>Flujo de tareas</h2>
-                <p className={`text-sm ${textMutedClass}`}>Vista tipo embudo para seguir desarrollo, aprobacion y testing</p>
-              </div>
-              <div className="grid gap-4 p-5 lg:grid-cols-4">
-                {filteredPipeline.map((column) => (
-                  <div key={column.title} className={`rounded-lg border ${mutedSurfaceClass}`}>
-                    <div className={`flex items-center justify-between border-b p-3 ${dividerClass}`}>
-                      <span className={`rounded-md px-2 py-1 text-xs font-semibold ${column.tone}`}>{column.title}</span>
-                      <span className="text-xs font-semibold text-slate-400">{column.tasks.length}</span>
-                    </div>
-                    <div className="space-y-3 p-3">
-                      {column.tasks.map((task) => (
-                        <article key={`${column.title}-${task.title}`} className={`rounded-lg border p-3 shadow-sm ${surfaceClass}`}>
-                          <h3 className={`text-sm font-semibold ${textStrongClass}`}>{task.title}</h3>
-                          <p className={`mt-1 text-xs ${textMutedClass}`}>{task.project}</p>
-                          <div className="mt-3 flex items-center justify-between">
-                            <span className="text-xs text-slate-400">{task.owner}</span>
-                            <CheckCircle2 className="h-4 w-4 text-[#10b981]" />
-                          </div>
-                        </article>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
           </div>
         </section>
       </div>

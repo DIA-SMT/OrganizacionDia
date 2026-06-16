@@ -17,6 +17,10 @@ type GithubCommit = {
       name: string | null
       date: string | null
     } | null
+    committer?: {
+      name: string | null
+      date: string | null
+    } | null
   }
   author?: {
     login?: string
@@ -69,22 +73,32 @@ async function fetchRepoCommits(repoUrl: string | null | undefined, repoLabel: s
     : null
   const sinceParam = since ? `&since=${encodeURIComponent(since.toISOString())}` : ''
 
-  const response = await fetch(
-    `https://api.github.com/repos/${repo.owner}/${repo.repo}/commits?per_page=100${sinceParam}`,
-    {
-      headers,
-      cache: 'no-store',
-    },
-  )
+  const commits: GithubCommit[] = []
+  let page = 1
 
-  if (!response.ok) return []
+  while (true) {
+    const response = await fetch(
+      `https://api.github.com/repos/${repo.owner}/${repo.repo}/commits?per_page=100&page=${page}${sinceParam}`,
+      {
+        headers,
+        cache: 'no-store',
+      },
+    )
 
-  const commits = (await response.json()) as GithubCommit[]
+    if (!response.ok) break
+
+    const pageCommits = (await response.json()) as GithubCommit[]
+    commits.push(...pageCommits)
+
+    if (pageCommits.length < 100 || days) break
+    page += 1
+  }
+
   return commits.map((commit) => ({
     sha: commit.sha,
     message: firstCommitLine(commit.commit.message),
     author: commit.author?.login ?? commit.commit.author?.name ?? 'Sin autor',
-    date: commit.commit.author?.date ?? null,
+    date: commit.commit.author?.date ?? commit.commit.committer?.date ?? null,
     url: commit.html_url,
     repo: `${repo.owner}/${repo.repo}`,
     repoLabel,
@@ -115,7 +129,7 @@ export async function POST(request: Request) {
       )
         .flat()
         .sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime())
-        .slice(0, days ? 100 : 50)
+        .slice(0, 100)
 
       return [project.id, commits] as const
     }),

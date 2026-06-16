@@ -39,8 +39,8 @@ function statusTone(status: string, isDark: boolean) {
   if (status === 'QA') return isDark ? 'border-sky-900/60 bg-sky-950/40 text-sky-300' : 'border-sky-200 bg-sky-50 text-sky-700'
   if (status === 'MVP aprobado') return isDark ? 'border-violet-900/60 bg-violet-950/40 text-violet-300' : 'border-violet-200 bg-violet-50 text-violet-700'
   if (status === 'En Producción') return isDark ? 'border-emerald-900/60 bg-emerald-950/40 text-emerald-300' : 'border-emerald-200 bg-emerald-50 text-emerald-700'
-  if (status === 'En desarrollo') return isDark ? 'border-blue-900/60 bg-blue-950/40 text-blue-300' : 'border-blue-200 bg-blue-50 text-blue-700'
-  return isDark ? 'border-amber-900/60 bg-amber-950/40 text-amber-300' : 'border-amber-200 bg-amber-50 text-amber-700'
+  if (status === 'En desarrollo') return isDark ? 'border-yellow-800/70 bg-yellow-400/15 text-yellow-200' : 'border-yellow-300 bg-yellow-100 text-yellow-800'
+  return isDark ? 'border-slate-700 bg-white text-slate-900' : 'border-slate-200 bg-white text-slate-700'
 }
 
 function projectPriorityCardClass(priority: string, isDark: boolean) {
@@ -116,7 +116,7 @@ function StatusDropdown({
       </button>
 
       {open && (
-        <div className={`absolute right-0 z-20 mt-2 w-56 overflow-hidden rounded-lg border p-1.5 shadow-xl shadow-slate-900/10 ${isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-200 bg-white'}`}>
+        <div className={`absolute left-0 z-20 mt-2 w-[min(18rem,calc(100vw-2rem))] overflow-hidden rounded-lg border p-1.5 shadow-xl shadow-slate-900/10 ${isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-200 bg-white'}`}>
           {projectStatuses.map((status) => (
             <button
               key={status}
@@ -508,10 +508,10 @@ export function ProjectsScreen({
                         : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
                   onClick={() => setSelectedProjectEditing((current) => !current)}
-                  title={selectedProjectEditing ? 'Terminar edicion' : 'Editar proyecto'}
+                  title={selectedProjectEditing ? 'Guardar cambios' : 'Editar proyecto'}
                 >
                   <Pencil className="h-4 w-4" />
-                  {selectedProjectEditing ? 'Editando' : 'Editar'}
+                  {selectedProjectEditing ? 'Guardar' : 'Editar'}
                 </button>
                 <button
                   type="button"
