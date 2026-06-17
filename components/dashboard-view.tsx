@@ -16,7 +16,9 @@ import {
   History,
   LayoutDashboard,
   LogOut,
+  Menu,
   Moon,
+  PanelLeftClose,
   Search,
   Settings,
   Sun,
@@ -137,6 +139,23 @@ function MetricCard({
   )
 }
 
+function SidebarItem({ icon, label, href, active, collapsed, isDark }: { icon: React.ReactNode; label: string; href: string; active?: boolean; collapsed?: boolean; isDark: boolean }) {
+  const activeClass = isDark ? 'bg-emerald-500/15 text-emerald-300' : 'bg-[#e9f8f1] text-[#08784f]'
+  const idleClass = isDark ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-100' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+
+  return (
+    <Link
+      href={href}
+      className={`flex w-full items-center rounded-lg py-2 text-sm font-medium transition ${collapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${active ? activeClass : idleClass}`}
+      title={collapsed ? label : undefined}
+      aria-label={label}
+    >
+      {icon}
+      {!collapsed && label}
+    </Link>
+  )
+}
+
 export function DashboardView() {
   const { user, loading, authConfigured, signOut } = useAuth()
   const router = useRouter()
@@ -144,6 +163,7 @@ export function DashboardView() {
   const [searchQuery, setSearchQuery] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [commitsByProject, setCommitsByProject] = useState<Record<string, ProjectCommitActivity[]>>({})
   const [seenCommitIds, setSeenCommitIds] = useState<string[]>([])
   const [lastCommitSync, setLastCommitSync] = useState<string | null>(null)
@@ -152,6 +172,7 @@ export function DashboardView() {
     const timer = window.setTimeout(() => {
       const savedTheme = window.localStorage.getItem('organizacion-dia-theme')
       if (savedTheme === 'dark' || savedTheme === 'light') setTheme(savedTheme)
+      setSidebarCollapsed(window.localStorage.getItem('organizacion-dia-sidebar-collapsed') === 'true')
       const savedSeenCommitIds = window.localStorage.getItem(seenCommitsStorageKey)
       if (savedSeenCommitIds) setSeenCommitIds(JSON.parse(savedSeenCommitIds) as string[])
     }, 0)
@@ -163,6 +184,14 @@ export function DashboardView() {
     setTheme((current) => {
       const next = current === 'dark' ? 'light' : 'dark'
       window.localStorage.setItem('organizacion-dia-theme', next)
+      return next
+    })
+  }
+
+  function toggleSidebar() {
+    setSidebarCollapsed((current) => {
+      const next = !current
+      window.localStorage.setItem('organizacion-dia-sidebar-collapsed', String(next))
       return next
     })
   }
@@ -363,48 +392,53 @@ export function DashboardView() {
   return (
     <main className={`relative isolate min-h-screen overflow-hidden transition-colors ${shellClass}`}>
       <CursorAiBackground isDark={isDark} />
-      <div className="relative z-10 flex min-h-screen flex-col">
-          <header className={`border-b backdrop-blur ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-[#fbfcfd]/90'}`}>
-            <div className="flex flex-col gap-3 px-4 py-3 xl:flex-row xl:items-center xl:justify-between">
-              <div className="flex min-w-0 flex-wrap items-center gap-3">
-                <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex aspect-square h-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#061e3d] ring-1 ring-white/10">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img className="h-full w-full object-cover" src="/logo-dia.png" alt="DIA" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className={`text-sm font-bold ${textStrongClass}`}>DIA</p>
-                    <p className="max-w-[11rem] truncate text-xs leading-tight text-slate-400">Direccion de Inteligencia Artificial</p>
-                  </div>
-                </div>
-
-                <nav className="flex max-w-full gap-1 overflow-x-auto rounded-lg p-1 [scrollbar-width:none]">
-                  {[
-                    { href: '/', label: 'Dashboard', icon: <LayoutDashboard className="h-4 w-4 shrink-0" /> },
-                    { href: '/projects', label: 'Proyectos', icon: <Code2 className="h-4 w-4 shrink-0" /> },
-                    { href: '/tasks', label: 'Tareas', icon: <GitPullRequest className="h-4 w-4 shrink-0" /> },
-                    { href: '/team', label: 'Equipo', icon: <Users className="h-4 w-4 shrink-0" /> },
-                    { href: '/commit-history', label: 'Historial', icon: <History className="h-4 w-4 shrink-0" /> },
-                    { href: '/papelera', label: 'Papelera', icon: <Trash2 className="h-4 w-4 shrink-0" /> },
-                  ].map((item) => (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className={`flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium transition ${
-                        item.href === '/' ? (isDark ? 'bg-emerald-500/15 text-emerald-300' : 'bg-[#e9f8f1] text-[#08784f]') : isDark ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-100' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
-                      }`}
-                    >
-                      {item.icon}
-                      {item.label}
-                    </Link>
-                  ))}
-                </nav>
+      <div className="relative z-10 flex min-h-screen">
+        <aside className={`sticky top-0 flex h-screen shrink-0 flex-col border-r px-3 py-4 transition-[width] duration-200 ${sidebarCollapsed ? 'w-16' : 'w-56'} ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-[#fbfcfd]/95'}`}>
+          <div className={`mb-6 rounded-xl border p-2 ${sidebarCollapsed ? 'flex justify-center' : 'flex items-center justify-between gap-2'} ${isDark ? 'border-slate-800 bg-slate-950/40' : 'border-slate-200 bg-white/70'}`}>
+            <div className={`flex min-w-0 items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'}`}>
+              <div className="flex aspect-square h-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#061e3d] ring-1 ring-white/10">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img className="h-full w-full object-cover" src="/logo-dia.png" alt="DIA" />
               </div>
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <label className={`flex h-10 min-w-[12rem] flex-1 items-center gap-2 rounded-md border px-3 text-sm sm:min-w-[18rem] ${isDark ? 'border-slate-700 bg-slate-950 text-slate-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
+              {!sidebarCollapsed && (
+                <div className="min-w-0">
+                  <p className={`text-sm font-bold ${textStrongClass}`}>DIA</p>
+                  <p className="text-xs leading-tight text-slate-400">Direccion de Inteligencia Artificial</p>
+                </div>
+              )}
+            </div>
+            <button
+              className={`flex h-8 w-8 items-center justify-center rounded-md border transition ${sidebarCollapsed ? 'absolute left-[50px] top-5 shadow-sm' : ''} ${isDark ? 'border-slate-700 bg-slate-950 text-slate-300 hover:bg-slate-800' : 'border-slate-200 bg-[#fbfcfd] text-slate-500 hover:bg-slate-50'}`}
+              onClick={toggleSidebar}
+              title={sidebarCollapsed ? 'Desplegar menu' : 'Plegar menu'}
+              aria-label={sidebarCollapsed ? 'Desplegar menu' : 'Plegar menu'}
+            >
+              {sidebarCollapsed ? <Menu className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            </button>
+          </div>
+
+          <nav className="space-y-1">
+            <SidebarItem icon={<LayoutDashboard className="h-4 w-4 shrink-0" />} label="Dashboard" href="/" active collapsed={sidebarCollapsed} isDark={isDark} />
+            <SidebarItem icon={<Code2 className="h-4 w-4 shrink-0" />} label="Proyectos" href="/projects" collapsed={sidebarCollapsed} isDark={isDark} />
+            <SidebarItem icon={<GitPullRequest className="h-4 w-4 shrink-0" />} label="Tareas" href="/tasks" collapsed={sidebarCollapsed} isDark={isDark} />
+            <SidebarItem icon={<Users className="h-4 w-4 shrink-0" />} label="Equipo" href="/team" collapsed={sidebarCollapsed} isDark={isDark} />
+            <SidebarItem icon={<History className="h-4 w-4 shrink-0" />} label="Historial" href="/commit-history" collapsed={sidebarCollapsed} isDark={isDark} />
+            <SidebarItem icon={<Trash2 className="h-4 w-4 shrink-0" />} label="Papelera" href="/papelera" collapsed={sidebarCollapsed} isDark={isDark} />
+          </nav>
+        </aside>
+
+        <section className="flex min-w-0 flex-1 flex-col">
+          <header className={`border-b backdrop-blur ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-[#fbfcfd]/90'}`}>
+            <div className="flex items-center justify-between gap-4 px-5 py-4">
+              <div>
+                <h1 className={`text-xl font-bold ${textStrongClass}`}>Gestion de proyectos</h1>
+                <p className={`text-sm ${textMutedClass}`}>Seguimiento operativo del equipo interno DIA</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className={`hidden h-10 items-center gap-2 rounded-md border px-3 text-sm md:flex ${isDark ? 'border-slate-700 bg-slate-950 text-slate-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
                   <Search className="h-4 w-4" />
                   <input
-                    className="w-full bg-transparent outline-none placeholder:text-inherit"
+                    className="w-56 bg-transparent outline-none placeholder:text-inherit"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Buscar proyecto o tarea"
@@ -435,13 +469,19 @@ export function DashboardView() {
                 </button>
               </div>
             </div>
-            <div className="px-4 pb-3">
-              <h1 className={`truncate text-xl font-bold ${textStrongClass}`}>Gestion de proyectos</h1>
-              <p className={`truncate text-sm ${textMutedClass}`}>Seguimiento operativo del equipo interno DIA</p>
-            </div>
           </header>
 
           <div className="flex-1 px-5 py-5">
+            <label className={`mb-4 flex h-10 items-center gap-2 rounded-md border px-3 text-sm md:hidden ${isDark ? 'border-slate-700 bg-slate-900 text-slate-400' : 'border-slate-200 bg-white text-slate-500'}`}>
+              <Search className="h-4 w-4" />
+              <input
+                className="w-full bg-transparent outline-none placeholder:text-inherit"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Buscar proyecto o tarea"
+              />
+            </label>
+
             <section className={`mb-5 rounded-lg border p-5 ${surfaceClass}`}>
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
@@ -570,6 +610,7 @@ export function DashboardView() {
             </section>
 
           </div>
+        </section>
       </div>
 
       {settingsOpen && (
