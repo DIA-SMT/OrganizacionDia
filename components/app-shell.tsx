@@ -2,7 +2,7 @@
 
 import { useAuth } from '@/context/AuthContext'
 import { CursorAiBackground } from '@/components/cursor-ai-background'
-import { Bell, Code2, GitPullRequest, History, LayoutDashboard, LogOut, Menu, PanelLeftClose, Search, Settings, Sun, Moon, Trash2, Users } from 'lucide-react'
+import { Code2, GitPullRequest, History, LayoutDashboard, LogOut, Menu, PanelLeftClose, Search, Settings, Sun, Moon, Trash2, Users } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
@@ -83,10 +83,10 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
     <main className={`relative isolate min-h-screen overflow-hidden transition-colors ${shellClass}`}>
       <CursorAiBackground isDark={isDark} />
       <div className="relative z-10 flex min-h-screen">
-        <aside className={`relative hidden border-r px-3 py-4 transition-[width] duration-200 lg:block ${sidebarCollapsed ? 'w-16' : 'w-52'} ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-[#fbfcfd]/95'}`}>
-          <div className={`mb-7 flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between gap-2 px-1'}`}>
+        <aside className={`sticky top-0 flex h-screen shrink-0 flex-col border-r px-3 py-4 transition-[width] duration-200 ${sidebarCollapsed ? 'w-16' : 'w-56'} ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-[#fbfcfd]/95'}`}>
+          <div className={`mb-6 rounded-xl border p-2 ${sidebarCollapsed ? 'flex justify-center' : 'flex items-center justify-between gap-2'} ${isDark ? 'border-slate-800 bg-slate-950/40' : 'border-slate-200 bg-white/70'}`}>
             <div className={`flex min-w-0 items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'}`}>
-            <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-[#061e3d] ring-1 ring-white/10">
+            <div className="flex aspect-square h-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#061e3d] ring-1 ring-white/10">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img className="h-full w-full object-cover" src="/logo-dia.png" alt="DIA" />
             </div>
@@ -107,7 +107,7 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
             </button>
           </div>
 
-          <nav className="space-y-0.5">
+          <nav className="space-y-1">
             {navItems.map((item) => {
               const Icon = item.icon
               const active = pathname === item.href
@@ -118,7 +118,7 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex w-full items-center rounded-md py-1.5 text-sm font-medium transition ${sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${active ? activeClass : idleClass}`}
+                  className={`flex w-full items-center rounded-lg py-2 text-sm font-medium transition ${sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${active ? activeClass : idleClass}`}
                   title={sidebarCollapsed ? item.label : undefined}
                   aria-label={item.label}
                 >
@@ -153,9 +153,6 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
                     Salir
                   </button>
                 )}
-                <button className={`flex h-10 w-10 items-center justify-center rounded-md border ${isDark ? 'border-slate-700 bg-slate-950 text-slate-300' : 'border-slate-200 bg-white text-slate-500'}`}>
-                  <Bell className="h-4 w-4" />
-                </button>
                 <button className={`flex h-10 w-10 items-center justify-center rounded-md border ${isDark ? 'border-slate-700 bg-slate-950 text-slate-300' : 'border-slate-200 bg-white text-slate-500'}`} onClick={() => setSettingsOpen(true)}>
                   <Settings className="h-4 w-4" />
                 </button>

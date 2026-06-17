@@ -7,7 +7,6 @@ import { type DashboardProject } from '@/lib/dashboard-data'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
-  Bell,
   Check,
   CircleDot,
   Code2,
@@ -23,7 +22,6 @@ import {
   Search,
   Settings,
   Sun,
-  TrendingUp,
   Rocket,
   Trash2,
   Users,
@@ -106,8 +104,6 @@ function MetricCard({
   value,
   hint,
   accent,
-  progress,
-  series,
   isDark,
   href,
 }: {
@@ -116,15 +112,9 @@ function MetricCard({
   value: string
   hint: string
   accent: string
-  progress: number
-  series: number[]
   isDark: boolean
   href: string
 }) {
-  const clampedProgress = Math.max(0, Math.min(progress, 100))
-  const circumference = 2 * Math.PI * 21
-  const dashOffset = circumference - (clampedProgress / 100) * circumference
-
   return (
     <Link
       href={href}
@@ -139,57 +129,24 @@ function MetricCard({
             <div className={`flex h-8 w-8 items-center justify-center rounded-md ${accent} text-white`}>{icon}</div>
             <p className="text-xs font-semibold uppercase text-slate-400">{label}</p>
           </div>
-          <div className="mt-4 flex items-end gap-2">
+          <div className="mt-4">
             <p className={`text-4xl font-bold leading-none ${isDark ? 'text-white' : 'text-slate-950'}`}>{value}</p>
-            <div className="mb-1 flex items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-1 text-[11px] font-semibold text-emerald-700">
-              <TrendingUp className="h-3 w-3" />
-              {clampedProgress}%
-            </div>
           </div>
           <p className={`mt-2 text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{hint}</p>
         </div>
-
-        <div className="relative h-16 w-16 shrink-0">
-          <svg className="h-16 w-16 -rotate-90" viewBox="0 0 52 52" aria-hidden="true">
-            <circle cx="26" cy="26" r="21" fill="none" stroke={isDark ? '#334155' : '#e2e8f0'} strokeWidth="6" />
-            <circle
-              cx="26"
-              cy="26"
-              r="21"
-              fill="none"
-              stroke="currentColor"
-              strokeLinecap="round"
-              strokeWidth="6"
-              strokeDasharray={circumference}
-              strokeDashoffset={dashOffset}
-              className="text-[#10b981] transition-all duration-700"
-            />
-          </svg>
-          <span className={`absolute inset-0 flex items-center justify-center text-xs font-bold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>{clampedProgress}</span>
-        </div>
-      </div>
-
-      <div className="mt-4 flex h-10 items-end gap-1">
-        {series.map((height, index) => (
-          <div key={`${label}-${index}`} className={`flex-1 rounded-t-sm ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
-            <div
-              className={`rounded-t-sm ${accent} transition-all duration-500 group-hover:opacity-90`}
-              style={{ height: `${Math.max(12, Math.min(height, 100))}%` }}
-            />
-          </div>
-        ))}
       </div>
     </Link>
   )
 }
 
-function SidebarItem({ icon, label, href, active, collapsed }: { icon: React.ReactNode; label: string; href: string; active?: boolean; collapsed?: boolean }) {
+function SidebarItem({ icon, label, href, active, collapsed, isDark }: { icon: React.ReactNode; label: string; href: string; active?: boolean; collapsed?: boolean; isDark: boolean }) {
+  const activeClass = isDark ? 'bg-emerald-500/15 text-emerald-300' : 'bg-[#e9f8f1] text-[#08784f]'
+  const idleClass = isDark ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-100' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+
   return (
     <Link
       href={href}
-      className={`flex w-full items-center rounded-md py-1.5 text-sm font-medium transition ${collapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${
-        active ? 'bg-[#e9f8f1] text-[#08784f]' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
-      }`}
+      className={`flex w-full items-center rounded-lg py-2 text-sm font-medium transition ${collapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${active ? activeClass : idleClass}`}
       title={collapsed ? label : undefined}
       aria-label={label}
     >
@@ -436,10 +393,10 @@ export function DashboardView() {
     <main className={`relative isolate min-h-screen overflow-hidden transition-colors ${shellClass}`}>
       <CursorAiBackground isDark={isDark} />
       <div className="relative z-10 flex min-h-screen">
-        <aside className={`relative hidden border-r px-3 py-4 transition-[width] duration-200 lg:block ${sidebarCollapsed ? 'w-16' : 'w-52'} ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-[#fbfcfd]/95'}`}>
-          <div className={`mb-7 flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between gap-2 px-1'}`}>
+        <aside className={`sticky top-0 flex h-screen shrink-0 flex-col border-r px-3 py-4 transition-[width] duration-200 ${sidebarCollapsed ? 'w-16' : 'w-56'} ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-[#fbfcfd]/95'}`}>
+          <div className={`mb-6 rounded-xl border p-2 ${sidebarCollapsed ? 'flex justify-center' : 'flex items-center justify-between gap-2'} ${isDark ? 'border-slate-800 bg-slate-950/40' : 'border-slate-200 bg-white/70'}`}>
             <div className={`flex min-w-0 items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'}`}>
-              <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-[#061e3d] ring-1 ring-white/10">
+              <div className="flex aspect-square h-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#061e3d] ring-1 ring-white/10">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img className="h-full w-full object-cover" src="/logo-dia.png" alt="DIA" />
               </div>
@@ -460,13 +417,13 @@ export function DashboardView() {
             </button>
           </div>
 
-          <nav className="space-y-0.5">
-            <SidebarItem icon={<LayoutDashboard className="h-4 w-4 shrink-0" />} label="Dashboard" href="/" active collapsed={sidebarCollapsed} />
-            <SidebarItem icon={<Code2 className="h-4 w-4 shrink-0" />} label="Proyectos" href="/projects" collapsed={sidebarCollapsed} />
-            <SidebarItem icon={<GitPullRequest className="h-4 w-4 shrink-0" />} label="Tareas" href="/tasks" collapsed={sidebarCollapsed} />
-            <SidebarItem icon={<Users className="h-4 w-4 shrink-0" />} label="Equipo" href="/team" collapsed={sidebarCollapsed} />
-            <SidebarItem icon={<History className="h-4 w-4 shrink-0" />} label="Historial" href="/commit-history" collapsed={sidebarCollapsed} />
-            <SidebarItem icon={<Trash2 className="h-4 w-4 shrink-0" />} label="Papelera" href="/papelera" collapsed={sidebarCollapsed} />
+          <nav className="space-y-1">
+            <SidebarItem icon={<LayoutDashboard className="h-4 w-4 shrink-0" />} label="Dashboard" href="/" active collapsed={sidebarCollapsed} isDark={isDark} />
+            <SidebarItem icon={<Code2 className="h-4 w-4 shrink-0" />} label="Proyectos" href="/projects" collapsed={sidebarCollapsed} isDark={isDark} />
+            <SidebarItem icon={<GitPullRequest className="h-4 w-4 shrink-0" />} label="Tareas" href="/tasks" collapsed={sidebarCollapsed} isDark={isDark} />
+            <SidebarItem icon={<Users className="h-4 w-4 shrink-0" />} label="Equipo" href="/team" collapsed={sidebarCollapsed} isDark={isDark} />
+            <SidebarItem icon={<History className="h-4 w-4 shrink-0" />} label="Historial" href="/commit-history" collapsed={sidebarCollapsed} isDark={isDark} />
+            <SidebarItem icon={<Trash2 className="h-4 w-4 shrink-0" />} label="Papelera" href="/papelera" collapsed={sidebarCollapsed} isDark={isDark} />
           </nav>
         </aside>
 
@@ -503,9 +460,6 @@ export function DashboardView() {
                     Salir
                   </button>
                 )}
-                <button className={`flex h-10 w-10 items-center justify-center rounded-md border ${isDark ? 'border-slate-700 bg-slate-950 text-slate-300' : 'border-slate-200 bg-white text-slate-500'}`}>
-                  <Bell className="h-4 w-4" />
-                </button>
                 <button
                   className={`flex h-10 w-10 items-center justify-center rounded-md border ${isDark ? 'border-slate-700 bg-slate-950 text-slate-300' : 'border-slate-200 bg-white text-slate-500'}`}
                   onClick={() => setSettingsOpen(true)}
@@ -605,8 +559,6 @@ export function DashboardView() {
                 value={String(metrics.totalProjects)}
                 hint="Activos en el dashboard"
                 accent="bg-[#10b981]"
-                progress={Math.min(metrics.totalProjects * 12, 96)}
-                series={[34, 56, 48, 72, 62, 86, 74]}
                 isDark={isDark}
                 href="/projects?estado=Todos"
               />
@@ -616,8 +568,6 @@ export function DashboardView() {
                 value={String(metrics.developmentCount)}
                 hint="Construccion activa"
                 accent="bg-blue-500"
-                progress={Math.min(metrics.developmentCount * 24, 96)}
-                series={[24, 42, 58, 54, 72, 68, 84]}
                 isDark={isDark}
                 href="/projects?estado=En%20desarrollo"
               />
@@ -627,8 +577,6 @@ export function DashboardView() {
                 value={String(metrics.approvalCount)}
                 hint="Esperando revision interna"
                 accent="bg-violet-500"
-                progress={Math.min(metrics.approvalCount * 35, 100)}
-                series={[22, 34, 58, 46, 64, 38, 52]}
                 isDark={isDark}
                 href="/projects?estado=MVP%20aprobado"
               />
@@ -638,8 +586,6 @@ export function DashboardView() {
                 value={String(metrics.testingCount)}
                 hint="Listo para QA"
                 accent="bg-sky-500"
-                progress={Math.min(metrics.testingCount * 40, 100)}
-                series={[18, 28, 36, 52, 44, 68, 58]}
                 isDark={isDark}
                 href="/projects?estado=QA"
               />
@@ -649,8 +595,6 @@ export function DashboardView() {
                 value={String(metrics.productionCount)}
                 hint="Finalizados y online"
                 accent="bg-emerald-600"
-                progress={Math.min(metrics.productionCount * 30, 100)}
-                series={[30, 46, 52, 64, 58, 76, 82]}
                 isDark={isDark}
                 href="/projects?estado=En%20Producci%C3%B3n"
               />
@@ -660,8 +604,6 @@ export function DashboardView() {
                 value={String(metrics.pausedCount)}
                 hint="Detenidos temporalmente"
                 accent="bg-red-500"
-                progress={Math.min(metrics.pausedCount * 30, 100)}
-                series={[28, 36, 30, 44, 38, 52, 46]}
                 isDark={isDark}
                 href="/projects?estado=Pausado"
               />
