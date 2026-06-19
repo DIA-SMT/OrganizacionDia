@@ -1,9 +1,8 @@
 'use client'
 
-import { getSupabaseBrowserClient } from '@/lib/supabase'
 import { Bot, ExternalLink, MessageCircle, Search, Send, X } from 'lucide-react'
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+import { useState } from 'react'
 
 type AssistantProject = {
   id: string
@@ -26,175 +25,39 @@ type AssistantMessage = {
   projects?: AssistantProject[]
 }
 
-type OpenRouterAssistantResponse = {
-  answer?: string
+type AssistantResponse = {
+  text?: string
   error?: string
   projects?: AssistantProject[]
-}
-
-const statusFilters = [
-  { keywords: ['planificacion', 'planificación'], status: 'Planificación' },
-  { keywords: ['desarrollo', 'dev'], status: 'En desarrollo' },
-  { keywords: ['mvp', 'aprobado'], status: 'MVP aprobado' },
-  { keywords: ['qa', 'testing', 'testeo'], status: 'QA' },
-  { keywords: ['produccion', 'producción', 'finalizado', 'finalizados'], status: 'En Producción' },
-  { keywords: ['pausado', 'pausados'], status: 'Pausado' },
-]
-
-const priorityFilters = ['Baja', 'Media', 'Alta', 'Critica']
-
-function normalize(value: string) {
-  return value
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-}
-
-function projectText(project: AssistantProject) {
-  return [
-    project.name,
-    project.description,
-    project.requester_area,
-    project.stack,
-    project.status,
-    project.priority,
-    project.note,
-    project.repository_url,
-    project.repository_url_secondary,
-  ]
-    .filter(Boolean)
-    .join(' ')
-}
-
-function buildAnswer(question: string, projects: AssistantProject[]) {
-  const normalizedQuestion = normalize(question)
-  const statusFilter = statusFilters.find((item) => item.keywords.some((keyword) => normalizedQuestion.includes(normalize(keyword))))
-  const priorityFilter = priorityFilters.find((priority) => normalizedQuestion.includes(normalize(priority)))
-
-  let matches = projects
-
-  if (statusFilter) matches = matches.filter((project) => project.status === statusFilter.status)
-  if (priorityFilter) matches = matches.filter((project) => project.priority === priorityFilter)
-
-  if (!statusFilter && !priorityFilter) {
-    const stopWords = new Set(['proyecto', 'proyectos', 'estado', 'como', 'esta', 'estan', 'cual', 'cuales', 'hay', 'del', 'de', 'la', 'el', 'los', 'las', 'sobre'])
-    const terms = normalizedQuestion
-      .split(/\s+/)
-      .map((term) => term.trim())
-      .filter((term) => term.length > 2 && !stopWords.has(term))
-
-    if (terms.length > 0) {
-      matches = matches.filter((project) => {
-        const text = normalize(projectText(project))
-        return terms.some((term) => text.includes(term))
-      })
-    }
-  }
-
-  const limitedMatches = matches.slice(0, 6)
-
-  if (matches.length === 0) {
-    return {
-      text: 'No encontre proyectos que coincidan con esa consulta. Proba preguntando por nombre, estado, prioridad o area.',
-      projects: [],
-    }
-  }
-
-  if (statusFilter) {
-    return {
-      text: `En estado ${statusFilter.status} encontre ${matches.length} proyecto${matches.length === 1 ? '' : 's'}.`,
-      projects: limitedMatches,
-    }
-  }
-
-  if (priorityFilter) {
-    return {
-      text: `Con prioridad ${priorityFilter} encontre ${matches.length} proyecto${matches.length === 1 ? '' : 's'}.`,
-      projects: limitedMatches,
-    }
-  }
-
-  return {
-    text: `Encontre ${matches.length} proyecto${matches.length === 1 ? '' : 's'} relacionado${matches.length === 1 ? '' : 's'} con tu consulta.`,
-    projects: limitedMatches,
-  }
+  totalProjects?: number
 }
 
 export function VirtualAssistant() {
   const [open, setOpen] = useState(false)
   const [question, setQuestion] = useState('')
-  const [projects, setProjects] = useState<AssistantProject[]>([])
-  const [loading, setLoading] = useState(false)
   const [thinking, setThinking] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [projectCount, setProjectCount] = useState<number | null>(null)
   const [messages, setMessages] = useState<AssistantMessage[]>([
     {
       role: 'assistant',
-      text: 'Hola, soy el asistente DIA. Preguntame por proyectos, estados, prioridad o entregas.',
+      text: 'Hola, soy el asistente DIA. Preguntame por proyectos, tareas, prioridades, entregas o estados.',
     },
   ])
 
-  const projectCount = useMemo(() => projects.length, [projects])
-
-  useEffect(() => {
-    if (!open || projects.length > 0 || loading) return
-
-    async function fetchProjects() {
-      const supabase = getSupabaseBrowserClient()
-      if (!supabase) {
-        setError('Supabase no esta configurado.')
-        return
-      }
-
-      setLoading(true)
-      const { data, error: projectsError } = await supabase
-        .from('projects')
-        .select('id, name, description, requester_area, stack, status, priority, progress, estimated_delivery, note, repository_url, repository_url_secondary')
-        .eq('active', true)
-        .order('name', { ascending: true })
-
-      if (projectsError) {
-        const { data: fallbackData, error: fallbackError } = await supabase
-          .from('projects')
-          .select('id, name, description, requester_area, stack, status, priority, progress, estimated_delivery, repository_url')
-          .eq('active', true)
-          .order('name', { ascending: true })
-
-        if (fallbackError) {
-          setError(fallbackError.message)
-        } else {
-          setProjects(((fallbackData ?? []) as Omit<AssistantProject, 'note' | 'repository_url_secondary'>[]).map((project) => ({ ...project, note: null, repository_url_secondary: null })))
-        }
-      } else {
-        setProjects((data ?? []) as AssistantProject[])
-      }
-
-      setLoading(false)
-    }
-
-    fetchProjects()
-  }, [loading, open, projects.length])
-
-  async function getOpenRouterAnswer(questionText: string) {
-    const response = await fetch('/api/assistant/openrouter', {
+  async function getAssistantAnswer(questionText: string) {
+    const response = await fetch('/api/assistant/query', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        question: questionText,
-        projects,
-      }),
+      body: JSON.stringify({ question: questionText }),
     })
 
-    const payload = (await response.json()) as OpenRouterAssistantResponse
-
-    if (!response.ok || !payload.answer) {
-      throw new Error(payload.error ?? 'OpenRouter no pudo responder.')
+    const payload = (await response.json()) as AssistantResponse
+    if (!response.ok || !payload.text) {
+      throw new Error(payload.error ?? 'El asistente DIA no pudo responder.')
     }
 
-    return {
-      answer: payload.answer,
-      projects: payload.projects ?? [],
-    }
+    return payload
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -203,22 +66,30 @@ export function VirtualAssistant() {
     if (!trimmedQuestion || thinking) return
 
     setQuestion('')
-    const answer = buildAnswer(trimmedQuestion, projects)
-    setMessages((current) => [
-      ...current,
-      { role: 'user', text: trimmedQuestion },
-    ])
-
+    setMessages((current) => [...current, { role: 'user', text: trimmedQuestion }])
     setThinking(true)
     setError(null)
 
     try {
-      const aiResponse = await getOpenRouterAnswer(trimmedQuestion)
-      setMessages((current) => [...current, { role: 'assistant', text: aiResponse.answer, projects: aiResponse.projects.length > 0 ? aiResponse.projects : answer.projects }])
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'No se pudo conectar con OpenRouter.'
-      setError(`${message} Respondo con el modo local.`)
-      setMessages((current) => [...current, { role: 'assistant', text: answer.text, projects: answer.projects }])
+      const assistantResponse = await getAssistantAnswer(trimmedQuestion)
+      if (typeof assistantResponse.totalProjects === 'number') {
+        setProjectCount(assistantResponse.totalProjects)
+      }
+      setMessages((current) => [
+        ...current,
+        {
+          role: 'assistant',
+          text: assistantResponse.text ?? 'No pude responder esa consulta.',
+          projects: assistantResponse.projects,
+        },
+      ])
+    } catch (caughtError) {
+      const message = caughtError instanceof Error ? caughtError.message : 'No se pudo consultar el motor DIA.'
+      setError(message)
+      setMessages((current) => [
+        ...current,
+        { role: 'assistant', text: 'No pude completar la consulta. Intentá nuevamente.' },
+      ])
     } finally {
       setThinking(false)
     }
@@ -244,19 +115,43 @@ export function VirtualAssistant() {
               </div>
               <div>
                 <p className="text-sm font-bold text-slate-950">Asistente DIA</p>
-                <p className="text-xs text-slate-500">{thinking ? 'Consultando OpenRouter...' : loading ? 'Cargando proyectos...' : `${projectCount} proyectos conectados`}</p>
+                <p className="text-xs text-slate-500">
+                  {thinking
+                    ? 'Consultando motor DIA...'
+                    : projectCount === null
+                      ? 'Motor interno conectado'
+                      : `${projectCount} proyectos conectados`}
+                </p>
               </div>
             </div>
-            <button type="button" className="rounded-md p-2 text-slate-500 hover:bg-slate-100" onClick={() => setOpen(false)} title="Cerrar asistente">
+            <button
+              type="button"
+              className="rounded-md p-2 text-slate-500 hover:bg-slate-100"
+              onClick={() => setOpen(false)}
+              title="Cerrar asistente"
+            >
               <X className="h-4 w-4" />
             </button>
           </header>
 
           <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 px-4 py-4">
-            {error && <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{error}</div>}
+            {error && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                {error}
+              </div>
+            )}
             {messages.map((message, index) => (
-              <div key={`${message.role}-${index}`} className={message.role === 'user' ? 'ml-auto max-w-[86%]' : 'mr-auto max-w-[92%]'}>
-                <div className={`rounded-lg px-3 py-2 text-sm leading-6 ${message.role === 'user' ? 'bg-[#10b981] text-white' : 'border border-slate-200 bg-white text-slate-700'}`}>
+              <div
+                key={`${message.role}-${index}`}
+                className={message.role === 'user' ? 'ml-auto max-w-[86%]' : 'mr-auto max-w-[92%]'}
+              >
+                <div
+                  className={`rounded-lg px-3 py-2 text-sm leading-6 ${
+                    message.role === 'user'
+                      ? 'bg-[#10b981] text-white'
+                      : 'border border-slate-200 bg-white text-slate-700'
+                  }`}
+                >
                   {message.text}
                 </div>
 
@@ -272,14 +167,24 @@ export function VirtualAssistant() {
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <p className="font-semibold text-slate-950">{project.name}</p>
-                            <p className="mt-1 text-xs text-slate-500">{project.requester_area ?? 'Sin area'} - {project.priority}</p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {project.requester_area ?? 'Sin área'} - {project.priority}
+                            </p>
                           </div>
                           <ExternalLink className="mt-1 h-3.5 w-3.5 shrink-0 text-[#0d8f62]" />
                         </div>
                         <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                          <span className="rounded-md bg-[#e9f8f1] px-2 py-1 font-semibold text-[#08784f]">{project.status}</span>
-                          <span className="rounded-md bg-slate-100 px-2 py-1 font-semibold text-slate-600">{project.progress ?? 0}%</span>
-                          {project.estimated_delivery && <span className="rounded-md bg-slate-100 px-2 py-1 font-semibold text-slate-600">{project.estimated_delivery}</span>}
+                          <span className="rounded-md bg-[#e9f8f1] px-2 py-1 font-semibold text-[#08784f]">
+                            {project.status}
+                          </span>
+                          <span className="rounded-md bg-slate-100 px-2 py-1 font-semibold text-slate-600">
+                            {project.progress ?? 0}%
+                          </span>
+                          {project.estimated_delivery && (
+                            <span className="rounded-md bg-slate-100 px-2 py-1 font-semibold text-slate-600">
+                              {project.estimated_delivery}
+                            </span>
+                          )}
                         </div>
                       </Link>
                     ))}
@@ -296,10 +201,18 @@ export function VirtualAssistant() {
                 className="min-w-0 flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
-                placeholder="Ej: proyectos en QA, estado de LluvIA..."
+                placeholder="Ej: qué proyectos requieren atención..."
               />
-              <button type="submit" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#10b981] text-white disabled:opacity-50" disabled={loading || projects.length === 0}>
-                {thinking ? <span className="h-2 w-2 animate-pulse rounded-full bg-white" /> : <Send className="h-3.5 w-3.5" />}
+              <button
+                type="submit"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#10b981] text-white disabled:opacity-50"
+                disabled={thinking || !question.trim()}
+              >
+                {thinking ? (
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-white" />
+                ) : (
+                  <Send className="h-3.5 w-3.5" />
+                )}
               </button>
             </label>
           </form>
