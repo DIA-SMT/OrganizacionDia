@@ -2,7 +2,7 @@
 
 import { useAuth } from '@/context/AuthContext'
 import { CursorAiBackground } from '@/components/cursor-ai-background'
-import { Code2, GitPullRequest, History, LayoutDashboard, LogOut, Search, Settings, Sun, Moon, Trash2, Users } from 'lucide-react'
+import { Code2, GitPullRequest, HardDrive, History, LayoutDashboard, LogOut, Search, Settings, Sun, Moon, Trash2, Users } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
@@ -20,6 +20,7 @@ const navItems = [
   { href: '/projects', label: 'Proyectos', icon: Code2 },
   { href: '/tasks', label: 'Tareas', icon: GitPullRequest },
   { href: '/team', label: 'Equipo', icon: Users },
+  { href: 'https://drive.google.com/drive/home', label: 'Drive', icon: HardDrive, external: true },
   { href: '/commit-history', label: 'Historial', icon: History },
   { href: '/papelera', label: 'Papelera', icon: Trash2 },
 ]
@@ -104,12 +105,30 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
               const active = pathname === item.href
               const activeClass = isDark ? 'bg-emerald-500/15 text-emerald-300' : 'bg-[#e9f8f1] text-[#08784f]'
               const idleClass = isDark ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-100' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+              const itemClass = `flex w-full items-center rounded-lg py-2 text-sm font-medium transition ${sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${active ? activeClass : idleClass}`
+
+              if (item.external) {
+                return (
+                  <a
+                    key={item.href}
+                    href={item.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={itemClass}
+                    title={sidebarCollapsed ? item.label : undefined}
+                    aria-label={`${item.label} (abre en una pestaña nueva)`}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    {!sidebarCollapsed && item.label}
+                  </a>
+                )
+              }
 
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex w-full items-center rounded-lg py-2 text-sm font-medium transition ${sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${active ? activeClass : idleClass}`}
+                  className={itemClass}
                   title={sidebarCollapsed ? item.label : undefined}
                   aria-label={item.label}
                 >

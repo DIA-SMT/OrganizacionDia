@@ -1,7 +1,7 @@
 {
   "interactionModel": {
     "languageModel": {
-      "invocationName": "oficina municipal",
+      "invocationName": "el dashboard",
       "intents": [
         {
           "name": "DashboardSummaryIntent",

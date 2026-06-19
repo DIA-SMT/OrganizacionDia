@@ -11,6 +11,7 @@ import {
   Check,
   Code2,
   GitPullRequest,
+  HardDrive,
   History,
   LayoutDashboard,
   LogOut,
@@ -22,7 +23,7 @@ import {
   Users,
   X,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 type ProjectRow = {
   id: string
@@ -128,11 +129,28 @@ function taskPriorityClass(priority: string, isDark: boolean) {
 function SidebarItem({ icon, label, href, active, collapsed, isDark }: { icon: React.ReactNode; label: string; href: string; active?: boolean; collapsed?: boolean; isDark: boolean }) {
   const activeClass = isDark ? 'bg-emerald-500/15 text-emerald-300' : 'bg-[#e9f8f1] text-[#08784f]'
   const idleClass = isDark ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-100' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+  const className = `flex w-full items-center rounded-lg py-2 text-sm font-medium transition ${collapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${active ? activeClass : idleClass}`
+
+  if (href.startsWith('http')) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={className}
+        title={collapsed ? label : undefined}
+        aria-label={`${label} (abre en una pestaña nueva)`}
+      >
+        {icon}
+        {!collapsed && label}
+      </a>
+    )
+  }
 
   return (
     <Link
       href={href}
-      className={`flex w-full items-center rounded-lg py-2 text-sm font-medium transition ${collapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${active ? activeClass : idleClass}`}
+      className={className}
       title={collapsed ? label : undefined}
       aria-label={label}
     >
@@ -154,6 +172,8 @@ export function DashboardView() {
   const [commitsByProject, setCommitsByProject] = useState<Record<string, ProjectCommitActivity[]>>({})
   const [seenCommitIds, setSeenCommitIds] = useState<string[]>([])
   const [lastCommitSync, setLastCommitSync] = useState<string | null>(null)
+  const commitsScrollerRef = useRef<HTMLDivElement>(null)
+  const tasksScrollerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -164,6 +184,27 @@ export function DashboardView() {
     }, 0)
 
     return () => window.clearTimeout(timer)
+  }, [])
+
+  useEffect(() => {
+    const scrollers = [commitsScrollerRef.current, tasksScrollerRef.current].filter(
+      (scroller): scroller is HTMLDivElement => scroller !== null,
+    )
+
+    const listeners = scrollers.map((scroller) => {
+      const handleWheel = (event: WheelEvent) => {
+        if (Math.abs(event.deltaY) <= Math.abs(event.deltaX) || scroller.scrollWidth <= scroller.clientWidth) return
+
+        event.preventDefault()
+        event.stopPropagation()
+        scroller.scrollLeft += event.deltaY
+      }
+
+      scroller.addEventListener('wheel', handleWheel, { passive: false })
+      return () => scroller.removeEventListener('wheel', handleWheel)
+    })
+
+    return () => listeners.forEach((removeListener) => removeListener())
   }, [])
 
   function toggleTheme() {
@@ -367,14 +408,6 @@ export function DashboardView() {
     window.localStorage.setItem(commitHistoryStorageKey, JSON.stringify(nextHistory))
   }
 
-  function scrollHorizontally(event: React.WheelEvent<HTMLDivElement>) {
-    const container = event.currentTarget
-    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX) || container.scrollWidth <= container.clientWidth) return
-
-    event.preventDefault()
-    container.scrollLeft += event.deltaY
-  }
-
   const isDark = theme === 'dark'
   const shellClass = isDark ? 'bg-slate-950 text-slate-100' : 'bg-[#eef3f6] text-slate-950'
   const surfaceClass = isDark ? 'border-slate-800 bg-slate-900 shadow-slate-950/20' : 'border-slate-200 bg-[#fbfcfd] shadow-sm'
@@ -427,6 +460,7 @@ export function DashboardView() {
             <SidebarItem icon={<Code2 className="h-4 w-4 shrink-0" />} label="Proyectos" href="/projects" collapsed={sidebarCollapsed} isDark={isDark} />
             <SidebarItem icon={<GitPullRequest className="h-4 w-4 shrink-0" />} label="Tareas" href="/tasks" collapsed={sidebarCollapsed} isDark={isDark} />
             <SidebarItem icon={<Users className="h-4 w-4 shrink-0" />} label="Equipo" href="/team" collapsed={sidebarCollapsed} isDark={isDark} />
+            <SidebarItem icon={<HardDrive className="h-4 w-4 shrink-0" />} label="Drive" href="https://drive.google.com/drive/home" collapsed={sidebarCollapsed} isDark={isDark} />
             <SidebarItem icon={<History className="h-4 w-4 shrink-0" />} label="Historial" href="/commit-history" collapsed={sidebarCollapsed} isDark={isDark} />
             <SidebarItem icon={<Trash2 className="h-4 w-4 shrink-0" />} label="Papelera" href="/papelera" collapsed={sidebarCollapsed} isDark={isDark} />
           </nav>
@@ -507,7 +541,7 @@ export function DashboardView() {
                 </div>
               </div>
 
-              <div className="mt-4 flex gap-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" onWheel={scrollHorizontally}>
+              <div ref={commitsScrollerRef} className="mt-4 flex gap-3 overflow-x-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {recentProjectChanges.length > 0 ? (
                   recentProjectChanges.map((change) => (
                     <article
@@ -578,7 +612,7 @@ export function DashboardView() {
                 </div>
               </div>
 
-              <div className="mt-4 flex gap-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" onWheel={scrollHorizontally}>
+              <div ref={tasksScrollerRef} className="mt-4 flex gap-3 overflow-x-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {pendingTasks.length > 0 ? (
                   pendingTasks.map((task) => (
                     <Link
