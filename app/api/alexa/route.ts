@@ -5,6 +5,7 @@ type AlexaAction =
   | 'get_project'
   | 'list_projects'
   | 'list_pending_tasks'
+  | 'ask_assistant'
   | 'create_project'
   | 'create_task'
 
@@ -105,6 +106,105 @@ function projectSummary(project: ProjectRow, pendingTasks: number) {
     productionUrl: project.production_url,
     pendingTasks,
   }
+}
+
+function findMentionedProject(projects: ProjectRow[], question: string) {
+  const normalizedQuestion = normalize(question)
+  return (
+    projects
+      .filter((project) => normalizedQuestion.includes(normalize(project.name)))
+      .sort((a, b) => b.name.length - a.name.length)[0] ?? null
+  )
+}
+
+async function answerAssistantQuestion(
+  supabase: NonNullable<ReturnType<typeof getSupabaseAdminClient>>,
+  projects: ProjectRow[],
+  question: string,
+) {
+  const normalizedQuestion = normalize(question)
+  const mentionedProject = findMentionedProject(projects, question)
+
+  if (mentionedProject) {
+    const { data: tasks, error } = await supabase
+      .from('tasks')
+      .select('title, status, priority, due_date')
+      .eq('project_id', mentionedProject.id)
+      .eq('active', true)
+      .neq('status', 'Terminada')
+      .order('updated_at', { ascending: false })
+      .limit(5)
+
+    if (error) throw error
+
+    const details = [
+      `${mentionedProject.name} esta en ${mentionedProject.status}`,
+      `tiene prioridad ${mentionedProject.priority}`,
+      `y un avance del ${mentionedProject.progress}%`,
+    ]
+    if (mentionedProject.estimated_delivery) details.push(`La entrega estimada es ${mentionedProject.estimated_delivery}`)
+    if (mentionedProject.note) details.push(`La nota actual dice: ${mentionedProject.note}`)
+    if (mentionedProject.description) details.push(`Su descripcion es: ${mentionedProject.description}`)
+
+    const pendingTasks = tasks ?? []
+    if (pendingTasks.length > 0) {
+      details.push(
+        `Tiene ${pendingTasks.length} tareas pendientes recientes: ${pendingTasks
+          .slice(0, 3)
+          .map((task) => `${task.title}, prioridad ${task.priority}`)
+          .join('; ')}`,
+      )
+    } else {
+      details.push('No tiene tareas pendientes cargadas')
+    }
+
+    return details.join('. ') + '.'
+  }
+
+  if (normalizedQuestion.includes('priorizar') || normalizedQuestion.includes('prioridad') || normalizedQuestion.includes('atencion')) {
+    const urgent = projects
+      .filter((project) => ['Alta', 'Critica'].includes(project.priority) && project.status !== 'En Producción')
+      .sort((a, b) => (a.priority === 'Critica' ? -1 : b.priority === 'Critica' ? 1 : a.progress - b.progress))
+      .slice(0, 6)
+
+    if (urgent.length === 0) return 'No hay proyectos activos con prioridad alta o critica.'
+    return `Los proyectos que requieren mas atencion son: ${urgent
+      .map((project) => `${project.name}, prioridad ${project.priority}, estado ${project.status}, avance ${project.progress}%`)
+      .join('; ')}.`
+  }
+
+  if (normalizedQuestion.includes('paus')) {
+    const paused = projects.filter((project) => project.status === 'Pausado')
+    if (paused.length === 0) return 'No hay proyectos pausados.'
+    return `Hay ${paused.length} proyectos pausados: ${paused.map((project) => project.name).join(', ')}.`
+  }
+
+  if (normalizedQuestion.includes('produccion') || normalizedQuestion.includes('terminad') || normalizedQuestion.includes('finaliz')) {
+    const production = projects.filter((project) => project.status === 'En Producción')
+    if (production.length === 0) return 'No hay proyectos en produccion.'
+    return `Hay ${production.length} proyectos en produccion: ${production.map((project) => project.name).join(', ')}.`
+  }
+
+  if (normalizedQuestion.includes('tarea')) {
+    const { data: tasks, error } = await supabase
+      .from('tasks')
+      .select('title, status, priority, projects(name)')
+      .eq('active', true)
+      .neq('status', 'Terminada')
+      .order('updated_at', { ascending: false })
+      .limit(8)
+
+    if (error) throw error
+    if (!tasks?.length) return 'No hay tareas pendientes.'
+    return `Hay ${tasks.length} tareas pendientes recientes: ${tasks
+      .map((task) => `${task.title}, prioridad ${task.priority}`)
+      .join('; ')}.`
+  }
+
+  const statusCounts = Object.fromEntries(
+    projectStatuses.map((status) => [status, projects.filter((project) => project.status === status).length]),
+  )
+  return `Hay ${projects.length} proyectos. ${statusCounts['En desarrollo']} estan en desarrollo, ${statusCounts.QA} en QA, ${statusCounts['En Producción']} en produccion y ${statusCounts.Pausado} pausados. Podes preguntarme por un proyecto, por prioridades, tareas o estados.`
 }
 
 async function audit(
@@ -245,6 +345,10 @@ export async function POST(request: Request) {
       if (error) throw error
 
       response = { count: data?.length ?? 0, tasks: data ?? [] }
+    } else if (action === 'ask_assistant') {
+      const question = textValue(payload, 'question')
+      if (!question) throw new Error('Falta la pregunta para el asistente.')
+      response = { answer: await answerAssistantQuestion(supabase, projects, question) }
     } else if (action === 'create_project') {
       const name = textValue(payload, 'name')
       if (!name) throw new Error('Falta el nombre del proyecto.')

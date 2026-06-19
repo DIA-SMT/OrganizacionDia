@@ -1,7 +1,7 @@
 {
   "interactionModel": {
     "languageModel": {
-      "invocationName": "organización día",
+      "invocationName": "oficina municipal",
       "intents": [
         {
           "name": "DashboardSummaryIntent",
@@ -64,12 +64,30 @@
           ]
         },
         {
+          "name": "AskAssistantIntent",
+          "samples": [
+            "pregunta {question}",
+            "consultá {question}",
+            "decime {question}",
+            "quiero saber {question}",
+            "analizá {question}"
+          ],
+          "slots": [
+            {
+              "name": "question",
+              "type": "AMAZON.SearchQuery"
+            }
+          ]
+        },
+        {
           "name": "CreateTaskIntent",
           "samples": [
             "creá la tarea {taskTitle} para {projectName}",
             "agregá la tarea {taskTitle} en {projectName}",
             "creá una tarea de prioridad {priority} llamada {taskTitle} para {projectName}",
-            "nueva tarea {taskTitle} para {projectName} con prioridad {priority}"
+            "nueva tarea {taskTitle} para {projectName} con prioridad {priority}",
+            "creá la tarea {taskTitle} para {projectName} con fecha {dueDate}",
+            "nueva tarea {taskTitle} para {projectName} para el {dueDate}"
           ],
           "slots": [
             {
