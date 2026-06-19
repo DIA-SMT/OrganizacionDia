@@ -107,6 +107,7 @@ async function handleIntent(event) {
 
   if (intentName === 'DashboardSummaryIntent') {
     const data = await callDashboard(event, 'dashboard_summary')
+    if (data.answer) return speechResponse(data.answer)
     const status = data.projectsByStatus ?? {}
     return speechResponse(
       `Hay ${data.totalProjects} proyectos y ${data.pendingTasks} tareas pendientes. ` +
@@ -119,7 +120,7 @@ async function handleIntent(event) {
   if (intentName === 'GetProjectIntent') {
     const projectName = slot(intent, 'projectName')
     const data = await callDashboard(event, 'get_project', { projectName })
-    return speechResponse(projectSpeech(data.project))
+    return speechResponse(data.answer || projectSpeech(data.project))
   }
 
   if (intentName === 'ListProjectsIntent') {

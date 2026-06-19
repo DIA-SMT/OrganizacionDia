@@ -18,14 +18,7 @@ export async function POST(request: Request) {
     if (!user) return Response.json({ error: 'Sesión no autorizada.' }, { status: 401 })
 
     const result = await runAssistantQuery(supabase, question)
-    return Response.json({
-      answer: result.text,
-      text: result.text,
-      intent: result.intent,
-      projects: result.projects,
-      totalProjects: result.totalProjects,
-      model: 'motor-dia-interno',
-    })
+    return Response.json(result)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Error inesperado del asistente.'
     return Response.json({ error: message }, { status: 500 })
