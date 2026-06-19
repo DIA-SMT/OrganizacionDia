@@ -80,6 +80,17 @@
           ]
         },
         {
+          "name": "PriorityOverviewIntent",
+          "samples": [
+            "qué proyectos requieren más atención",
+            "qué proyectos debemos priorizar",
+            "qué proyectos son prioritarios",
+            "dónde deberíamos enfocarnos",
+            "qué necesita atención"
+          ],
+          "slots": []
+        },
+        {
           "name": "CreateTaskIntent",
           "samples": [
             "creá la tarea {taskTitle} para {projectName}",
@@ -173,10 +184,12 @@
           "name": "PROJECT_NAME",
           "values": [
             { "name": { "value": "Organización DIA" } },
-            { "name": { "value": "Bot Turismo" } },
-            { "name": { "value": "Lluvia" } },
+            { "name": { "value": "BotTurismo-BackyFront", "synonyms": ["Bot Turismo", "bot de turismo"] } },
+            { "name": { "value": "LluvIA", "synonyms": ["Lluvia"] } },
             { "name": { "value": "Contaduría" } },
-            { "name": { "value": "CIMT Connect" } }
+            { "name": { "value": "cimt-connect", "synonyms": ["CIMT Connect", "CIMT"] } },
+            { "name": { "value": "HubIA", "synonyms": ["Hub IA"] } },
+            { "name": { "value": "migue-BackyFront", "synonyms": ["Migue"] } }
           ]
         },
         {

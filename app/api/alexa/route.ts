@@ -82,9 +82,17 @@ async function findProject(projects: ProjectRow[], requestedName: string) {
   const exact = projects.find((project) => normalize(project.name) === target)
   if (exact) return exact
 
+  const compactTarget = target.replace(/\s+/g, '')
   return (
     projects.find((project) => normalize(project.name).includes(target)) ??
     projects.find((project) => target.includes(normalize(project.name))) ??
+    projects.find((project) => normalize(project.name).replace(/\s+/g, '').includes(compactTarget)) ??
+    projects.find((project) =>
+      project.name
+        .split(/[-_/]+/)
+        .map((part) => normalize(part).replace(/\s+/g, ''))
+        .some((alias) => alias.length >= 4 && (alias.includes(compactTarget) || compactTarget.includes(alias))),
+    ) ??
     null
   )
 }
@@ -110,11 +118,40 @@ function projectSummary(project: ProjectRow, pendingTasks: number) {
 
 function findMentionedProject(projects: ProjectRow[], question: string) {
   const normalizedQuestion = normalize(question)
-  return (
-    projects
-      .filter((project) => normalizedQuestion.includes(normalize(project.name)))
-      .sort((a, b) => b.name.length - a.name.length)[0] ?? null
-  )
+  const compactQuestion = normalizedQuestion.replace(/\s+/g, '')
+  const ignoredNameTerms = new Set(['proyecto', 'proyectos', 'sistema', 'dashboard', 'pagina', 'aplicacion'])
+
+  const matches = projects
+    .map((project) => {
+      const normalizedName = normalize(project.name)
+      const compactName = normalizedName.replace(/\s+/g, '')
+      const aliases = project.name
+        .split(/[-_/]+/)
+        .map((part) => normalize(part).replace(/\s+/g, ''))
+        .filter((part) => part.length >= 4)
+
+      let score = 0
+      if (normalizedQuestion.includes(normalizedName)) score = normalizedName.length + 100
+      if (compactQuestion.includes(compactName)) score = Math.max(score, compactName.length + 90)
+
+      for (const alias of aliases) {
+        if (compactQuestion.includes(alias)) score = Math.max(score, alias.length + 50)
+      }
+
+      const nameTerms = normalizedName
+        .split(/\s+/)
+        .filter((term) => term.length >= 4 && !ignoredNameTerms.has(term))
+      const matchedTerms = nameTerms.filter((term) => normalizedQuestion.includes(term))
+      if (matchedTerms.length > 0) {
+        score = Math.max(score, matchedTerms.reduce((total, term) => total + term.length, 0))
+      }
+
+      return { project, score }
+    })
+    .filter((candidate) => candidate.score > 0)
+    .sort((a, b) => b.score - a.score)
+
+  return matches[0]?.project ?? null
 }
 
 async function answerAssistantQuestion(
@@ -123,6 +160,19 @@ async function answerAssistantQuestion(
   question: string,
 ) {
   const normalizedQuestion = normalize(question)
+
+  if (normalizedQuestion.includes('priorizar') || normalizedQuestion.includes('prioridad') || normalizedQuestion.includes('atencion')) {
+    const urgent = projects
+      .filter((project) => ['Alta', 'Critica'].includes(project.priority) && normalize(project.status) !== 'en produccion')
+      .sort((a, b) => (a.priority === 'Critica' ? -1 : b.priority === 'Critica' ? 1 : a.progress - b.progress))
+      .slice(0, 6)
+
+    if (urgent.length === 0) return 'No hay proyectos activos con prioridad alta o critica.'
+    return `Los proyectos que requieren mas atencion son: ${urgent
+      .map((project) => `${project.name}, prioridad ${project.priority}, estado ${project.status}, avance ${project.progress}%`)
+      .join('; ')}.`
+  }
+
   const mentionedProject = findMentionedProject(projects, question)
 
   if (mentionedProject) {
@@ -159,18 +209,6 @@ async function answerAssistantQuestion(
     }
 
     return details.join('. ') + '.'
-  }
-
-  if (normalizedQuestion.includes('priorizar') || normalizedQuestion.includes('prioridad') || normalizedQuestion.includes('atencion')) {
-    const urgent = projects
-      .filter((project) => ['Alta', 'Critica'].includes(project.priority) && project.status !== 'En Producción')
-      .sort((a, b) => (a.priority === 'Critica' ? -1 : b.priority === 'Critica' ? 1 : a.progress - b.progress))
-      .slice(0, 6)
-
-    if (urgent.length === 0) return 'No hay proyectos activos con prioridad alta o critica.'
-    return `Los proyectos que requieren mas atencion son: ${urgent
-      .map((project) => `${project.name}, prioridad ${project.priority}, estado ${project.status}, avance ${project.progress}%`)
-      .join('; ')}.`
   }
 
   if (normalizedQuestion.includes('paus')) {
