@@ -1,0 +1,296 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "organización día",
+      "intents": [
+        {
+          "name": "DashboardSummaryIntent",
+          "samples": [
+            "dame un resumen",
+            "cómo está el dashboard",
+            "cuántos proyectos tenemos",
+            "cuál es el resumen de la oficina"
+          ],
+          "slots": []
+        },
+        {
+          "name": "GetProjectIntent",
+          "samples": [
+            "dame información de {projectName}",
+            "cómo está {projectName}",
+            "cuál es el estado de {projectName}",
+            "dame todos los detalles de {projectName}",
+            "contame sobre {projectName}"
+          ],
+          "slots": [
+            {
+              "name": "projectName",
+              "type": "PROJECT_NAME"
+            }
+          ]
+        },
+        {
+          "name": "ListProjectsIntent",
+          "samples": [
+            "qué proyectos están en {status}",
+            "listá los proyectos de prioridad {priority}",
+            "qué proyectos tienen prioridad {priority}",
+            "listá proyectos en {status} con prioridad {priority}"
+          ],
+          "slots": [
+            {
+              "name": "status",
+              "type": "PROJECT_STATUS"
+            },
+            {
+              "name": "priority",
+              "type": "PRIORITY"
+            }
+          ]
+        },
+        {
+          "name": "PendingTasksIntent",
+          "samples": [
+            "cuáles son las tareas pendientes",
+            "qué tareas quedan",
+            "qué tareas pendientes tiene {projectName}",
+            "dame las tareas de {projectName}"
+          ],
+          "slots": [
+            {
+              "name": "projectName",
+              "type": "PROJECT_NAME"
+            }
+          ]
+        },
+        {
+          "name": "CreateTaskIntent",
+          "samples": [
+            "creá la tarea {taskTitle} para {projectName}",
+            "agregá la tarea {taskTitle} en {projectName}",
+            "creá una tarea de prioridad {priority} llamada {taskTitle} para {projectName}",
+            "nueva tarea {taskTitle} para {projectName} con prioridad {priority}"
+          ],
+          "slots": [
+            {
+              "name": "taskTitle",
+              "type": "TASK_TITLE"
+            },
+            {
+              "name": "projectName",
+              "type": "PROJECT_NAME"
+            },
+            {
+              "name": "priority",
+              "type": "PRIORITY"
+            },
+            {
+              "name": "dueDate",
+              "type": "AMAZON.DATE"
+            }
+          ]
+        },
+        {
+          "name": "CreateProjectIntent",
+          "samples": [
+            "creá un proyecto llamado {projectName}",
+            "agregá el proyecto {projectName}",
+            "creá el proyecto {projectName} con prioridad {priority}",
+            "nuevo proyecto {projectName} en estado {status}"
+          ],
+          "slots": [
+            {
+              "name": "projectName",
+              "type": "PROJECT_NAME"
+            },
+            {
+              "name": "status",
+              "type": "PROJECT_STATUS"
+            },
+            {
+              "name": "priority",
+              "type": "PRIORITY"
+            }
+          ]
+        },
+        {
+          "name": "AMAZON.HelpIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.CancelIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.StopIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.FallbackIntent",
+          "samples": []
+        }
+      ],
+      "types": [
+        {
+          "name": "PROJECT_STATUS",
+          "values": [
+            { "name": { "value": "Planificación", "synonyms": ["planificacion", "planeamiento"] } },
+            { "name": { "value": "En desarrollo", "synonyms": ["desarrollo", "en curso"] } },
+            { "name": { "value": "MVP aprobado", "synonyms": ["mvp", "aprobado"] } },
+            { "name": { "value": "QA", "synonyms": ["testing", "pruebas", "control de calidad"] } },
+            { "name": { "value": "En Producción", "synonyms": ["produccion", "finalizado", "online"] } },
+            { "name": { "value": "Pausado", "synonyms": ["detenido", "en pausa"] } }
+          ]
+        },
+        {
+          "name": "PRIORITY",
+          "values": [
+            { "name": { "value": "Baja" } },
+            { "name": { "value": "Media" } },
+            { "name": { "value": "Alta" } },
+            { "name": { "value": "Critica", "synonyms": ["crítica", "urgente"] } }
+          ]
+        },
+        {
+          "name": "PROJECT_NAME",
+          "values": [
+            { "name": { "value": "Organización DIA" } },
+            { "name": { "value": "Bot Turismo" } },
+            { "name": { "value": "Lluvia" } },
+            { "name": { "value": "Contaduría" } },
+            { "name": { "value": "CIMT Connect" } }
+          ]
+        },
+        {
+          "name": "TASK_TITLE",
+          "values": [
+            { "name": { "value": "revisar el login" } },
+            { "name": { "value": "actualizar documentación" } },
+            { "name": { "value": "probar el despliegue" } },
+            { "name": { "value": "corregir errores" } }
+          ]
+        }
+      ]
+    },
+    "dialog": {
+      "intents": [
+        {
+          "name": "CreateTaskIntent",
+          "confirmationRequired": true,
+          "prompts": {
+            "confirmation": "Confirm.CreateTaskIntent"
+          },
+          "slots": [
+            {
+              "name": "taskTitle",
+              "type": "TASK_TITLE",
+              "elicitationRequired": true,
+              "confirmationRequired": false,
+              "prompts": {
+                "elicitation": "Elicit.CreateTaskIntent.taskTitle"
+              }
+            },
+            {
+              "name": "projectName",
+              "type": "PROJECT_NAME",
+              "elicitationRequired": true,
+              "confirmationRequired": false,
+              "prompts": {
+                "elicitation": "Elicit.CreateTaskIntent.projectName"
+              }
+            },
+            {
+              "name": "priority",
+              "type": "PRIORITY",
+              "elicitationRequired": false,
+              "confirmationRequired": false
+            },
+            {
+              "name": "dueDate",
+              "type": "AMAZON.DATE",
+              "elicitationRequired": false,
+              "confirmationRequired": false
+            }
+          ]
+        },
+        {
+          "name": "CreateProjectIntent",
+          "confirmationRequired": true,
+          "prompts": {
+            "confirmation": "Confirm.CreateProjectIntent"
+          },
+          "slots": [
+            {
+              "name": "projectName",
+              "type": "PROJECT_NAME",
+              "elicitationRequired": true,
+              "confirmationRequired": false,
+              "prompts": {
+                "elicitation": "Elicit.CreateProjectIntent.projectName"
+              }
+            },
+            {
+              "name": "status",
+              "type": "PROJECT_STATUS",
+              "elicitationRequired": false,
+              "confirmationRequired": false
+            },
+            {
+              "name": "priority",
+              "type": "PRIORITY",
+              "elicitationRequired": false,
+              "confirmationRequired": false
+            }
+          ]
+        }
+      ]
+    },
+    "prompts": [
+      {
+        "id": "Confirm.CreateTaskIntent",
+        "variations": [
+          {
+            "type": "PlainText",
+            "value": "Voy a crear la tarea {taskTitle} para {projectName}. ¿Confirmás?"
+          }
+        ]
+      },
+      {
+        "id": "Elicit.CreateTaskIntent.taskTitle",
+        "variations": [
+          {
+            "type": "PlainText",
+            "value": "¿Cuál es el título de la tarea?"
+          }
+        ]
+      },
+      {
+        "id": "Elicit.CreateTaskIntent.projectName",
+        "variations": [
+          {
+            "type": "PlainText",
+            "value": "¿A qué proyecto corresponde?"
+          }
+        ]
+      },
+      {
+        "id": "Confirm.CreateProjectIntent",
+        "variations": [
+          {
+            "type": "PlainText",
+            "value": "Voy a crear el proyecto {projectName}. ¿Confirmás?"
+          }
+        ]
+      },
+      {
+        "id": "Elicit.CreateProjectIntent.projectName",
+        "variations": [
+          {
+            "type": "PlainText",
+            "value": "¿Cómo se llama el proyecto?"
+          }
+        ]
+      }
+    ]
+  }
+}

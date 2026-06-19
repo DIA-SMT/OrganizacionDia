@@ -2,27 +2,22 @@
 
 import { useAuth } from '@/context/AuthContext'
 import { CursorAiBackground } from '@/components/cursor-ai-background'
+import { TaskCreateButton } from '@/components/task-create-button'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
 import { type DashboardProject } from '@/lib/dashboard-data'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   Check,
-  CircleDot,
   Code2,
-  FlaskConical,
-  FolderOpen,
   GitPullRequest,
   History,
   LayoutDashboard,
   LogOut,
-  Menu,
   Moon,
-  PanelLeftClose,
   Search,
   Settings,
   Sun,
-  Rocket,
   Trash2,
   Users,
   X,
@@ -60,10 +55,30 @@ type ProjectCommitChange = ProjectCommitActivity & {
   seenAt?: string
 }
 
+type TaskProject = { name: string } | { name: string }[] | null
+
+type PendingTask = {
+  id: string
+  title: string
+  description: string | null
+  status: string
+  priority: string
+  created_at: string
+  projects: TaskProject
+}
+
 
 const projectStatusOrder = ['Planificación', 'En desarrollo', 'MVP aprobado', 'QA', 'En Producción', 'Pausado'] as const
 const seenCommitsStorageKey = 'organizacion-dia-seen-commits'
 const commitHistoryStorageKey = 'organizacion-dia-commit-history'
+const projectStatusChart = [
+  { status: 'Planificación', label: 'Planificación', color: 'bg-slate-300', href: '/projects?estado=Planificaci%C3%B3n' },
+  { status: 'En desarrollo', label: 'En desarrollo', color: 'bg-amber-400', href: '/projects?estado=En%20desarrollo' },
+  { status: 'MVP aprobado', label: 'MVP aprobado', color: 'bg-violet-500', href: '/projects?estado=MVP%20aprobado' },
+  { status: 'QA', label: 'QA', color: 'bg-sky-500', href: '/projects?estado=QA' },
+  { status: 'En Producción', label: 'En producción', color: 'bg-emerald-600', href: '/projects?estado=En%20Producci%C3%B3n' },
+  { status: 'Pausado', label: 'Pausado', color: 'bg-red-500', href: '/projects?estado=Pausado' },
+] as const
 
 function commitStorageId(commit: Pick<ProjectCommitChange, 'projectId' | 'projectName' | 'repo' | 'sha'>) {
   return `${commit.projectId ?? commit.projectName}:${commit.repo}:${commit.sha}`
@@ -97,47 +112,18 @@ function formatCommitDate(value: string | null) {
   }).format(new Date(value))
 }
 
-
-function MetricCard({
-  icon,
-  label,
-  value,
-  hint,
-  accent,
-  isDark,
-  href,
-}: {
-  icon: React.ReactNode
-  label: string
-  value: string
-  hint: string
-  accent: string
-  isDark: boolean
-  href: string
-}) {
-  return (
-    <Link
-      href={href}
-      className={`group relative block overflow-hidden rounded-lg border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
-        isDark ? 'border-slate-800 bg-slate-900 shadow-slate-950/20' : 'border-slate-200 bg-white'
-      }`}
-    >
-      <div className={`absolute inset-x-0 top-0 h-1 ${accent}`} />
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <div className={`flex h-8 w-8 items-center justify-center rounded-md ${accent} text-white`}>{icon}</div>
-            <p className="text-xs font-semibold uppercase text-slate-400">{label}</p>
-          </div>
-          <div className="mt-4">
-            <p className={`text-4xl font-bold leading-none ${isDark ? 'text-white' : 'text-slate-950'}`}>{value}</p>
-          </div>
-          <p className={`mt-2 text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{hint}</p>
-        </div>
-      </div>
-    </Link>
-  )
+function taskProjectName(projects: TaskProject) {
+  if (Array.isArray(projects)) return projects[0]?.name ?? 'Sin proyecto'
+  return projects?.name ?? 'Sin proyecto'
 }
+
+function taskPriorityClass(priority: string, isDark: boolean) {
+  if (priority === 'Critica') return isDark ? 'bg-red-500/15 text-red-300' : 'bg-red-50 text-red-700'
+  if (priority === 'Alta') return isDark ? 'bg-amber-500/15 text-amber-300' : 'bg-amber-50 text-amber-700'
+  if (priority === 'Media') return isDark ? 'bg-sky-500/15 text-sky-300' : 'bg-sky-50 text-sky-700'
+  return isDark ? 'bg-slate-800 text-slate-300' : 'bg-white text-slate-500'
+}
+
 
 function SidebarItem({ icon, label, href, active, collapsed, isDark }: { icon: React.ReactNode; label: string; href: string; active?: boolean; collapsed?: boolean; isDark: boolean }) {
   const activeClass = isDark ? 'bg-emerald-500/15 text-emerald-300' : 'bg-[#e9f8f1] text-[#08784f]'
@@ -163,7 +149,8 @@ export function DashboardView() {
   const [searchQuery, setSearchQuery] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
+  const [pendingTasks, setPendingTasks] = useState<PendingTask[]>([])
   const [commitsByProject, setCommitsByProject] = useState<Record<string, ProjectCommitActivity[]>>({})
   const [seenCommitIds, setSeenCommitIds] = useState<string[]>([])
   const [lastCommitSync, setLastCommitSync] = useState<string | null>(null)
@@ -172,7 +159,6 @@ export function DashboardView() {
     const timer = window.setTimeout(() => {
       const savedTheme = window.localStorage.getItem('organizacion-dia-theme')
       if (savedTheme === 'dark' || savedTheme === 'light') setTheme(savedTheme)
-      setSidebarCollapsed(window.localStorage.getItem('organizacion-dia-sidebar-collapsed') === 'true')
       const savedSeenCommitIds = window.localStorage.getItem(seenCommitsStorageKey)
       if (savedSeenCommitIds) setSeenCommitIds(JSON.parse(savedSeenCommitIds) as string[])
     }, 0)
@@ -188,12 +174,19 @@ export function DashboardView() {
     })
   }
 
-  function toggleSidebar() {
-    setSidebarCollapsed((current) => {
-      const next = !current
-      window.localStorage.setItem('organizacion-dia-sidebar-collapsed', String(next))
-      return next
-    })
+  async function refreshPendingTasks() {
+    const supabase = getSupabaseBrowserClient()
+    if (!supabase) return
+
+    const { data } = await supabase
+      .from('tasks')
+      .select('id, title, description, status, priority, created_at, projects(name)')
+      .eq('active', true)
+      .neq('status', 'Terminada')
+      .order('updated_at', { ascending: false })
+      .limit(30)
+
+    setPendingTasks((data ?? []) as unknown as PendingTask[])
   }
 
   useEffect(() => {
@@ -208,11 +201,20 @@ export function DashboardView() {
       const supabase = getSupabaseBrowserClient()
       if (!supabase) return
 
-      const projectQuery = await supabase
+      const [projectQuery, taskQuery] = await Promise.all([
+        supabase
           .from('projects')
-        .select('id, name, requester_area, stack, repository_url, repository_url_secondary, status, priority, progress, estimated_delivery')
+          .select('id, name, requester_area, stack, repository_url, repository_url_secondary, status, priority, progress, estimated_delivery')
           .eq('active', true)
-        .order('estimated_delivery', { ascending: true })
+          .order('estimated_delivery', { ascending: true }),
+        supabase
+          .from('tasks')
+          .select('id, title, description, status, priority, created_at, projects(name)')
+          .eq('active', true)
+          .neq('status', 'Terminada')
+          .order('updated_at', { ascending: false })
+          .limit(30),
+      ])
 
       const projectRowsResult = projectQuery.error
         ? await supabase
@@ -238,6 +240,7 @@ export function DashboardView() {
       })
 
       setProjects(nextProjects)
+      setPendingTasks((taskQuery.data ?? []) as unknown as PendingTask[])
     }
 
     fetchDashboard().catch((error) => {
@@ -364,7 +367,7 @@ export function DashboardView() {
     window.localStorage.setItem(commitHistoryStorageKey, JSON.stringify(nextHistory))
   }
 
-  function scrollCommitsHorizontally(event: React.WheelEvent<HTMLDivElement>) {
+  function scrollHorizontally(event: React.WheelEvent<HTMLDivElement>) {
     const container = event.currentTarget
     if (Math.abs(event.deltaY) <= Math.abs(event.deltaX) || container.scrollWidth <= container.clientWidth) return
 
@@ -378,6 +381,8 @@ export function DashboardView() {
   const mutedSurfaceClass = isDark ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-[#fbfcfd]'
   const textStrongClass = isDark ? 'text-white' : 'text-slate-950'
   const textMutedClass = isDark ? 'text-slate-400' : 'text-slate-500'
+  const chartMax = 10
+  const chartTicks = Array.from({ length: chartMax + 1 }, (_, index) => chartMax - index)
 
   if (authConfigured && (loading || !user)) {
     return (
@@ -393,8 +398,16 @@ export function DashboardView() {
     <main className={`relative isolate min-h-screen overflow-hidden transition-colors ${shellClass}`}>
       <CursorAiBackground isDark={isDark} />
       <div className="relative z-10 flex min-h-screen">
-        <aside className={`sticky top-0 flex h-screen shrink-0 flex-col border-r px-3 py-4 transition-[width] duration-200 ${sidebarCollapsed ? 'w-16' : 'w-56'} ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-[#fbfcfd]/95'}`}>
-          <div className={`mb-6 rounded-xl border p-2 ${sidebarCollapsed ? 'flex justify-center' : 'flex items-center justify-between gap-2'} ${isDark ? 'border-slate-800 bg-slate-950/40' : 'border-slate-200 bg-white/70'}`}>
+        <aside
+          className={`sticky top-0 flex h-screen shrink-0 flex-col border-r px-3 py-4 transition-[width] duration-200 ${sidebarCollapsed ? 'w-16' : 'w-56'} ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-[#fbfcfd]/95'}`}
+          onMouseEnter={() => setSidebarCollapsed(false)}
+          onMouseLeave={() => setSidebarCollapsed(true)}
+          onFocusCapture={() => setSidebarCollapsed(false)}
+          onBlurCapture={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) setSidebarCollapsed(true)
+          }}
+        >
+          <div className={`mb-6 px-1 py-1 ${sidebarCollapsed ? 'flex justify-center' : 'flex items-center justify-between gap-2'}`}>
             <div className={`flex min-w-0 items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'}`}>
               <div className="flex aspect-square h-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#061e3d] ring-1 ring-white/10">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -407,14 +420,6 @@ export function DashboardView() {
                 </div>
               )}
             </div>
-            <button
-              className={`flex h-8 w-8 items-center justify-center rounded-md border transition ${sidebarCollapsed ? 'absolute left-[50px] top-5 shadow-sm' : ''} ${isDark ? 'border-slate-700 bg-slate-950 text-slate-300 hover:bg-slate-800' : 'border-slate-200 bg-[#fbfcfd] text-slate-500 hover:bg-slate-50'}`}
-              onClick={toggleSidebar}
-              title={sidebarCollapsed ? 'Desplegar menu' : 'Plegar menu'}
-              aria-label={sidebarCollapsed ? 'Desplegar menu' : 'Plegar menu'}
-            >
-              {sidebarCollapsed ? <Menu className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-            </button>
           </div>
 
           <nav className="space-y-1">
@@ -502,7 +507,7 @@ export function DashboardView() {
                 </div>
               </div>
 
-              <div className="mt-4 flex gap-3 overflow-x-auto pb-2 [scrollbar-width:thin]" onWheel={scrollCommitsHorizontally}>
+              <div className="mt-4 flex gap-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" onWheel={scrollHorizontally}>
                 {recentProjectChanges.length > 0 ? (
                   recentProjectChanges.map((change) => (
                     <article
@@ -552,61 +557,122 @@ export function DashboardView() {
               </p>
             </section>
 
-            <section className="grid gap-4 md:grid-cols-3 2xl:grid-cols-6">
-              <MetricCard
-                icon={<FolderOpen className="h-4 w-4" />}
-                label="Todos los proyectos"
-                value={String(metrics.totalProjects)}
-                hint="Activos en el dashboard"
-                accent="bg-[#10b981]"
-                isDark={isDark}
-                href="/projects?estado=Todos"
-              />
-              <MetricCard
-                icon={<Code2 className="h-4 w-4" />}
-                label="En desarrollo"
-                value={String(metrics.developmentCount)}
-                hint="Construccion activa"
-                accent="bg-blue-500"
-                isDark={isDark}
-                href="/projects?estado=En%20desarrollo"
-              />
-              <MetricCard
-                icon={<GitPullRequest className="h-4 w-4" />}
-                label="MVP aprobado"
-                value={String(metrics.approvalCount)}
-                hint="Esperando revision interna"
-                accent="bg-violet-500"
-                isDark={isDark}
-                href="/projects?estado=MVP%20aprobado"
-              />
-              <MetricCard
-                icon={<FlaskConical className="h-4 w-4" />}
-                label="Para testear"
-                value={String(metrics.testingCount)}
-                hint="Listo para QA"
-                accent="bg-sky-500"
-                isDark={isDark}
-                href="/projects?estado=QA"
-              />
-              <MetricCard
-                icon={<Rocket className="h-4 w-4" />}
-                label="En Producción"
-                value={String(metrics.productionCount)}
-                hint="Finalizados y online"
-                accent="bg-emerald-600"
-                isDark={isDark}
-                href="/projects?estado=En%20Producci%C3%B3n"
-              />
-              <MetricCard
-                icon={<CircleDot className="h-4 w-4" />}
-                label="Proyectos pausados"
-                value={String(metrics.pausedCount)}
-                hint="Detenidos temporalmente"
-                accent="bg-red-500"
-                isDark={isDark}
-                href="/projects?estado=Pausado"
-              />
+            <section className={`mb-5 rounded-lg border p-5 ${surfaceClass}`}>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase text-[#0d8f62]">Trabajo pendiente</p>
+                  <h2 className={`mt-1 text-xl font-bold ${textStrongClass}`}>Tareas por resolver</h2>
+                  <p className={`mt-2 text-sm ${textMutedClass}`}>Tareas activas ordenadas por la modificacion mas reciente.</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Link
+                    href="/tasks"
+                    className={`inline-flex h-10 items-center justify-center gap-2 rounded-md border px-3 text-sm font-semibold ${
+                      isDark ? 'border-slate-700 text-slate-300 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <GitPullRequest className="h-4 w-4" />
+                    Ver tareas
+                  </Link>
+                  <TaskCreateButton onCreated={() => void refreshPendingTasks()} isDark={isDark} />
+                </div>
+              </div>
+
+              <div className="mt-4 flex gap-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" onWheel={scrollHorizontally}>
+                {pendingTasks.length > 0 ? (
+                  pendingTasks.map((task) => (
+                    <Link
+                      key={task.id}
+                      href="/tasks"
+                      className={`min-h-[148px] w-[290px] shrink-0 rounded-md border p-4 transition hover:-translate-y-0.5 hover:shadow-sm ${
+                        isDark ? 'border-slate-800 bg-slate-950/70 hover:bg-slate-950' : 'border-slate-200 bg-slate-50 hover:bg-white'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <span className={`truncate text-xs font-semibold ${isDark ? 'text-emerald-300' : 'text-[#0d8f62]'}`}>{taskProjectName(task.projects)}</span>
+                        <span className={`shrink-0 rounded px-2 py-1 text-[10px] font-semibold ${taskPriorityClass(task.priority, isDark)}`}>{task.priority}</span>
+                      </div>
+                      <h3 className={`mt-3 line-clamp-2 text-sm font-semibold leading-5 ${textStrongClass}`}>{task.title}</h3>
+                      {task.description && <p className={`mt-1 line-clamp-1 text-xs ${textMutedClass}`}>{task.description}</p>}
+                      <div className={`mt-3 flex items-center justify-between gap-3 text-xs ${textMutedClass}`}>
+                        <span>{task.status}</span>
+                        <span>{formatCommitDate(task.created_at)}</span>
+                      </div>
+                    </Link>
+                  ))
+                ) : (
+                  <div className={`w-full rounded-md border p-4 text-sm ${isDark ? 'border-slate-800 bg-slate-950/70 text-slate-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
+                    No hay tareas pendientes.
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section className={`rounded-lg border p-5 ${surfaceClass}`}>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase text-[#0d8f62]">Distribución operativa</p>
+                  <h2 className={`mt-1 text-xl font-bold ${textStrongClass}`}>Proyectos por estado</h2>
+                  <p className={`mt-2 text-sm ${textMutedClass}`}>Vista rápida del trabajo en marcha, detenido y finalizado.</p>
+                </div>
+                <Link
+                  href="/projects?estado=Todos"
+                  className={`inline-flex h-10 items-center justify-center rounded-md border px-3 text-sm font-semibold ${
+                    isDark ? 'border-slate-700 text-slate-300 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  Ver proyectos
+                </Link>
+              </div>
+
+              <div className="mt-6 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <div className="min-w-[680px]">
+                  <div className="relative h-80 pl-9">
+                    {chartTicks.map((value) => (
+                      <div
+                        key={value}
+                        className="absolute left-0 right-0 flex items-center gap-3"
+                        style={{ bottom: `${(value / chartMax) * 100}%` }}
+                      >
+                        <span className={`w-6 -translate-y-1/2 text-right text-xs tabular-nums ${textMutedClass}`}>{value}</span>
+                        <span className={`h-px flex-1 border-t border-dashed ${isDark ? 'border-slate-700/70' : 'border-slate-200'}`} />
+                      </div>
+                    ))}
+
+                    <div className={`absolute inset-y-0 left-9 right-0 z-10 grid grid-cols-6 gap-4 border-b px-3 ${isDark ? 'border-slate-600' : 'border-slate-300'}`}>
+                    {projectStatusChart.map((item) => {
+                      const count = metrics.statusCounts[item.status]
+                      const height = Math.min(100, (count / chartMax) * 100)
+
+                      return (
+                        <Link key={item.status} href={item.href} className="group relative h-full min-w-0">
+                            <div
+                              className={`absolute bottom-0 left-1/2 w-full max-w-24 -translate-x-1/2 rounded-t-lg ${item.color} shadow-sm transition-[height,filter,transform] duration-500 group-hover:-translate-x-1/2 group-hover:-translate-y-1 group-hover:brightness-95`}
+                              style={{ height: `${height}%` }}
+                            >
+                              <span className="absolute left-1/2 top-2 -translate-x-1/2 text-sm font-bold text-white drop-shadow-sm">{count}</span>
+                              <div className={`pointer-events-none absolute bottom-full left-1/2 z-20 mb-3 hidden w-44 -translate-x-1/2 rounded-md border p-3 text-left shadow-xl group-hover:block ${
+                                isDark ? 'border-slate-700 bg-slate-900 text-slate-100' : 'border-slate-200 bg-white text-slate-900'
+                              }`}>
+                                <p className="text-sm font-semibold">{item.label}</p>
+                                <p className={`mt-1 text-xs ${textMutedClass}`}>{count} proyecto{count === 1 ? '' : 's'}</p>
+                              </div>
+                            </div>
+                        </Link>
+                      )
+                    })}
+                    </div>
+                  </div>
+
+                  <div className="ml-9 grid grid-cols-6 gap-4 px-3">
+                    {projectStatusChart.map((item) => (
+                      <Link key={item.status} href={item.href} className={`mt-3 min-h-10 text-center text-xs font-medium leading-4 ${textMutedClass}`}>
+                        {item.label}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </section>
 
           </div>
