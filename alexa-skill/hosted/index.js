@@ -19,7 +19,7 @@ function response(text, shouldEndSession = true, directives) {
             reprompt: {
               outputSpeech: {
                 type: 'PlainText',
-                text: '¿Qué querés consultar o gestionar?',
+                text: '¿Qué necesitás?',
               },
             },
           }
@@ -230,7 +230,7 @@ exports.handler = async (event) => {
 
     if (event.request?.type === 'LaunchRequest') {
       return response(
-        'Organización DIA está disponible. Podés pedirme un resumen, consultar un proyecto o crear una tarea.',
+        'Dashboard abierto. ¿Qué necesitás?',
         false,
       );
     }

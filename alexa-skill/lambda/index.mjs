@@ -226,10 +226,10 @@ export const handler = async (event) => {
   try {
     if (event.request?.type === 'LaunchRequest') {
       return speechResponse(
-        'Organización DIA está disponible. Podés pedirme un resumen, consultar un proyecto o crear una tarea.',
+        'Dashboard abierto. ¿Qué necesitás?',
         {
           endSession: false,
-          reprompt: '¿Qué querés hacer?',
+          reprompt: '¿Qué necesitás?',
         },
       )
     }
