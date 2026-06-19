@@ -172,6 +172,13 @@ async function handleIntent(event) {
       return response(data.answer, false);
     }
 
+    case 'PriorityOverviewIntent': {
+      const data = await callDashboard(event, 'ask_assistant', {
+        question: 'qué proyectos requieren más atención',
+      });
+      return response(data.answer, false);
+    }
+
     case 'CreateTaskIntent': {
       const dialog = delegateDialog(event);
       if (dialog) return dialog;

@@ -158,6 +158,16 @@ async function handleIntent(event) {
     })
   }
 
+  if (intentName === 'PriorityOverviewIntent') {
+    const data = await callDashboard(event, 'ask_assistant', {
+      question: 'qué proyectos requieren más atención',
+    })
+    return speechResponse(data.answer, {
+      endSession: false,
+      reprompt: '¿Querés consultar algo más?',
+    })
+  }
+
   if (intentName === 'CreateTaskIntent') {
     const dialog = dialogResponse(event)
     if (dialog) return dialog
