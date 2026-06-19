@@ -11,7 +11,8 @@ export async function updateSession(request: NextRequest) {
     url.pathname.startsWith('/auth') ||
     url.pathname.startsWith('/forgot-password') ||
     url.pathname.startsWith('/reset-password') ||
-    url.pathname.startsWith('/api/auth')
+    url.pathname.startsWith('/api/auth') ||
+    url.pathname === '/api/alexa'
 
   if (!supabaseUrl || !supabaseAnonKey) {
     if (publicPath) return NextResponse.next({ request })

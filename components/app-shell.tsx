@@ -2,7 +2,7 @@
 
 import { useAuth } from '@/context/AuthContext'
 import { CursorAiBackground } from '@/components/cursor-ai-background'
-import { Code2, GitPullRequest, History, LayoutDashboard, LogOut, Menu, PanelLeftClose, Search, Settings, Sun, Moon, Trash2, Users } from 'lucide-react'
+import { Code2, GitPullRequest, History, LayoutDashboard, LogOut, Search, Settings, Sun, Moon, Trash2, Users } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
@@ -30,13 +30,12 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
   const { user, loading, authConfigured, signOut } = useAuth()
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const savedTheme = window.localStorage.getItem('organizacion-dia-theme')
       if (savedTheme === 'dark' || savedTheme === 'light') setTheme(savedTheme)
-      setSidebarCollapsed(window.localStorage.getItem('organizacion-dia-sidebar-collapsed') === 'true')
     }, 0)
 
     return () => window.clearTimeout(timer)
@@ -47,14 +46,6 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
       const next = current === 'dark' ? 'light' : 'dark'
       window.localStorage.setItem('organizacion-dia-theme', next)
       window.dispatchEvent(new CustomEvent('organizacion-dia-theme-change', { detail: next }))
-      return next
-    })
-  }
-
-  function toggleSidebar() {
-    setSidebarCollapsed((current) => {
-      const next = !current
-      window.localStorage.setItem('organizacion-dia-sidebar-collapsed', String(next))
       return next
     })
   }
@@ -83,8 +74,16 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
     <main className={`relative isolate min-h-screen overflow-hidden transition-colors ${shellClass}`}>
       <CursorAiBackground isDark={isDark} />
       <div className="relative z-10 flex min-h-screen">
-        <aside className={`sticky top-0 flex h-screen shrink-0 flex-col border-r px-3 py-4 transition-[width] duration-200 ${sidebarCollapsed ? 'w-16' : 'w-56'} ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-[#fbfcfd]/95'}`}>
-          <div className={`mb-6 rounded-xl border p-2 ${sidebarCollapsed ? 'flex justify-center' : 'flex items-center justify-between gap-2'} ${isDark ? 'border-slate-800 bg-slate-950/40' : 'border-slate-200 bg-white/70'}`}>
+        <aside
+          className={`sticky top-0 flex h-screen shrink-0 flex-col border-r px-3 py-4 transition-[width] duration-200 ${sidebarCollapsed ? 'w-16' : 'w-56'} ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-[#fbfcfd]/95'}`}
+          onMouseEnter={() => setSidebarCollapsed(false)}
+          onMouseLeave={() => setSidebarCollapsed(true)}
+          onFocusCapture={() => setSidebarCollapsed(false)}
+          onBlurCapture={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) setSidebarCollapsed(true)
+          }}
+        >
+          <div className={`mb-6 px-1 py-1 ${sidebarCollapsed ? 'flex justify-center' : 'flex items-center justify-between gap-2'}`}>
             <div className={`flex min-w-0 items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'}`}>
             <div className="flex aspect-square h-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#061e3d] ring-1 ring-white/10">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -97,14 +96,6 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
             </div>
             )}
             </div>
-            <button
-              className={`flex h-8 w-8 items-center justify-center rounded-md border transition ${sidebarCollapsed ? 'absolute left-[50px] top-5 shadow-sm' : ''} ${isDark ? 'border-slate-700 bg-slate-950 text-slate-300 hover:bg-slate-800' : 'border-slate-200 bg-[#fbfcfd] text-slate-500 hover:bg-slate-50'}`}
-              onClick={toggleSidebar}
-              title={sidebarCollapsed ? 'Desplegar menu' : 'Plegar menu'}
-              aria-label={sidebarCollapsed ? 'Desplegar menu' : 'Plegar menu'}
-            >
-              {sidebarCollapsed ? <Menu className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-            </button>
           </div>
 
           <nav className="space-y-1">
