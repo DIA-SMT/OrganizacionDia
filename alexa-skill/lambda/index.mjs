@@ -149,6 +149,15 @@ async function handleIntent(event) {
     )
   }
 
+  if (intentName === 'AskAssistantIntent') {
+    const question = slot(intent, 'question')
+    const data = await callDashboard(event, 'ask_assistant', { question })
+    return speechResponse(data.answer, {
+      endSession: false,
+      reprompt: '¿Querés consultar algo más?',
+    })
+  }
+
   if (intentName === 'CreateTaskIntent') {
     const dialog = dialogResponse(event)
     if (dialog) return dialog
