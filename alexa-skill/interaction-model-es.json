@@ -1,7 +1,7 @@
 {
   "interactionModel": {
     "languageModel": {
-      "invocationName": "el dashboard",
+      "invocationName": "dashboard dia",
       "intents": [
         {
           "name": "DashboardSummaryIntent",
