@@ -122,7 +122,7 @@ function StatusDropdown({
               key={status}
               type="button"
               className={`flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2 text-left text-sm font-semibold transition hover:scale-[1.01] ${statusTone(status, isDark)} ${
-                status === value ? 'ring-2 ring-[#10b981]/30' : ''
+                status === value ? 'ring-2 ring-[#1677f2]/30' : ''
               }`}
               onClick={() => {
                 onChange(status)
@@ -352,7 +352,7 @@ export function ProjectsScreen({
       {error && <div className={`mb-4 rounded-lg border p-3 text-sm ${isDark ? 'border-red-900/60 bg-red-950/30 text-red-300' : 'border-red-200 bg-red-50 text-red-700'}`}>{error}</div>}
 
       {statusFilter && (
-        <div className={`mb-4 flex w-fit items-center gap-3 rounded-lg border px-3 py-2 text-sm font-semibold ${isDark ? 'border-emerald-900/60 bg-emerald-950/30 text-emerald-300' : 'border-emerald-200 bg-emerald-50 text-[#08784f]'}`}>
+        <div className={`mb-4 flex w-fit items-center gap-3 rounded-lg border px-3 py-2 text-sm font-semibold ${isDark ? 'border-blue-900/60 bg-blue-950/30 text-blue-300' : 'border-blue-200 bg-blue-50 text-[#1554c7]'}`}>
           <span>Filtro: {statusFilter === 'Todos' ? 'Todos los proyectos activos' : statusFilter}</span>
           <button type="button" className={isDark ? 'text-slate-300 hover:text-white' : 'text-slate-500 hover:text-slate-900'} onClick={() => setStatusFilter(null)}>
             Limpiar
@@ -372,8 +372,8 @@ export function ProjectsScreen({
               className={`rounded-md px-3 py-2 text-sm font-semibold transition ${
                 view === key
                   ? isDark
-                    ? 'bg-emerald-500/15 text-emerald-300'
-                    : 'bg-[#e9f8f1] text-[#08784f]'
+                    ? 'bg-blue-500/15 text-blue-300'
+                    : 'bg-[#eaf3ff] text-[#1554c7]'
                   : isDark
                     ? 'text-slate-400 hover:bg-slate-900'
                     : 'text-slate-500 hover:bg-slate-50'
@@ -448,7 +448,7 @@ export function ProjectsScreen({
                   <span>{savingProgressId === project.id ? 'Guardando...' : `${project.progress}%`}</span>
                 </div>
                 <div className={`h-2 overflow-hidden rounded-full ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
-                  <div className="h-full rounded-full bg-[#10b981]" style={{ width: `${project.progress}%` }} />
+                  <div className="h-full rounded-full bg-[#1677f2]" style={{ width: `${project.progress}%` }} />
                 </div>
               </div>
 
@@ -485,7 +485,7 @@ export function ProjectsScreen({
                 </div>
                 {selectedProjectEditing ? (
                   <input
-                    className={`w-full rounded-md border border-transparent bg-transparent text-2xl font-bold outline-none transition focus:border-emerald-300 focus:px-2 ${titleClass}`}
+                    className={`w-full rounded-md border border-transparent bg-transparent text-2xl font-bold outline-none transition focus:border-blue-300 focus:px-2 ${titleClass}`}
                     value={selectedProject.name}
                     onChange={(event) => setProjects((current) => current.map((item) => (item.id === selectedProject.id ? { ...item, name: event.target.value } : item)))}
                     onBlur={(event) => updateProject(selectedProject.id, 'name', event.target.value.trim() || selectedProject.name)}
@@ -501,8 +501,8 @@ export function ProjectsScreen({
                   className={`flex h-10 items-center gap-2 rounded-md border px-3 text-sm font-semibold transition ${
                     selectedProjectEditing
                       ? isDark
-                        ? 'border-emerald-800 bg-emerald-950/40 text-emerald-300 hover:bg-emerald-950/60'
-                        : 'border-emerald-200 bg-emerald-50 text-[#0d8f62] hover:bg-emerald-100'
+                        ? 'border-blue-800 bg-blue-950/40 text-blue-300 hover:bg-blue-950/60'
+                        : 'border-blue-200 bg-blue-50 text-[#1769e0] hover:bg-blue-100'
                       : isDark
                         ? 'border-slate-700 text-slate-300 hover:bg-slate-900'
                         : 'border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -537,7 +537,7 @@ export function ProjectsScreen({
                 <div className={`block rounded-lg border p-4 ${panelClass}`}>
                   <div className="flex items-center justify-between gap-4">
                     <span className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Nota interna</span>
-                    {savingField === `${selectedProject.id}-note` && <span className={`text-xs font-semibold ${isDark ? 'text-emerald-300' : 'text-[#0d8f62]'}`}>Guardando...</span>}
+                    {savingField === `${selectedProject.id}-note` && <span className={`text-xs font-semibold ${isDark ? 'text-blue-300' : 'text-[#1769e0]'}`}>Guardando...</span>}
                   </div>
                   {selectedProjectEditing ? (
                     <textarea
@@ -571,7 +571,7 @@ export function ProjectsScreen({
                               key={field}
                               type="button"
                               className={`inline-flex h-10 w-fit items-center gap-2 rounded-md border px-3 text-sm font-semibold transition ${
-                                isDark ? 'border-slate-700 text-emerald-300 hover:bg-slate-900' : 'border-slate-200 text-[#0d8f62] hover:bg-white'
+                                isDark ? 'border-slate-700 text-blue-300 hover:bg-slate-900' : 'border-slate-200 text-[#1769e0] hover:bg-white'
                               }`}
                               onClick={() => setAddingSecondaryRepoIds((current) => (current.includes(selectedProject.id) ? current : [...current, selectedProject.id]))}
                             >
@@ -594,7 +594,7 @@ export function ProjectsScreen({
                               />
                               {value && (
                                 <a
-                                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md border ${isDark ? 'border-slate-700 text-emerald-300 hover:bg-slate-900' : 'border-slate-200 text-[#0d8f62] hover:bg-white'}`}
+                                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md border ${isDark ? 'border-slate-700 text-blue-300 hover:bg-slate-900' : 'border-slate-200 text-[#1769e0] hover:bg-white'}`}
                                   href={value}
                                   target="_blank"
                                   rel="noreferrer"
@@ -615,7 +615,7 @@ export function ProjectsScreen({
                         [selectedProject.repository_url_secondary, 'Repo 2'],
                       ].map(([url, label]) =>
                         url ? (
-                          <a key={label} className="block break-all text-sm font-semibold leading-6 text-[#0d8f62] hover:underline" href={url} target="_blank" rel="noreferrer">
+                          <a key={label} className="block break-all text-sm font-semibold leading-6 text-[#1769e0] hover:underline" href={url} target="_blank" rel="noreferrer">
                             <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>{label}: </span>
                             {url}
                           </a>
@@ -629,7 +629,7 @@ export function ProjectsScreen({
                 <div className={`rounded-lg border p-4 ${panelClass}`}>
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
-                      <GitCommitHorizontal className={`h-4 w-4 ${isDark ? 'text-emerald-300' : 'text-[#0d8f62]'}`} />
+                      <GitCommitHorizontal className={`h-4 w-4 ${isDark ? 'text-blue-300' : 'text-[#1769e0]'}`} />
                       <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Modificaciones recientes</p>
                     </div>
                     <span className={`text-xs ${mutedClass}`}>{(commitsByProject[selectedProject.id] ?? []).length} commits</span>
@@ -667,7 +667,7 @@ export function ProjectsScreen({
                       <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Desarrollo</p>
                       <p className={`mt-0.5 text-xs ${mutedClass}`}>Avance general del proyecto</p>
                     </div>
-                    <p className={`rounded-md px-2.5 py-1 text-sm font-bold ${isDark ? 'bg-emerald-500/15 text-emerald-300' : 'bg-[#e9f8f1] text-[#08784f]'}`}>
+                    <p className={`rounded-md px-2.5 py-1 text-sm font-bold ${isDark ? 'bg-blue-500/15 text-blue-300' : 'bg-[#eaf3ff] text-[#1554c7]'}`}>
                       {savingProgressId === selectedProject.id ? 'Guardando...' : `${selectedProject.progress}%`}
                     </p>
                   </div>
@@ -681,13 +681,13 @@ export function ProjectsScreen({
                       value={selectedProject.progress}
                       onChange={(event) => updateProgress(selectedProject.id, Number(event.target.value))}
                       style={{
-                        background: `linear-gradient(to right, #10b981 0%, #10b981 ${selectedProject.progress}%, ${isDark ? '#1e293b' : '#e2e8f0'} ${selectedProject.progress}%, ${isDark ? '#1e293b' : '#e2e8f0'} 100%)`,
+                        background: `linear-gradient(to right, #1677f2 0%, #1677f2 ${selectedProject.progress}%, ${isDark ? '#1e293b' : '#e2e8f0'} ${selectedProject.progress}%, ${isDark ? '#1e293b' : '#e2e8f0'} 100%)`,
                       }}
                       aria-label={`Progreso de ${selectedProject.name}`}
                     />
                   ) : (
                     <div className={`mt-5 h-3 overflow-hidden rounded-full ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
-                      <div className="h-full rounded-full bg-[#10b981]" style={{ width: `${selectedProject.progress}%` }} />
+                      <div className="h-full rounded-full bg-[#1677f2]" style={{ width: `${selectedProject.progress}%` }} />
                     </div>
                   )}
                 </div>

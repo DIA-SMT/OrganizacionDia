@@ -64,7 +64,7 @@ export default function ResetPasswordPage() {
   if (validSession === null) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#f6f8fb]">
-        <Loader2 className="h-6 w-6 animate-spin text-[#10b981]" />
+        <Loader2 className="h-6 w-6 animate-spin text-[#1677f2]" />
       </main>
     )
   }
@@ -76,7 +76,7 @@ export default function ResetPasswordPage() {
         <p className="mt-2 text-sm text-slate-500">Define una nueva contrasena para tu cuenta.</p>
         {!validSession && <div className="mt-5 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">No hay una sesion de recuperacion valida.</div>}
         {success && (
-          <div className="mt-5 flex gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          <div className="mt-5 flex gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
             <CheckCircle2 className="h-4 w-4" />
             Contrasena actualizada. Redirigiendo...
           </div>
@@ -86,7 +86,7 @@ export default function ResetPasswordPage() {
           <input className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm" type="password" placeholder="Nueva contrasena" value={password} onChange={(e) => setPassword(e.target.value)} required />
           <input className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm" type="password" placeholder="Confirmar contrasena" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
         </div>
-        <button className="mt-6 flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[#10b981] text-sm font-semibold text-white disabled:opacity-60" disabled={loading || !validSession}>
+        <button className="mt-6 flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[#1677f2] text-sm font-semibold text-white disabled:opacity-60" disabled={loading || !validSession}>
           {loading && <Loader2 className="h-4 w-4 animate-spin" />}
           Restablecer
         </button>

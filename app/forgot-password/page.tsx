@@ -43,7 +43,7 @@ export default function ForgotPasswordPage() {
         <h1 className="text-2xl font-bold text-slate-950">Recuperar contrasena</h1>
         <p className="mt-2 text-sm text-slate-500">Te enviaremos un enlace para crear una nueva contrasena.</p>
         {success && (
-          <div className="mt-5 flex gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          <div className="mt-5 flex gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
             <CheckCircle2 className="h-4 w-4" />
             Correo enviado. Revisa tu bandeja de entrada.
           </div>
@@ -52,14 +52,14 @@ export default function ForgotPasswordPage() {
         <label className="mt-6 block">
           <span className="text-sm font-medium text-slate-700">Correo electronico</span>
           <input
-            className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#10b981] focus:ring-2 focus:ring-emerald-100"
+            className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#1677f2] focus:ring-2 focus:ring-blue-100"
             type="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
         </label>
-        <button className="mt-6 flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[#10b981] text-sm font-semibold text-white" disabled={loading}>
+        <button className="mt-6 flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[#1677f2] text-sm font-semibold text-white" disabled={loading}>
           {loading && <Loader2 className="h-4 w-4 animate-spin" />}
           Enviar enlace
         </button>

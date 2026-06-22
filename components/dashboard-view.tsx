@@ -127,7 +127,7 @@ function taskPriorityClass(priority: string, isDark: boolean) {
 
 
 function SidebarItem({ icon, label, href, active, collapsed, isDark }: { icon: React.ReactNode; label: string; href: string; active?: boolean; collapsed?: boolean; isDark: boolean }) {
-  const activeClass = isDark ? 'bg-emerald-500/15 text-emerald-300' : 'bg-[#e9f8f1] text-[#08784f]'
+  const activeClass = isDark ? 'bg-blue-500/15 text-blue-300' : 'bg-[#eaf3ff] text-[#1554c7]'
   const idleClass = isDark ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-100' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
   const className = `flex w-full items-center rounded-lg py-2 text-sm font-medium transition ${collapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${active ? activeClass : idleClass}`
 
@@ -524,14 +524,14 @@ export function DashboardView() {
             <section className={`mb-5 rounded-lg border p-5 ${surfaceClass}`}>
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
-                  <p className="text-xs font-semibold uppercase text-[#0d8f62]">Ultimas modificaciones</p>
+                  <p className="text-xs font-semibold uppercase text-[#1769e0]">Ultimas modificaciones</p>
                   <h2 className={`mt-1 text-xl font-bold ${textStrongClass}`}>Resumen de lo trabajado en los proyectos</h2>
                   <p className={`mt-2 max-w-2xl text-sm ${textMutedClass}`}>
                     Cambios recientes detectados desde los repositorios vinculados. Selecciona uno para abrir el proyecto con mas detalle.
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className={`rounded-md px-2 py-1 text-xs font-semibold ${isDark ? 'bg-emerald-500/15 text-emerald-300' : 'bg-[#e9f8f1] text-[#08784f]'}`}>
+                  <span className={`rounded-md px-2 py-1 text-xs font-semibold ${isDark ? 'bg-blue-500/15 text-blue-300' : 'bg-[#eaf3ff] text-[#1554c7]'}`}>
                     En vivo
                   </span>
                   <Link href="/commit-history" className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm font-semibold ${isDark ? 'border-slate-700 text-slate-300 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
@@ -557,7 +557,7 @@ export function DashboardView() {
                       }}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className={`truncate text-xs font-semibold ${isDark ? 'text-emerald-300' : 'text-[#0d8f62]'}`}>{change.projectName}</span>
+                        <span className={`truncate text-xs font-semibold ${isDark ? 'text-blue-300' : 'text-[#1769e0]'}`}>{change.projectName}</span>
                         <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${isDark ? 'bg-slate-800 text-slate-300' : 'bg-white text-slate-500'}`}>{change.repoLabel}</span>
                       </div>
                       <p className={`mt-2 line-clamp-2 text-sm font-semibold leading-5 ${textStrongClass}`}>{change.message}</p>
@@ -594,7 +594,7 @@ export function DashboardView() {
             <section className={`mb-5 rounded-lg border p-5 ${surfaceClass}`}>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <p className="text-xs font-semibold uppercase text-[#0d8f62]">Trabajo pendiente</p>
+                  <p className="text-xs font-semibold uppercase text-[#1769e0]">Trabajo pendiente</p>
                   <h2 className={`mt-1 text-xl font-bold ${textStrongClass}`}>Tareas por resolver</h2>
                   <p className={`mt-2 text-sm ${textMutedClass}`}>Tareas activas ordenadas por la modificacion mas reciente.</p>
                 </div>
@@ -623,7 +623,7 @@ export function DashboardView() {
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <span className={`truncate text-xs font-semibold ${isDark ? 'text-emerald-300' : 'text-[#0d8f62]'}`}>{taskProjectName(task.projects)}</span>
+                        <span className={`truncate text-xs font-semibold ${isDark ? 'text-blue-300' : 'text-[#1769e0]'}`}>{taskProjectName(task.projects)}</span>
                         <span className={`shrink-0 rounded px-2 py-1 text-[10px] font-semibold ${taskPriorityClass(task.priority, isDark)}`}>{task.priority}</span>
                       </div>
                       <h3 className={`mt-3 line-clamp-2 text-sm font-semibold leading-5 ${textStrongClass}`}>{task.title}</h3>
@@ -645,7 +645,7 @@ export function DashboardView() {
             <section className={`rounded-lg border p-5 ${surfaceClass}`}>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <p className="text-xs font-semibold uppercase text-[#0d8f62]">Distribución operativa</p>
+                  <p className="text-xs font-semibold uppercase text-[#1769e0]">Distribución operativa</p>
                   <h2 className={`mt-1 text-xl font-bold ${textStrongClass}`}>Proyectos por estado</h2>
                   <p className={`mt-2 text-sm ${textMutedClass}`}>Vista rápida del trabajo en marcha, detenido y finalizado.</p>
                 </div>
@@ -733,7 +733,7 @@ export function DashboardView() {
                     <p className={`font-semibold ${textStrongClass}`}>Tema</p>
                     <p className={`mt-1 text-sm ${textMutedClass}`}>Cambiar entre modo claro y oscuro.</p>
                   </div>
-                  <button className="inline-flex h-10 items-center gap-2 rounded-md bg-[#10b981] px-3 text-sm font-semibold text-white" onClick={toggleTheme}>
+                  <button className="inline-flex h-10 items-center gap-2 rounded-md bg-[#1677f2] px-3 text-sm font-semibold text-white" onClick={toggleTheme}>
                     {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
                     {isDark ? 'Claro' : 'Oscuro'}
                   </button>

@@ -102,7 +102,7 @@ export function TestingScreen() {
                           [project.repository_url_secondary, 'Repo 2'],
                         ].map(([url, label]) =>
                           url ? (
-                            <a key={label} className="inline-flex max-w-full items-start gap-1 break-all text-right font-semibold text-[#0d8f62] dark:text-emerald-300" href={url} target="_blank" rel="noreferrer">
+                            <a key={label} className="inline-flex max-w-full items-start gap-1 break-all text-right font-semibold text-[#1769e0] dark:text-blue-300" href={url} target="_blank" rel="noreferrer">
                               <span>{label}: {url}</span> <ExternalLink className="mt-0.5 h-3 w-3 shrink-0" />
                             </a>
                           ) : null,

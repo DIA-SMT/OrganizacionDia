@@ -107,7 +107,7 @@ export function ProjectCreateButton({
   return (
     <>
       <button
-        className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#10b981] px-4 text-sm font-semibold text-white shadow-sm"
+        className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#1677f2] px-4 text-sm font-semibold text-white shadow-sm"
         onClick={() => setOpen(true)}
         title="Nuevo proyecto"
       >
@@ -157,7 +157,7 @@ export function ProjectCreateButton({
                   <span className={`text-sm font-bold ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>{form.progress}%</span>
                 </div>
                 <input
-                  className="mt-3 w-full accent-[#10b981]"
+                  className="mt-3 w-full accent-[#1677f2]"
                   type="range"
                   min="0"
                   max="100"
@@ -185,7 +185,7 @@ export function ProjectCreateButton({
               <input className={inputClass} type="date" value={form.estimated_delivery} onChange={(e) => setForm({ ...form, estimated_delivery: e.target.value })} />
             </div>
 
-            <button className="mt-5 h-10 w-full rounded-md bg-[#10b981] text-sm font-semibold text-white disabled:opacity-60" disabled={loading || !authConfigured}>
+            <button className="mt-5 h-10 w-full rounded-md bg-[#1677f2] text-sm font-semibold text-white disabled:opacity-60" disabled={loading || !authConfigured}>
               {loading ? 'Guardando...' : 'Crear proyecto'}
             </button>
           </form>

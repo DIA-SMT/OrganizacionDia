@@ -25,13 +25,13 @@ export default function SupabasePage() {
               <Database className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-xs font-semibold uppercase text-[#0d8f62]">Configuracion</p>
+              <p className="text-xs font-semibold uppercase text-[#1769e0]">Configuracion</p>
               <h1 className="mt-1 text-3xl font-bold">Supabase</h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">La aplicacion ya tiene clientes, middleware, login y esquema SQL. Solo faltan las claves del proyecto para usar datos reales.</p>
             </div>
           </div>
 
-          <div className={`mt-6 flex items-center gap-3 rounded-lg border p-4 ${configured ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+          <div className={`mt-6 flex items-center gap-3 rounded-lg border p-4 ${configured ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
             {configured ? <CheckCircle2 className="h-5 w-5" /> : <XCircle className="h-5 w-5" />}
             <p className="text-sm font-semibold">{configured ? 'Supabase configurado en este entorno.' : 'Faltan variables en .env.local.'}</p>
           </div>
