@@ -31,7 +31,7 @@ function getProjectName(projects: TaskProject) {
 function priorityClass(priority: string) {
   if (priority === 'Critica') return 'bg-red-100 text-red-700 dark:bg-red-400/15 dark:text-red-200'
   if (priority === 'Alta') return 'bg-amber-100 text-amber-700 dark:bg-amber-400/15 dark:text-amber-200'
-  if (priority === 'Media') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-200'
+  if (priority === 'Media') return 'bg-blue-100 text-blue-700 dark:bg-blue-400/15 dark:text-blue-200'
   return 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
 }
 
@@ -141,18 +141,18 @@ export function TasksScreen() {
               <span className="text-slate-500 dark:text-slate-400">{formatDate(task.created_at)}</span>
               <div className="flex flex-col gap-1">
                 {task.issue_url && (
-                  <a className="inline-flex items-center gap-1 text-[#0d8f62] dark:text-emerald-300" href={task.issue_url} target="_blank" rel="noreferrer">
+                  <a className="inline-flex items-center gap-1 text-[#1769e0] dark:text-blue-300" href={task.issue_url} target="_blank" rel="noreferrer">
                     Issue <ExternalLink className="h-3 w-3" />
                   </a>
                 )}
                 {task.pr_url && (
-                  <a className="inline-flex items-center gap-1 text-[#0d8f62] dark:text-emerald-300" href={task.pr_url} target="_blank" rel="noreferrer">
+                  <a className="inline-flex items-center gap-1 text-[#1769e0] dark:text-blue-300" href={task.pr_url} target="_blank" rel="noreferrer">
                     PR <ExternalLink className="h-3 w-3" />
                   </a>
                 )}
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1 text-left font-semibold text-[#0d8f62] disabled:opacity-50 dark:text-emerald-300"
+                  className="inline-flex items-center gap-1 text-left font-semibold text-[#1769e0] disabled:opacity-50 dark:text-blue-300"
                   disabled={finishingId === task.id}
                   onClick={() => void finishTask(task.id)}
                 >

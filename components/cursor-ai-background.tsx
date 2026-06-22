@@ -60,7 +60,7 @@ export function CursorAiBackground({ isDark }: { isDark: boolean }) {
           isDark ? 'opacity-70' : 'opacity-80'
         }`}
       >
-        <div className={`absolute inset-8 rounded-full blur-3xl ${isDark ? 'bg-emerald-500/18' : 'bg-emerald-400/22'}`} />
+        <div className={`absolute inset-8 rounded-full blur-3xl ${isDark ? 'bg-blue-500/18' : 'bg-blue-400/22'}`} />
         <div className={`ai-face-shell ${isDark ? 'ai-face-shell-dark' : 'ai-face-shell-light'}`}>
           <div className="ai-face-scanline" />
           <div className="ai-face-brow ai-face-brow-left" />

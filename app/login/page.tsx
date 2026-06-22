@@ -17,7 +17,7 @@ function LoginShell() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#eef3f6] px-4">
       <section className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
-        <Loader2 className="h-5 w-5 animate-spin text-[#10b981]" />
+        <Loader2 className="h-5 w-5 animate-spin text-[#1677f2]" />
       </section>
     </main>
   )
@@ -76,13 +76,13 @@ function LoginForm() {
             <Code2 className="h-6 w-6" />
           </div>
           <h1 className="mt-10 text-3xl font-bold">Organizacion DIA</h1>
-          <p className="mt-3 text-sm leading-6 text-emerald-50/80">
+          <p className="mt-3 text-sm leading-6 text-blue-50/80">
             Gestion interna para proyectos de programacion, revision, testing y entregas del equipo.
           </p>
         </div>
 
         <form onSubmit={handleLogin} className="p-8 md:p-10">
-          <p className="text-xs font-semibold uppercase text-[#0d8f62]">Acceso interno</p>
+          <p className="text-xs font-semibold uppercase text-[#1769e0]">Acceso interno</p>
           <h2 className="mt-2 text-2xl font-bold text-slate-950">Iniciar sesion</h2>
           <p className="mt-2 text-sm text-slate-500">Ingresa tus credenciales para entrar al dashboard.</p>
 
@@ -92,7 +92,7 @@ function LoginForm() {
             <label className="block">
               <span className="text-sm font-medium text-slate-700">Correo electronico</span>
               <input
-                className="mt-2 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-[#10b981] focus:ring-2 focus:ring-emerald-100"
+                className="mt-2 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-[#1677f2] focus:ring-2 focus:ring-blue-100"
                 type="email"
                 required
                 value={email}
@@ -103,7 +103,7 @@ function LoginForm() {
             <label className="block">
               <span className="text-sm font-medium text-slate-700">Contrasena</span>
               <input
-                className="mt-2 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-[#10b981] focus:ring-2 focus:ring-emerald-100"
+                className="mt-2 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-[#1677f2] focus:ring-2 focus:ring-blue-100"
                 type="password"
                 required
                 value={password}
@@ -113,7 +113,7 @@ function LoginForm() {
           </div>
 
           <button
-            className="mt-6 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[#10b981] px-4 text-sm font-semibold text-white shadow-sm disabled:opacity-60"
+            className="mt-6 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[#1677f2] px-4 text-sm font-semibold text-white shadow-sm disabled:opacity-60"
             type="submit"
             disabled={loading}
           >
@@ -124,7 +124,7 @@ function LoginForm() {
           <button
             type="button"
             onClick={() => router.push('/forgot-password')}
-            className="mt-4 w-full text-center text-sm font-medium text-[#0d8f62]"
+            className="mt-4 w-full text-center text-sm font-medium text-[#1769e0]"
           >
             Olvide mi contrasena
           </button>
