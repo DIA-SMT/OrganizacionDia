@@ -1,7 +1,7 @@
 {
   "interactionModel": {
     "languageModel": {
-      "invocationName": "proyectos dia",
+      "invocationName": "oficina dia",
       "intents": [
         {
           "name": "DashboardSummaryIntent",
