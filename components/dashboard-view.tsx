@@ -5,13 +5,15 @@ import { CursorAiBackground } from '@/components/cursor-ai-background'
 import { TaskCreateButton } from '@/components/task-create-button'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
 import { type DashboardProject } from '@/lib/dashboard-data'
+import { expedientePriorityWeight, formatExpedienteDate } from '@/lib/expedientes'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   Check,
   Code2,
+  ExternalLink,
+  FileText,
   GitPullRequest,
-  HardDrive,
   History,
   LayoutDashboard,
   LogOut,
@@ -66,6 +68,18 @@ type PendingTask = {
   priority: string
   created_at: string
   projects: TaskProject
+}
+
+type DashboardExpediente = {
+  id: string
+  name: string
+  summary: string
+  drive_url: string
+  drive_created_at: string
+  status: string
+  priority: string
+  brief_generated_at: string | null
+  brief_error: string | null
 }
 
 
@@ -169,6 +183,7 @@ export function DashboardView() {
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
   const [pendingTasks, setPendingTasks] = useState<PendingTask[]>([])
+  const [recentExpedientes, setRecentExpedientes] = useState<DashboardExpediente[]>([])
   const [commitsByProject, setCommitsByProject] = useState<Record<string, ProjectCommitActivity[]>>({})
   const [seenCommitIds, setSeenCommitIds] = useState<string[]>([])
   const [lastCommitSync, setLastCommitSync] = useState<string | null>(null)
@@ -242,7 +257,7 @@ export function DashboardView() {
       const supabase = getSupabaseBrowserClient()
       if (!supabase) return
 
-      const [projectQuery, taskQuery] = await Promise.all([
+      const [projectQuery, taskQuery, expedienteQuery] = await Promise.all([
         supabase
           .from('projects')
           .select('id, name, requester_area, stack, repository_url, repository_url_secondary, status, priority, progress, estimated_delivery')
@@ -255,6 +270,12 @@ export function DashboardView() {
           .neq('status', 'Terminada')
           .order('updated_at', { ascending: false })
           .limit(30),
+        supabase
+          .from('expedientes')
+          .select('id, name, summary, drive_url, drive_created_at, status, priority, brief_generated_at, brief_error')
+          .neq('status', 'Archivado')
+          .order('drive_created_at', { ascending: false })
+          .limit(12),
       ])
 
       const projectRowsResult = projectQuery.error
@@ -282,6 +303,15 @@ export function DashboardView() {
 
       setProjects(nextProjects)
       setPendingTasks((taskQuery.data ?? []) as unknown as PendingTask[])
+      setRecentExpedientes(
+        ((expedienteQuery.data ?? []) as DashboardExpediente[])
+          .sort((a, b) => {
+            const priorityDiff = expedientePriorityWeight(b.priority) - expedientePriorityWeight(a.priority)
+            if (priorityDiff !== 0) return priorityDiff
+            return new Date(b.drive_created_at).getTime() - new Date(a.drive_created_at).getTime()
+          })
+          .slice(0, 4),
+      )
     }
 
     fetchDashboard().catch((error) => {
@@ -460,7 +490,7 @@ export function DashboardView() {
             <SidebarItem icon={<Code2 className="h-4 w-4 shrink-0" />} label="Proyectos" href="/projects" collapsed={sidebarCollapsed} isDark={isDark} />
             <SidebarItem icon={<GitPullRequest className="h-4 w-4 shrink-0" />} label="Tareas" href="/tasks" collapsed={sidebarCollapsed} isDark={isDark} />
             <SidebarItem icon={<Users className="h-4 w-4 shrink-0" />} label="Equipo" href="/team" collapsed={sidebarCollapsed} isDark={isDark} />
-            <SidebarItem icon={<HardDrive className="h-4 w-4 shrink-0" />} label="Drive" href="https://drive.google.com/drive/home" collapsed={sidebarCollapsed} isDark={isDark} />
+            <SidebarItem icon={<FileText className="h-4 w-4 shrink-0" />} label="Expedientes" href="/expedientes" collapsed={sidebarCollapsed} isDark={isDark} />
             <SidebarItem icon={<History className="h-4 w-4 shrink-0" />} label="Historial" href="/commit-history" collapsed={sidebarCollapsed} isDark={isDark} />
             <SidebarItem icon={<Trash2 className="h-4 w-4 shrink-0" />} label="Papelera" href="/papelera" collapsed={sidebarCollapsed} isDark={isDark} />
           </nav>
@@ -637,6 +667,60 @@ export function DashboardView() {
                 ) : (
                   <div className={`w-full rounded-md border p-4 text-sm ${isDark ? 'border-slate-800 bg-slate-950/70 text-slate-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
                     No hay tareas pendientes.
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section className={`mb-5 rounded-lg border p-5 ${surfaceClass}`}>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase text-[#1769e0]">Expedientes</p>
+                  <h2 className={`mt-1 text-xl font-bold ${textStrongClass}`}>PDFs recientes desde Drive</h2>
+                  <p className={`mt-2 text-sm ${textMutedClass}`}>Pantallazo rapido de los ultimos expedientes detectados.</p>
+                </div>
+                <Link
+                  href="/expedientes"
+                  className={`inline-flex h-10 items-center justify-center gap-2 rounded-md border px-3 text-sm font-semibold ${
+                    isDark ? 'border-slate-700 text-slate-300 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <FileText className="h-4 w-4" />
+                  Ver expedientes
+                </Link>
+              </div>
+
+              <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                {recentExpedientes.length > 0 ? (
+                  recentExpedientes.map((expediente) => (
+                    <article key={expediente.id} className={`rounded-md border p-4 ${isDark ? 'border-slate-800 bg-slate-950/70' : 'border-slate-200 bg-slate-50'}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className={`truncate text-sm font-bold ${textStrongClass}`}>{expediente.name}</p>
+                          <p className={`mt-1 text-xs ${textMutedClass}`}>{formatExpedienteDate(expediente.drive_created_at)}</p>
+                        </div>
+                        <div className="flex shrink-0 flex-col items-end gap-1">
+                          <span className={`rounded-md px-2 py-1 text-[10px] font-semibold ${expediente.priority === 'Alta' ? (isDark ? 'bg-red-500/15 text-red-300' : 'bg-red-50 text-red-700') : isDark ? 'bg-blue-500/15 text-blue-300' : 'bg-[#eaf3ff] text-[#1554c7]'}`}>
+                            {expediente.priority}
+                          </span>
+                          <span className={`rounded-md px-2 py-1 text-[10px] font-semibold ${isDark ? 'bg-slate-800 text-slate-300' : 'bg-white text-slate-500'}`}>
+                            {expediente.status}
+                          </span>
+                        </div>
+                      </div>
+                      <p className={`mt-3 line-clamp-2 text-sm leading-5 ${textMutedClass}`}>{expediente.summary}</p>
+                      <p className={`mt-2 text-[11px] ${expediente.brief_error ? 'text-red-400' : textMutedClass}`}>
+                        {expediente.brief_error ? 'Brief OCR pendiente' : expediente.brief_generated_at ? 'Brief OCR guardado' : 'Esperando brief OCR'}
+                      </p>
+                      <a className={`mt-3 inline-flex items-center gap-1 text-xs font-semibold ${isDark ? 'text-blue-300' : 'text-[#1769e0]'}`} href={expediente.drive_url} target="_blank" rel="noreferrer">
+                        Abrir PDF
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </article>
+                  ))
+                ) : (
+                  <div className={`rounded-md border p-4 text-sm lg:col-span-2 ${isDark ? 'border-slate-800 bg-slate-950/70 text-slate-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
+                    Todavia no hay expedientes sincronizados. Usa la pestaña Expedientes para conectar Drive.
                   </div>
                 )}
               </div>

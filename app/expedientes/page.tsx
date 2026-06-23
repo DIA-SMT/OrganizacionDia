@@ -1,0 +1,5 @@
+import { ExpedientesScreen } from '@/components/expedientes-screen'
+
+export default function ExpedientesPage() {
+  return <ExpedientesScreen />
+}
