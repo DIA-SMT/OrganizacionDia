@@ -279,7 +279,9 @@ export function ExpedientesScreen({ archivedOnly = false }: { archivedOnly?: boo
                 </div>
               </div>
 
-              <p className="mt-4 line-clamp-4 text-sm leading-6 text-slate-600 dark:text-slate-300">{expediente.summary}</p>
+              {expediente.brief_generated_at && expediente.summary ? (
+                <p className="mt-4 line-clamp-4 text-sm leading-6 text-slate-600 dark:text-slate-300">{expediente.summary}</p>
+              ) : null}
 
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4 dark:border-slate-800">
                 <div className="flex flex-wrap items-center gap-2">
@@ -316,7 +318,7 @@ export function ExpedientesScreen({ archivedOnly = false }: { archivedOnly?: boo
                     <ScanText className={`h-4 w-4 ${generatingBriefId === expediente.id ? 'animate-pulse' : ''}`} />
                     {generatingBriefId === expediente.id
                       ? 'Analizando...'
-                      : expediente.brief_generated_at
+                      : expediente.brief_generated_at || expediente.brief_error
                         ? 'Regenerar brief'
                         : 'Generar brief'}
                   </button>

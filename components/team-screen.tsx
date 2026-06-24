@@ -2,7 +2,7 @@
 
 import { AppShell } from '@/components/app-shell'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
-import { CalendarDays, Gamepad2, Heart, Mail, Pencil, Plus, Save, Trash2, Utensils, X } from 'lucide-react'
+import { CalendarDays, Gamepad2, Github, Heart, Mail, Pencil, Plus, Save, Trash2, Utensils, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 type MemberRow = {
@@ -12,6 +12,7 @@ type MemberRow = {
   role: string | null
   specialty: string | null
   avatar_url: string | null
+  github_username: string | null
   birthday: string | null
   favorite_food: string | null
   hobby: string | null
@@ -20,11 +21,12 @@ type MemberRow = {
   created_at: string
 }
 
-type MemberProfileField = 'full_name' | 'email' | 'role' | 'birthday' | 'specialty' | 'avatar_url' | 'favorite_food' | 'hobby' | 'favorite_game'
+type MemberProfileField = 'full_name' | 'email' | 'role' | 'birthday' | 'specialty' | 'avatar_url' | 'github_username' | 'favorite_food' | 'hobby' | 'favorite_game'
 type MemberRole = 'Admin' | 'PM' | 'Dev' | 'QA' | 'Viewer'
 
 const emptyProfile = {
   avatar_url: null,
+  github_username: null,
   birthday: null,
   favorite_food: null,
   hobby: null,
@@ -73,6 +75,7 @@ export function TeamScreen() {
     role: 'Dev' as MemberRole,
     specialty: '',
     avatar_url: '',
+    github_username: '',
     birthday: '',
     favorite_food: '',
     hobby: '',
@@ -91,7 +94,7 @@ export function TeamScreen() {
 
     const { data, error: membersError } = await supabase
       .from('members')
-      .select('id, full_name, email, role, specialty, avatar_url, birthday, favorite_food, hobby, favorite_game, active, created_at')
+      .select('id, full_name, email, role, specialty, avatar_url, github_username, birthday, favorite_food, hobby, favorite_game, active, created_at')
       .eq('active', true)
       .order('created_at', { ascending: false })
 
@@ -112,7 +115,7 @@ export function TeamScreen() {
       setMembers([])
     } else {
       setMembers(((fallbackData ?? []) as Omit<MemberRow, keyof typeof emptyProfile>[]).map((member) => ({ ...member, ...emptyProfile })))
-      setError('Faltan columnas de perfil en Supabase. Ejecuta supabase/add_member_profile_fields.sql para guardar foto, cumpleaños, comida, hobby y juego.')
+      setError('Faltan columnas de perfil en Supabase. Ejecuta supabase/add_member_profile_fields.sql y supabase/add_member_github_username.sql.')
     }
 
     setLoading(false)
@@ -126,7 +129,7 @@ export function TeamScreen() {
     const q = search.trim().toLowerCase()
     if (!q) return members
     return members.filter((member) =>
-      [member.full_name, member.email, member.specialty, member.role, member.favorite_food, member.hobby, member.favorite_game]
+      [member.full_name, member.email, member.specialty, member.role, member.github_username, member.favorite_food, member.hobby, member.favorite_game]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
@@ -160,6 +163,7 @@ export function TeamScreen() {
         role: member.role || 'Dev',
         specialty: member.specialty || null,
         avatar_url: member.avatar_url || null,
+        github_username: member.github_username?.replace(/^@/, '').trim() || null,
         favorite_food: member.favorite_food || null,
         hobby: member.hobby || null,
         favorite_game: member.favorite_game || null,
@@ -167,7 +171,7 @@ export function TeamScreen() {
       .eq('id', member.id)
 
     if (updateError) {
-      setError(`${updateError.message}. Si faltan columnas, ejecuta supabase/add_member_profile_fields.sql.`)
+      setError(`${updateError.message}. Si faltan columnas, ejecuta supabase/add_member_profile_fields.sql y supabase/add_member_github_username.sql.`)
     } else {
       setEditingMemberId(null)
     }
@@ -248,6 +252,7 @@ export function TeamScreen() {
       role: newMember.role,
       specialty: newMember.specialty || null,
       avatar_url: newMember.avatar_url || null,
+      github_username: newMember.github_username.replace(/^@/, '').trim() || null,
       birthday: newMember.birthday || null,
       favorite_food: newMember.favorite_food || null,
       hobby: newMember.hobby || null,
@@ -266,7 +271,7 @@ export function TeamScreen() {
         }
         const { error: fallbackError } = await supabase.from('members').insert(fallbackPayload)
         if (fallbackError) throw insertError
-        setError('Persona creada. Para guardar foto, cumpleaños, comida, hobby y juego ejecuta supabase/add_member_profile_fields.sql.')
+        setError('Persona creada. Para guardar perfil completo y GitHub ejecuta supabase/add_member_profile_fields.sql y supabase/add_member_github_username.sql.')
       }
 
       setNewMember({
@@ -275,6 +280,7 @@ export function TeamScreen() {
         role: 'Dev',
         specialty: '',
         avatar_url: '',
+        github_username: '',
         birthday: '',
         favorite_food: '',
         hobby: '',
@@ -407,6 +413,7 @@ export function TeamScreen() {
 
             <div className="mt-6 grid gap-3 text-left sm:grid-cols-2">
               <ProfileInfo icon={<Mail className="h-3.5 w-3.5" />} label="Email" value={selectedMember.email} />
+              <ProfileInfo icon={<Github className="h-3.5 w-3.5" />} label="GitHub" value={selectedMember.github_username ? `@${selectedMember.github_username}` : null} />
               <ProfileInfo icon={<CalendarDays className="h-3.5 w-3.5" />} label="Cumpleaños" value={formatBirthday(selectedMember.birthday)} />
               <ProfileInfo icon={<Utensils className="h-3.5 w-3.5" />} label="Comida favorita" value={selectedMember.favorite_food} />
               <ProfileInfo icon={<Heart className="h-3.5 w-3.5" />} label="Hobby" value={selectedMember.hobby} />
@@ -461,6 +468,12 @@ export function TeamScreen() {
                   Email
                   <input className={inputClass} type="email" value={editingMember.email ?? ''} onChange={(event) => updateLocalMember(editingMember.id, 'email', event.target.value)} placeholder="persona@dominio.com" />
                 </label>
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  GitHub
+                  <input className={inputClass} value={editingMember.github_username ?? ''} onChange={(event) => updateLocalMember(editingMember.id, 'github_username', event.target.value.replace(/^@/, ''))} placeholder="usuario-github" />
+                </label>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
                 <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
                   Skill
                   <input className={inputClass} value={editingMember.specialty ?? ''} onChange={(event) => updateLocalMember(editingMember.id, 'specialty', event.target.value)} placeholder="Frontend, Backend, QA..." />
@@ -517,6 +530,10 @@ export function TeamScreen() {
                   <input className={inputClass} type="email" value={newMember.email} onChange={(event) => setNewMember({ ...newMember, email: event.target.value })} placeholder="persona@dominio.com" />
                 </label>
               </div>
+              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                GitHub
+                <input className={inputClass} value={newMember.github_username} onChange={(event) => setNewMember({ ...newMember, github_username: event.target.value.replace(/^@/, '') })} placeholder="usuario-github" />
+              </label>
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">
                   Rol
