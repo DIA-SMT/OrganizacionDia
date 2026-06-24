@@ -229,7 +229,7 @@ export function ProjectsScreen({
   const [savingProgressId, setSavingProgressId] = useState<string | null>(null)
   const [savingField, setSavingField] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [view, setView] = useState<'active' | 'finished'>('active')
+  const [view, setView] = useState<'active' | 'finished' | 'paused'>('active')
   const [addingSecondaryRepoIds, setAddingSecondaryRepoIds] = useState<string[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(initialSelectedProjectId)
   const [selectedProjectEditing, setSelectedProjectEditing] = useState(false)
@@ -477,7 +477,7 @@ export function ProjectsScreen({
     <AppShell title="Proyectos" subtitle="Informacion cargada de cada proyecto" search={search} onSearchChange={setSearch}>
       {error && <div className={`mb-4 rounded-lg border p-3 text-sm ${isDark ? 'border-red-900/60 bg-red-950/30 text-red-300' : 'border-red-200 bg-red-50 text-red-700'}`}>{error}</div>}
 
-      {statusFilter && (
+      {statusFilter && statusFilter !== 'Pausado' && (
         <div className={`mb-4 flex w-fit items-center gap-3 rounded-lg border px-3 py-2 text-sm font-semibold ${isDark ? 'border-blue-900/60 bg-blue-950/30 text-blue-300' : 'border-blue-200 bg-blue-50 text-[#1554c7]'}`}>
           <span>Filtro: {statusFilter === 'Todos' ? 'Todos los proyectos activos' : statusFilter}</span>
           <button type="button" className={isDark ? 'text-slate-300 hover:text-white' : 'text-slate-500 hover:text-slate-900'} onClick={() => setStatusFilter(null)}>
@@ -491,12 +491,13 @@ export function ProjectsScreen({
           {[
             ['active', `Activos (${activeVisibleCount})`],
             ['finished', `Finalizados (${finishedCount})`],
+            ['paused', `Pausados (${pausedCount})`],
           ].map(([key, label]) => (
             <button
               key={key}
               type="button"
               className={`rounded-md px-3 py-2 text-sm font-semibold transition ${
-                view === key
+                (key === 'paused' ? statusFilter === 'Pausado' : view === key && statusFilter !== 'Pausado')
                   ? isDark
                     ? 'bg-blue-500/15 text-blue-300'
                     : 'bg-[#eaf3ff] text-[#1554c7]'
@@ -505,6 +506,11 @@ export function ProjectsScreen({
                     : 'text-slate-500 hover:bg-slate-50'
               }`}
               onClick={() => {
+                if (key === 'paused') {
+                  setStatusFilter('Pausado')
+                  setView('active')
+                  return
+                }
                 setStatusFilter(null)
                 setView(key as 'active' | 'finished')
               }}
@@ -514,24 +520,6 @@ export function ProjectsScreen({
           ))}
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <button
-            type="button"
-            className={`h-10 rounded-md border px-3 text-sm font-semibold transition ${
-              statusFilter === 'Pausado'
-                ? isDark
-                  ? 'border-red-900/60 bg-red-950/40 text-red-300'
-                  : 'border-red-200 bg-red-50 text-red-700'
-                : isDark
-                  ? 'border-slate-700 text-slate-300 hover:bg-slate-900'
-                  : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-            }`}
-            onClick={() => {
-              setStatusFilter('Pausado')
-              setView('active')
-            }}
-          >
-            Ver todos ({pausedCount})
-          </button>
           <ProjectCreateButton onCreated={() => window.location.reload()} isDark={isDark} />
         </div>
       </div>
