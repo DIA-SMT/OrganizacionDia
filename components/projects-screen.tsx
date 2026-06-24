@@ -3,7 +3,7 @@
 import { AppShell } from '@/components/app-shell'
 import { ProjectCreateButton } from '@/components/project-create-button'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
-import { Check, ChevronDown, ExternalLink, GitCommitHorizontal, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { Check, ChevronDown, ExternalLink, GitCommitHorizontal, Globe2, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 type ProjectRow = {
@@ -14,6 +14,7 @@ type ProjectRow = {
   stack: string | null
   repository_url: string | null
   repository_url_secondary: string | null
+  website_url: string | null
   status: string
   priority: string
   progress: number
@@ -25,6 +26,8 @@ type ProjectCommitActivity = {
   sha: string
   message: string
   author: string
+  authorLogin?: string | null
+  authorAvatarUrl?: string | null
   date: string | null
   url: string
   repo: string
@@ -32,6 +35,22 @@ type ProjectCommitActivity = {
 }
 
 const projectStatuses = ['Planificación', 'En desarrollo', 'MVP aprobado', 'QA', 'En Producción', 'Pausado']
+type TeamMember = {
+  id: string
+  full_name: string
+  email: string | null
+  role: string | null
+  avatar_url: string | null
+  github_username?: string | null
+}
+
+type ProjectParticipant = {
+  key: string
+  name: string
+  role: string | null
+  avatarUrl: string | null
+}
+
 const priorities = ['Baja', 'Media', 'Alta', 'Critica']
 
 function statusTone(status: string, isDark: boolean) {
@@ -63,6 +82,61 @@ function formatCommitDate(value: string | null) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value))
+}
+
+function normalizeWebsiteUrl(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+}
+
+function normalizeIdentity(value: string | null | undefined) {
+  return (value ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/^@/, '')
+    .replace(/[^a-z0-9]/g, '')
+}
+
+function memberMatchesCommit(member: TeamMember, commit: ProjectCommitActivity) {
+  const authorLogin = normalizeIdentity(commit.authorLogin)
+  const authorName = normalizeIdentity(commit.author)
+  const memberGithub = normalizeIdentity(member.github_username)
+  const memberName = normalizeIdentity(member.full_name)
+  const memberEmailName = normalizeIdentity(member.email?.split('@')[0])
+
+  return Boolean(
+    (memberGithub && authorLogin && memberGithub === authorLogin) ||
+      (memberGithub && authorName && memberGithub === authorName) ||
+      (memberName && authorName && memberName === authorName) ||
+      (memberEmailName && authorLogin && memberEmailName === authorLogin),
+  )
+}
+
+function participantInitials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  const initials = parts.length > 1 ? `${parts[0][0] ?? ''}${parts[1][0] ?? ''}` : name.slice(0, 2)
+  return initials.toUpperCase() || '?'
+}
+
+function ParticipantAvatar({ participant, size = 'sm', isDark }: { participant: ProjectParticipant; size?: 'sm' | 'md'; isDark: boolean }) {
+  const sizeClass = size === 'md' ? 'h-11 w-11 text-sm' : 'h-8 w-8 text-[11px]'
+  return (
+    <div
+      className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full border-2 font-bold shadow-sm ${
+        isDark ? 'border-slate-900 bg-blue-500/15 text-blue-200' : 'border-white bg-[#eaf3ff] text-[#1554c7]'
+      } ${sizeClass}`}
+      title={participant.role ? `${participant.name} - ${participant.role}` : participant.name}
+    >
+      {participant.avatarUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img className="h-full w-full object-cover" src={participant.avatarUrl} alt={participant.name} />
+      ) : (
+        participantInitials(participant.name)
+      )}
+    </div>
+  )
 }
 
 function isProduction(project: ProjectRow) {
@@ -160,6 +234,7 @@ export function ProjectsScreen({
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(initialSelectedProjectId)
   const [selectedProjectEditing, setSelectedProjectEditing] = useState(false)
   const [commitsByProject, setCommitsByProject] = useState<Record<string, ProjectCommitActivity[]>>({})
+  const [members, setMembers] = useState<TeamMember[]>([])
   const [error, setError] = useState<string | null>(null)
   const theme = useStoredTheme()
   const isDark = theme === 'dark'
@@ -182,7 +257,7 @@ export function ProjectsScreen({
 
       const { data, error: projectsError } = await supabase
         .from('projects')
-        .select('id, name, description, requester_area, stack, repository_url, repository_url_secondary, status, priority, progress, estimated_delivery, note')
+        .select('id, name, description, requester_area, stack, repository_url, repository_url_secondary, website_url, status, priority, progress, estimated_delivery, note')
         .eq('active', true)
         .order('created_at', { ascending: false })
 
@@ -197,8 +272,8 @@ export function ProjectsScreen({
           setError(fallbackError.message)
           setProjects([])
         } else {
-          setError('Falta actualizar Supabase con las columnas nuevas. Ejecuta supabase/add_project_note.sql y supabase/add_project_repository_secondary.sql.')
-          setProjects(((fallbackData ?? []) as Omit<ProjectRow, 'note' | 'repository_url_secondary'>[]).map((project) => ({ ...project, note: null, repository_url_secondary: null })))
+          setError('Falta actualizar Supabase con columnas nuevas. Ejecuta las migraciones de nota, Repo 2 y website_url.')
+          setProjects(((fallbackData ?? []) as Omit<ProjectRow, 'note' | 'repository_url_secondary' | 'website_url'>[]).map((project) => ({ ...project, note: null, repository_url_secondary: null, website_url: null })))
         }
       } else {
         setProjects((data ?? []) as ProjectRow[])
@@ -208,6 +283,32 @@ export function ProjectsScreen({
     }
 
     fetchProjects()
+  }, [])
+
+  useEffect(() => {
+    async function fetchMembers() {
+      const supabase = getSupabaseBrowserClient()
+      if (!supabase) return
+
+      const { data, error: membersError } = await supabase
+        .from('members')
+        .select('id, full_name, email, role, avatar_url, github_username')
+        .eq('active', true)
+
+      if (!membersError) {
+        setMembers((data ?? []) as TeamMember[])
+        return
+      }
+
+      const { data: fallbackData } = await supabase
+        .from('members')
+        .select('id, full_name, email, role, avatar_url')
+        .eq('active', true)
+
+      setMembers(((fallbackData ?? []) as Omit<TeamMember, 'github_username'>[]).map((member) => ({ ...member, github_username: null })))
+    }
+
+    void fetchMembers()
   }, [])
 
   const projectCommitSources = useMemo(
@@ -257,7 +358,32 @@ export function ProjectsScreen({
     }
   }, [projectCommitSourceSignature, projectCommitSources])
 
-  async function updateProject<K extends keyof Pick<ProjectRow, 'name' | 'status' | 'priority' | 'estimated_delivery' | 'note' | 'repository_url' | 'repository_url_secondary'>>(projectId: string, field: K, value: ProjectRow[K]) {
+  const participantsByProject = useMemo(() => {
+    const result: Record<string, ProjectParticipant[]> = {}
+
+    for (const [projectId, commits] of Object.entries(commitsByProject)) {
+      const participants = new Map<string, ProjectParticipant>()
+
+      for (const commit of commits) {
+        const member = members.find((item) => memberMatchesCommit(item, commit))
+        const key = member?.id ?? normalizeIdentity(commit.authorLogin || commit.author)
+        if (!key || participants.has(key)) continue
+
+        participants.set(key, {
+          key,
+          name: member?.full_name || commit.author,
+          role: member?.role ?? null,
+          avatarUrl: member?.avatar_url || commit.authorAvatarUrl || null,
+        })
+      }
+
+      result[projectId] = Array.from(participants.values()).slice(0, 6)
+    }
+
+    return result
+  }, [commitsByProject, members])
+
+  async function updateProject<K extends keyof Pick<ProjectRow, 'name' | 'status' | 'priority' | 'estimated_delivery' | 'note' | 'repository_url' | 'repository_url_secondary' | 'website_url'>>(projectId: string, field: K, value: ProjectRow[K]) {
     setError(null)
     setProjects((current) => current.map((project) => (project.id === projectId ? { ...project, [field]: value } : project)))
 
@@ -269,7 +395,7 @@ export function ProjectsScreen({
 
     const key = `${projectId}-${String(field)}`
     setSavingField(key)
-    const nullableFields: Array<keyof ProjectRow> = ['estimated_delivery', 'note', 'repository_url', 'repository_url_secondary']
+    const nullableFields: Array<keyof ProjectRow> = ['estimated_delivery', 'note', 'repository_url', 'repository_url_secondary', 'website_url']
     const persistedValue = nullableFields.includes(field) ? value || null : value
     const { error: updateError } = await supabase.from('projects').update({ [field]: persistedValue }).eq('id', projectId)
     setSavingField(null)
@@ -339,7 +465,7 @@ export function ProjectsScreen({
         : byView.filter((project) => !isProduction(project) && !isPaused(project))
     const orderedByView = visibleByView
     if (!q) return orderedByView
-    return orderedByView.filter((project) => [project.name, project.description, project.note, project.requester_area, project.stack, project.repository_url, project.repository_url_secondary, project.status, project.priority].filter(Boolean).join(' ').toLowerCase().includes(q))
+    return orderedByView.filter((project) => [project.name, project.description, project.note, project.requester_area, project.stack, project.repository_url, project.repository_url_secondary, project.website_url, project.status, project.priority].filter(Boolean).join(' ').toLowerCase().includes(q))
   }, [projects, search, statusFilter, view])
 
   const finishedCount = projects.filter((project) => project.status === 'En Producción').length
@@ -417,6 +543,7 @@ export function ProjectsScreen({
       ) : (
         <div className="grid gap-4 xl:grid-cols-2">
           {filtered.map((project) => {
+            const participants = participantsByProject[project.id] ?? []
             return (
             <article
               key={project.id}
@@ -442,6 +569,19 @@ export function ProjectsScreen({
                 </div>
               </div>
 
+              {participants.length > 0 && (
+                <div className="mt-4 flex items-center justify-between gap-3">
+                  <div className="-space-x-2 flex">
+                    {participants.slice(0, 5).map((participant) => (
+                      <ParticipantAvatar key={participant.key} participant={participant} isDark={isDark} />
+                    ))}
+                  </div>
+                  <span className={`text-xs font-semibold ${mutedClass}`}>
+                    {participants.length === 1 ? '1 integrante activo' : `${participants.length} integrantes activos`}
+                  </span>
+                </div>
+              )}
+
               <div className="mt-4">
                 <div className="mb-1 flex justify-between text-xs font-semibold text-slate-500">
                   <span>{project.priority}</span>
@@ -453,6 +593,19 @@ export function ProjectsScreen({
               </div>
 
               {project.note && <p className={`mt-3 line-clamp-2 text-sm leading-6 ${bodyClass}`}>{project.note}</p>}
+              {project.website_url && (
+                <a
+                  className="mt-4 inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[#1677f2] px-3 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#1268d6]"
+                  href={project.website_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(event) => event.stopPropagation()}
+                  title={`Abrir web de ${project.name}`}
+                >
+                  <Globe2 className="h-4 w-4" />
+                  Ir a web
+                </a>
+              )}
             </article>
             )
           })}
@@ -494,8 +647,31 @@ export function ProjectsScreen({
                   <h2 className={`text-2xl font-bold ${titleClass}`}>{selectedProject.name}</h2>
                 )}
                 <p className={`mt-2 text-sm ${mutedClass}`}>{selectedProject.requester_area ?? 'Sin area'} - {selectedProject.stack ?? 'Sin stack'}</p>
+                {(participantsByProject[selectedProject.id] ?? []).length > 0 && (
+                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                    <div className="-space-x-2 flex">
+                      {(participantsByProject[selectedProject.id] ?? []).map((participant) => (
+                        <ParticipantAvatar key={participant.key} participant={participant} size="md" isDark={isDark} />
+                      ))}
+                    </div>
+                    <span className={`text-xs font-semibold ${mutedClass}`}>
+                      Equipo detectado por commits
+                    </span>
+                  </div>
+                )}
               </div>
               <div className="flex shrink-0 items-center gap-2">
+                {selectedProject.website_url && !selectedProjectEditing && (
+                  <a
+                    className="inline-flex h-10 items-center gap-2 rounded-md bg-[#1677f2] px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1268d6]"
+                    href={selectedProject.website_url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <Globe2 className="h-4 w-4" />
+                    Ir a web
+                  </a>
+                )}
                 <button
                   type="button"
                   className={`flex h-10 items-center gap-2 rounded-md border px-3 text-sm font-semibold transition ${
@@ -551,6 +727,47 @@ export function ProjectsScreen({
                     <p className={`mt-3 text-sm leading-7 ${selectedProject.note ? bodyClass : mutedClass}`}>
                       {selectedProject.note || 'Sin nota cargada.'}
                     </p>
+                  )}
+                </div>
+
+                <div className={`rounded-lg border p-4 ${panelClass}`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Pagina web</p>
+                    {savingField === `${selectedProject.id}-website_url` && <span className={`text-xs font-semibold ${isDark ? 'text-blue-300' : 'text-[#1769e0]'}`}>Guardando...</span>}
+                  </div>
+                  {selectedProjectEditing ? (
+                    <div className="mt-3 flex items-center gap-2">
+                      <input
+                        className={`h-10 min-w-0 flex-1 rounded-md border px-3 text-sm font-medium outline-none ${inputClass}`}
+                        placeholder="https://proyecto.vercel.app"
+                        value={selectedProject.website_url ?? ''}
+                        onChange={(event) => setProjects((current) => current.map((item) => (item.id === selectedProject.id ? { ...item, website_url: event.target.value } : item)))}
+                        onBlur={(event) => updateProject(selectedProject.id, 'website_url', normalizeWebsiteUrl(event.target.value))}
+                      />
+                      {selectedProject.website_url && (
+                        <a
+                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md border ${isDark ? 'border-slate-700 text-blue-300 hover:bg-slate-900' : 'border-slate-200 text-[#1769e0] hover:bg-white'}`}
+                          href={normalizeWebsiteUrl(selectedProject.website_url) ?? undefined}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="Abrir pagina web"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </a>
+                      )}
+                    </div>
+                  ) : selectedProject.website_url ? (
+                    <a
+                      className="mt-3 inline-flex items-center gap-2 break-all text-sm font-semibold text-[#1769e0] hover:underline dark:text-blue-300"
+                      href={selectedProject.website_url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <Globe2 className="h-4 w-4 shrink-0" />
+                      {selectedProject.website_url}
+                    </a>
+                  ) : (
+                    <p className={`mt-3 text-sm ${mutedClass}`}>Sin pagina web cargada.</p>
                   )}
                 </div>
 

@@ -24,6 +24,7 @@ type GithubCommit = {
   }
   author?: {
     login?: string
+    avatar_url?: string
   } | null
 }
 
@@ -31,6 +32,8 @@ type ProjectCommitActivity = {
   sha: string
   message: string
   author: string
+  authorLogin: string | null
+  authorAvatarUrl: string | null
   date: string | null
   url: string
   repo: string
@@ -98,6 +101,8 @@ async function fetchRepoCommits(repoUrl: string | null | undefined, repoLabel: s
     sha: commit.sha,
     message: firstCommitLine(commit.commit.message),
     author: commit.author?.login ?? commit.commit.author?.name ?? 'Sin autor',
+    authorLogin: commit.author?.login ?? null,
+    authorAvatarUrl: commit.author?.avatar_url ?? null,
     date: commit.commit.author?.date ?? commit.commit.committer?.date ?? null,
     url: commit.html_url,
     repo: `${repo.owner}/${repo.repo}`,

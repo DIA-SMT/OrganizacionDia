@@ -11,6 +11,7 @@ create table if not exists public.members (
   role text not null default 'Dev' check (role in ('Admin', 'PM', 'Dev', 'QA', 'Viewer')),
   specialty text,
   avatar_url text,
+  github_username text,
   birthday date,
   favorite_food text,
   hobby text,
@@ -21,6 +22,9 @@ create table if not exists public.members (
 
 alter table public.members
 add column if not exists avatar_url text;
+
+alter table public.members
+add column if not exists github_username text;
 
 alter table public.members
 add column if not exists birthday date;
@@ -44,6 +48,7 @@ create table if not exists public.projects (
   stack text,
   repository_url text,
   repository_url_secondary text,
+  website_url text,
   staging_url text,
   production_url text,
   note text,
@@ -92,6 +97,9 @@ add column if not exists note text;
 
 alter table public.projects
 add column if not exists repository_url_secondary text;
+
+alter table public.projects
+add column if not exists website_url text;
 
 do $$
 begin

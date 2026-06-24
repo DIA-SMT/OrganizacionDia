@@ -708,7 +708,9 @@ export function DashboardView() {
                           </span>
                         </div>
                       </div>
-                      <p className={`mt-3 line-clamp-2 text-sm leading-5 ${textMutedClass}`}>{expediente.summary}</p>
+                      {expediente.brief_generated_at && expediente.summary ? (
+                        <p className={`mt-3 line-clamp-2 text-sm leading-5 ${textMutedClass}`}>{expediente.summary}</p>
+                      ) : null}
                       <p className={`mt-2 text-[11px] ${expediente.brief_error ? 'text-red-400' : textMutedClass}`}>
                         {expediente.brief_error ? 'Brief OCR pendiente' : expediente.brief_generated_at ? 'Brief OCR guardado' : 'Esperando brief OCR'}
                       </p>

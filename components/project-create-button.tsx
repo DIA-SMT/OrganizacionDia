@@ -23,6 +23,7 @@ export function ProjectCreateButton({
     stack: '',
     repository_url: '',
     repository_url_secondary: '',
+    website_url: '',
     status: 'Planificación',
     priority: 'Media',
     progress: '0',
@@ -63,6 +64,11 @@ export function ProjectCreateButton({
         stack: form.stack || null,
         repository_url: form.repository_url || null,
         repository_url_secondary: form.repository_url_secondary || null,
+        website_url: form.website_url
+          ? /^https?:\/\//i.test(form.website_url.trim())
+            ? form.website_url.trim()
+            : `https://${form.website_url.trim()}`
+          : null,
         priority: form.priority,
         progress: Number(form.progress),
         estimated_delivery: form.estimated_delivery || null,
@@ -85,11 +91,11 @@ export function ProjectCreateButton({
       if (insertError) {
         const { error: fallbackError } = await supabase.from('projects').insert(fallbackPayload)
         if (fallbackError) throw insertError
-        setError('Proyecto creado. Para guardar el Repo 2 ejecuta supabase/add_project_repository_secondary.sql.')
+        setError('Proyecto creado con campos basicos. Ejecuta las migraciones pendientes de Supabase para guardar todos los enlaces.')
       }
 
       setOpen(false)
-      setForm({ name: '', description: '', requester_area: '', stack: '', repository_url: '', repository_url_secondary: '', status: 'Planificación', priority: 'Media', progress: '0', estimated_delivery: '' })
+      setForm({ name: '', description: '', requester_area: '', stack: '', repository_url: '', repository_url_secondary: '', website_url: '', status: 'Planificación', priority: 'Media', progress: '0', estimated_delivery: '' })
       onCreated?.()
     } catch (err) {
       const message =
@@ -151,6 +157,7 @@ export function ProjectCreateButton({
                 <input className={inputClass} placeholder="Repo 1 / Frontend" value={form.repository_url} onChange={(e) => setForm({ ...form, repository_url: e.target.value })} />
                 <input className={inputClass} placeholder="Repo 2 / Backend" value={form.repository_url_secondary} onChange={(e) => setForm({ ...form, repository_url_secondary: e.target.value })} />
               </div>
+              <input className={inputClass} placeholder="Pagina web / Vercel (https://...)" value={form.website_url} onChange={(e) => setForm({ ...form, website_url: e.target.value })} />
               <label className={`rounded-md border p-3 ${isDark ? 'border-slate-700 bg-slate-950' : 'border-slate-200 bg-slate-50'}`}>
                 <div className="flex items-center justify-between gap-4">
                   <span className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Progreso</span>
