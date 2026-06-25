@@ -3,7 +3,7 @@
 import { AppShell } from '@/components/app-shell'
 import { ProjectCreateButton } from '@/components/project-create-button'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
-import { Check, ChevronDown, ExternalLink, GitCommitHorizontal, Globe2, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { Check, ChevronDown, ExternalLink, FileText, GitCommitHorizontal, Globe2, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 type ProjectRow = {
@@ -20,6 +20,16 @@ type ProjectRow = {
   progress: number
   estimated_delivery: string | null
   note: string | null
+}
+
+type ProjectDocument = {
+  id: string
+  project_id: string
+  file_name: string
+  file_url: string
+  storage_path: string | null
+  size_bytes: number | null
+  created_at: string
 }
 
 type ProjectCommitActivity = {
@@ -52,6 +62,13 @@ type ProjectParticipant = {
 }
 
 const priorities = ['Baja', 'Media', 'Alta', 'Critica']
+
+function priorityWeight(priority: string | null | undefined) {
+  if (priority === 'Critica') return 4
+  if (priority === 'Alta') return 3
+  if (priority === 'Media') return 2
+  return 1
+}
 
 function statusTone(status: string, isDark: boolean) {
   if (status === 'Pausado') return isDark ? 'border-red-900/60 bg-red-950/40 text-red-300' : 'border-red-200 bg-red-50 text-red-700'
@@ -118,6 +135,20 @@ function participantInitials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean)
   const initials = parts.length > 1 ? `${parts[0][0] ?? ''}${parts[1][0] ?? ''}` : name.slice(0, 2)
   return initials.toUpperCase() || '?'
+}
+
+function formatFileSize(value: number | null) {
+  if (!value) return 'Sin peso'
+  if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function safeStorageFileName(name: string) {
+  return name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9._-]/g, '-')
+    .replace(/-+/g, '-')
 }
 
 function ParticipantAvatar({ participant, size = 'sm', isDark }: { participant: ProjectParticipant; size?: 'sm' | 'md'; isDark: boolean }) {
@@ -234,6 +265,8 @@ export function ProjectsScreen({
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(initialSelectedProjectId)
   const [selectedProjectEditing, setSelectedProjectEditing] = useState(false)
   const [commitsByProject, setCommitsByProject] = useState<Record<string, ProjectCommitActivity[]>>({})
+  const [projectDocuments, setProjectDocuments] = useState<Record<string, ProjectDocument[]>>({})
+  const [uploadingDocumentId, setUploadingDocumentId] = useState<string | null>(null)
   const [members, setMembers] = useState<TeamMember[]>([])
   const [error, setError] = useState<string | null>(null)
   const theme = useStoredTheme()
@@ -310,6 +343,39 @@ export function ProjectsScreen({
 
     void fetchMembers()
   }, [])
+
+  const projectDocumentSourceSignature = useMemo(() => projects.map((project) => project.id).join('|'), [projects])
+
+  useEffect(() => {
+    async function fetchProjectDocuments() {
+      const supabase = getSupabaseBrowserClient()
+      const projectIds = projectDocumentSourceSignature ? projectDocumentSourceSignature.split('|') : []
+      if (!supabase || projectIds.length === 0) {
+        setProjectDocuments({})
+        return
+      }
+
+      const { data, error: documentsError } = await supabase
+        .from('project_documents')
+        .select('id, project_id, file_name, file_url, storage_path, size_bytes, created_at')
+        .in('project_id', projectIds)
+        .order('created_at', { ascending: false })
+
+      if (documentsError) {
+        setProjectDocuments({})
+        return
+      }
+
+      const grouped = ((data ?? []) as ProjectDocument[]).reduce<Record<string, ProjectDocument[]>>((acc, document) => {
+        acc[document.project_id] = [...(acc[document.project_id] ?? []), document]
+        return acc
+      }, {})
+
+      setProjectDocuments(grouped)
+    }
+
+    void fetchProjectDocuments()
+  }, [projectDocumentSourceSignature])
 
   const projectCommitSources = useMemo(
     () =>
@@ -444,6 +510,64 @@ export function ProjectsScreen({
     setSelectedProjectId((current) => (current === project.id ? null : current))
   }
 
+  async function uploadProjectPdf(projectId: string, file: File | null) {
+    if (!file) return
+
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      setError('Solo se pueden subir archivos PDF.')
+      return
+    }
+
+    const supabase = getSupabaseBrowserClient()
+    if (!supabase) {
+      setError('Supabase no esta configurado.')
+      return
+    }
+
+    setError(null)
+    setUploadingDocumentId(projectId)
+
+    try {
+      const storagePath = `${projectId}/${Date.now()}-${safeStorageFileName(file.name)}`
+      const { error: uploadError } = await supabase.storage
+        .from('project-pdfs')
+        .upload(storagePath, file, {
+          contentType: 'application/pdf',
+          upsert: false,
+        })
+
+      if (uploadError) throw uploadError
+
+      const { data: publicUrlData } = supabase.storage.from('project-pdfs').getPublicUrl(storagePath)
+      const fileUrl = publicUrlData.publicUrl
+
+      const { data, error: insertError } = await supabase
+        .from('project_documents')
+        .insert({
+          project_id: projectId,
+          file_name: file.name,
+          file_url: fileUrl,
+          storage_path: storagePath,
+          mime_type: 'application/pdf',
+          size_bytes: file.size,
+        })
+        .select('id, project_id, file_name, file_url, storage_path, size_bytes, created_at')
+        .single()
+
+      if (insertError) throw insertError
+
+      setProjectDocuments((current) => ({
+        ...current,
+        [projectId]: [data as ProjectDocument, ...(current[projectId] ?? [])],
+      }))
+    } catch (uploadError) {
+      const message = uploadError instanceof Error ? uploadError.message : 'No se pudo subir el PDF.'
+      setError(`${message}. Si falta configurar Supabase, ejecuta supabase/add_project_documents.sql.`)
+    } finally {
+      setUploadingDocumentId(null)
+    }
+  }
+
   function openProjectCard(event: React.MouseEvent<HTMLElement>, projectId: string) {
     const target = event.target as HTMLElement
     if (target.closest('input, textarea, select, button, a, [data-no-project-open]')) return
@@ -463,15 +587,22 @@ export function ProjectsScreen({
       isSpecificStatusFilter || view === 'finished'
         ? byView
         : byView.filter((project) => !isProduction(project) && !isPaused(project))
-    const orderedByView = visibleByView
-    if (!q) return orderedByView
-    return orderedByView.filter((project) => [project.name, project.description, project.note, project.requester_area, project.stack, project.repository_url, project.repository_url_secondary, project.website_url, project.status, project.priority].filter(Boolean).join(' ').toLowerCase().includes(q))
+    const searchedByView = q
+      ? visibleByView.filter((project) => [project.name, project.description, project.note, project.requester_area, project.stack, project.repository_url, project.repository_url_secondary, project.website_url, project.status, project.priority].filter(Boolean).join(' ').toLowerCase().includes(q))
+      : visibleByView
+
+    return [...searchedByView].sort((a, b) => {
+      const priorityDiff = priorityWeight(b.priority) - priorityWeight(a.priority)
+      if (priorityDiff !== 0) return priorityDiff
+      return a.name.localeCompare(b.name)
+    })
   }, [projects, search, statusFilter, view])
 
   const finishedCount = projects.filter((project) => project.status === 'En Producción').length
   const activeVisibleCount = projects.filter((project) => !isProduction(project) && !isPaused(project)).length
   const pausedCount = projects.filter((project) => isPaused(project)).length
   const selectedProject = selectedProjectId ? projects.find((project) => project.id === selectedProjectId) ?? null : null
+  const selectedProjectDocuments = selectedProject ? projectDocuments[selectedProject.id] ?? [] : []
 
   return (
     <AppShell title="Proyectos" subtitle="Informacion cargada de cada proyecto" search={search} onSearchChange={setSearch}>
@@ -832,6 +963,57 @@ export function ProjectsScreen({
                 </div>
 
                 <div className={`rounded-lg border p-4 ${panelClass}`}>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>PDFs del proyecto</p>
+                      <p className={`mt-0.5 text-xs ${mutedClass}`}>Documentacion asociada al proyecto.</p>
+                    </div>
+                    <label
+                      className={`inline-flex h-10 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm font-semibold transition ${
+                        isDark ? 'border-slate-700 text-blue-300 hover:bg-slate-900' : 'border-slate-200 text-[#1769e0] hover:bg-white'
+                      } ${uploadingDocumentId === selectedProject.id ? 'pointer-events-none opacity-60' : ''}`}
+                    >
+                      <Upload className="h-4 w-4" />
+                      {uploadingDocumentId === selectedProject.id ? 'Subiendo...' : 'Agregar PDF'}
+                      <input
+                        className="hidden"
+                        type="file"
+                        accept="application/pdf,.pdf"
+                        disabled={uploadingDocumentId === selectedProject.id}
+                        onChange={(event) => {
+                          void uploadProjectPdf(selectedProject.id, event.target.files?.[0] ?? null)
+                          event.currentTarget.value = ''
+                        }}
+                      />
+                    </label>
+                  </div>
+
+                  {selectedProjectDocuments.length > 0 ? (
+                    <div className="mt-3 grid gap-2">
+                      {selectedProjectDocuments.map((document) => (
+                        <a
+                          key={document.id}
+                          className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 transition ${
+                            isDark ? 'border-slate-800 bg-slate-900/70 hover:bg-slate-900' : 'border-slate-200 bg-white/80 hover:bg-white'
+                          }`}
+                          href={document.file_url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <span className="flex min-w-0 items-center gap-2">
+                            <FileText className={`h-4 w-4 shrink-0 ${isDark ? 'text-blue-300' : 'text-[#1769e0]'}`} />
+                            <span className={`truncate text-sm font-semibold ${titleClass}`}>{document.file_name}</span>
+                          </span>
+                          <span className={`shrink-0 text-xs ${mutedClass}`}>{formatFileSize(document.size_bytes)}</span>
+                        </a>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className={`mt-3 text-sm ${mutedClass}`}>Sin PDFs cargados.</p>
+                  )}
+                </div>
+
+                <div className={`rounded-lg border p-4 ${panelClass}`}>
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
                       <GitCommitHorizontal className={`h-4 w-4 ${isDark ? 'text-blue-300' : 'text-[#1769e0]'}`} />
@@ -882,7 +1064,7 @@ export function ProjectsScreen({
                       type="range"
                       min="0"
                       max="100"
-                      step="5"
+                      step="1"
                       value={selectedProject.progress}
                       onChange={(event) => updateProgress(selectedProject.id, Number(event.target.value))}
                       style={{

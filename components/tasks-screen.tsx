@@ -3,7 +3,7 @@
 import { AppShell } from '@/components/app-shell'
 import { TaskCreateButton } from '@/components/task-create-button'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
-import { CheckCircle2, ExternalLink, History } from 'lucide-react'
+import { CheckCircle2, ExternalLink, History, Pencil, Save, X } from 'lucide-react'
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
@@ -11,6 +11,7 @@ type TaskProject = { name: string } | { name: string }[] | null
 
 type TaskRow = {
   id: string
+  project_id: string
   title: string
   description: string | null
   type: string
@@ -22,6 +23,15 @@ type TaskRow = {
   created_at: string
   projects: TaskProject
 }
+
+type ProjectOption = {
+  id: string
+  name: string
+}
+
+const taskTypes = ['Feature', 'Bug', 'Mejora', 'Refactor', 'Deploy', 'Documentacion', 'Soporte']
+const taskStatuses = ['Backlog', 'Pendiente', 'En desarrollo', 'En revision', 'QA', 'Bloqueada', 'Terminada']
+const taskPriorities = ['Baja', 'Media', 'Alta', 'Critica']
 
 function getProjectName(projects: TaskProject) {
   if (Array.isArray(projects)) return projects[0]?.name ?? null
@@ -46,9 +56,13 @@ function formatDate(value: string | null | undefined) {
 
 export function TasksScreen() {
   const [tasks, setTasks] = useState<TaskRow[]>([])
+  const [projects, setProjects] = useState<ProjectOption[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [finishingId, setFinishingId] = useState<string | null>(null)
+  const [editingTask, setEditingTask] = useState<TaskRow | null>(null)
+  const [savingTaskId, setSavingTaskId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const fetchTasks = useCallback(async () => {
     const supabase = getSupabaseBrowserClient()
@@ -60,13 +74,26 @@ export function TasksScreen() {
     setLoading(true)
     const { data } = await supabase
       .from('tasks')
-      .select('id, title, description, type, status, priority, branch_name, issue_url, pr_url, created_at, projects(name)')
+      .select('id, project_id, title, description, type, status, priority, branch_name, issue_url, pr_url, created_at, projects(name)')
       .eq('active', true)
       .neq('status', 'Terminada')
       .order('updated_at', { ascending: false })
 
     setTasks((data ?? []) as unknown as TaskRow[])
     setLoading(false)
+  }, [])
+
+  const fetchProjects = useCallback(async () => {
+    const supabase = getSupabaseBrowserClient()
+    if (!supabase) return
+
+    const { data } = await supabase
+      .from('projects')
+      .select('id, name')
+      .eq('active', true)
+      .order('name', { ascending: true })
+
+    setProjects((data ?? []) as ProjectOption[])
   }, [])
 
   async function finishTask(taskId: string) {
@@ -81,9 +108,45 @@ export function TasksScreen() {
     setFinishingId(null)
   }
 
+  async function saveTask(task: TaskRow) {
+    const supabase = getSupabaseBrowserClient()
+    if (!supabase) return
+
+    setError(null)
+    setSavingTaskId(task.id)
+
+    const { error: updateError } = await supabase
+      .from('tasks')
+      .update({
+        project_id: task.project_id,
+        title: task.title.trim() || 'Sin titulo',
+        description: task.description?.trim() || null,
+        type: task.type,
+        status: task.status,
+        priority: task.priority,
+        branch_name: task.branch_name?.trim() || null,
+        issue_url: task.issue_url?.trim() || null,
+        pr_url: task.pr_url?.trim() || null,
+      })
+      .eq('id', task.id)
+
+    if (updateError) {
+      setError(updateError.message)
+    } else {
+      setEditingTask(null)
+      await fetchTasks()
+    }
+
+    setSavingTaskId(null)
+  }
+
   useEffect(() => {
     void Promise.resolve().then(fetchTasks)
   }, [fetchTasks])
+
+  useEffect(() => {
+    void Promise.resolve().then(fetchProjects)
+  }, [fetchProjects])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -110,23 +173,29 @@ export function TasksScreen() {
         </div>
       </div>
 
+      {error && (
+        <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-200">
+          {error}
+        </div>
+      )}
+
       {loading ? (
         <div className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">Cargando tareas...</div>
       ) : filtered.length === 0 ? (
         <div className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">No hay tareas cargadas.</div>
       ) : (
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="hidden grid-cols-[1.2fr_0.75fr_0.45fr_0.5fr_0.5fr_0.55fr_0.7fr] gap-3 border-b border-slate-100 px-4 py-3 text-xs font-semibold uppercase text-slate-400 dark:border-slate-800 dark:text-slate-500 lg:grid">
+          <div className="hidden grid-cols-[1.15fr_0.7fr_0.42fr_0.48fr_0.48fr_0.5fr_0.9fr] gap-3 border-b border-slate-100 px-4 py-3 text-xs font-semibold uppercase text-slate-400 dark:border-slate-800 dark:text-slate-500 lg:grid">
             <span>Tarea</span>
             <span>Proyecto</span>
             <span>Tipo</span>
             <span>Estado</span>
             <span>Prioridad</span>
             <span>Creada</span>
-            <span>Links</span>
+            <span>Acciones</span>
           </div>
           {filtered.map((task) => (
-            <div key={task.id} className="grid gap-3 border-b border-slate-100 px-4 py-4 text-sm last:border-b-0 dark:border-slate-800 lg:grid-cols-[1.2fr_0.75fr_0.45fr_0.5fr_0.5fr_0.55fr_0.7fr]">
+            <div key={task.id} className="grid gap-3 border-b border-slate-100 px-4 py-4 text-sm last:border-b-0 dark:border-slate-800 lg:grid-cols-[1.15fr_0.7fr_0.42fr_0.48fr_0.48fr_0.5fr_0.9fr]">
               <div>
                 <p className="font-semibold text-slate-950 dark:text-white">{task.title}</p>
                 {task.description && <p className="mt-1 line-clamp-2 text-xs text-slate-500 dark:text-slate-400">{task.description}</p>}
@@ -139,29 +208,173 @@ export function TasksScreen() {
                 <span className={`inline-flex rounded-md px-2 py-1 text-xs font-semibold ${priorityClass(task.priority)}`}>{task.priority}</span>
               </span>
               <span className="text-slate-500 dark:text-slate-400">{formatDate(task.created_at)}</span>
-              <div className="flex flex-col gap-1">
-                {task.issue_url && (
-                  <a className="inline-flex items-center gap-1 text-[#1769e0] dark:text-blue-300" href={task.issue_url} target="_blank" rel="noreferrer">
-                    Issue <ExternalLink className="h-3 w-3" />
-                  </a>
-                )}
-                {task.pr_url && (
-                  <a className="inline-flex items-center gap-1 text-[#1769e0] dark:text-blue-300" href={task.pr_url} target="_blank" rel="noreferrer">
-                    PR <ExternalLink className="h-3 w-3" />
-                  </a>
-                )}
+              <div className="flex flex-wrap items-center gap-2 lg:flex-col lg:items-start">
+                <div className="flex flex-wrap gap-1.5">
+                  {task.issue_url && (
+                    <a className="inline-flex h-8 items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 text-xs font-semibold text-[#1769e0] hover:bg-blue-100 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-200" href={task.issue_url} target="_blank" rel="noreferrer">
+                      Issue <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
+                  {task.pr_url && (
+                    <a className="inline-flex h-8 items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 text-xs font-semibold text-[#1769e0] hover:bg-blue-100 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-200" href={task.pr_url} target="_blank" rel="noreferrer">
+                      PR <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
+                </div>
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1 text-left font-semibold text-[#1769e0] disabled:opacity-50 dark:text-blue-300"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:text-[#1769e0] hover:shadow-md dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:border-blue-500/30 dark:hover:text-blue-200"
+                  onClick={() => setEditingTask(task)}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  Editar
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex h-9 items-center gap-2 rounded-full bg-gradient-to-r from-emerald-500 to-[#1677f2] px-3.5 text-xs font-bold text-white shadow-sm shadow-blue-500/20 transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-blue-500/25 disabled:translate-y-0 disabled:opacity-60 disabled:shadow-none"
                   disabled={finishingId === task.id}
                   onClick={() => void finishTask(task.id)}
                 >
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  Finalizado
+                  <CheckCircle2 className="h-4 w-4" />
+                  {finishingId === task.id ? 'Cerrando...' : 'Finalizar'}
                 </button>
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {editingTask && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-sm" onClick={() => setEditingTask(null)}>
+          <section
+            className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-slate-900"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-950 dark:text-white">Editar tarea</h2>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Actualiza estado, prioridad, proyecto y datos tecnicos.</p>
+              </div>
+              <button type="button" className="rounded-md p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800" onClick={() => setEditingTask(null)} title="Cerrar">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-4">
+              <label className="grid gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                Titulo
+                <input
+                  className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  value={editingTask.title}
+                  onChange={(event) => setEditingTask({ ...editingTask, title: event.target.value })}
+                />
+              </label>
+
+              <label className="grid gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                Descripcion
+                <textarea
+                  className="min-h-28 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  value={editingTask.description ?? ''}
+                  onChange={(event) => setEditingTask({ ...editingTask, description: event.target.value })}
+                />
+              </label>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="grid gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Proyecto
+                  <select
+                    className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    value={editingTask.project_id}
+                    onChange={(event) => setEditingTask({ ...editingTask, project_id: event.target.value })}
+                  >
+                    {projects.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="grid gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Prioridad
+                  <select
+                    className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    value={editingTask.priority}
+                    onChange={(event) => setEditingTask({ ...editingTask, priority: event.target.value })}
+                  >
+                    {taskPriorities.map((priority) => (
+                      <option key={priority}>{priority}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="grid gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Tipo
+                  <select
+                    className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    value={editingTask.type}
+                    onChange={(event) => setEditingTask({ ...editingTask, type: event.target.value })}
+                  >
+                    {taskTypes.map((type) => (
+                      <option key={type}>{type}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="grid gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Estado
+                  <select
+                    className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    value={editingTask.status}
+                    onChange={(event) => setEditingTask({ ...editingTask, status: event.target.value })}
+                  >
+                    {taskStatuses.map((status) => (
+                      <option key={status}>{status}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-3">
+                <label className="grid gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Branch
+                  <input
+                    className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    value={editingTask.branch_name ?? ''}
+                    onChange={(event) => setEditingTask({ ...editingTask, branch_name: event.target.value })}
+                  />
+                </label>
+                <label className="grid gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Issue URL
+                  <input
+                    className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    value={editingTask.issue_url ?? ''}
+                    onChange={(event) => setEditingTask({ ...editingTask, issue_url: event.target.value })}
+                  />
+                </label>
+                <label className="grid gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  PR URL
+                  <input
+                    className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    value={editingTask.pr_url ?? ''}
+                    onChange={(event) => setEditingTask({ ...editingTask, pr_url: event.target.value })}
+                  />
+                </label>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-[#1677f2] text-sm font-semibold text-white shadow-sm transition hover:bg-[#1268d6] disabled:opacity-60"
+              disabled={savingTaskId === editingTask.id}
+              onClick={() => void saveTask(editingTask)}
+            >
+              <Save className="h-4 w-4" />
+              {savingTaskId === editingTask.id ? 'Guardando...' : 'Guardar cambios'}
+            </button>
+          </section>
         </div>
       )}
     </AppShell>

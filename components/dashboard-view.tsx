@@ -139,6 +139,13 @@ function taskPriorityClass(priority: string, isDark: boolean) {
   return isDark ? 'bg-slate-800 text-slate-300' : 'bg-white text-slate-500'
 }
 
+function projectPriorityWeight(priority: string | null | undefined) {
+  if (priority === 'Critica') return 4
+  if (priority === 'Alta') return 3
+  if (priority === 'Media') return 2
+  return 1
+}
+
 
 function SidebarItem({ icon, label, href, active, collapsed, isDark }: { icon: React.ReactNode; label: string; href: string; active?: boolean; collapsed?: boolean; isDark: boolean }) {
   const activeClass = isDark ? 'bg-blue-500/15 text-blue-300' : 'bg-[#eaf3ff] text-[#1554c7]'
@@ -301,7 +308,13 @@ export function DashboardView() {
         }
       })
 
-      setProjects(nextProjects)
+      setProjects(
+        [...nextProjects].sort((a, b) => {
+          const priorityDiff = projectPriorityWeight(b.priority) - projectPriorityWeight(a.priority)
+          if (priorityDiff !== 0) return priorityDiff
+          return a.name.localeCompare(b.name)
+        }),
+      )
       setPendingTasks((taskQuery.data ?? []) as unknown as PendingTask[])
       setRecentExpedientes(
         ((expedienteQuery.data ?? []) as DashboardExpediente[])
