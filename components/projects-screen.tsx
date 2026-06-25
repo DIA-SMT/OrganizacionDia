@@ -116,21 +116,6 @@ function normalizeIdentity(value: string | null | undefined) {
     .replace(/[^a-z0-9]/g, '')
 }
 
-function memberMatchesCommit(member: TeamMember, commit: ProjectCommitActivity) {
-  const authorLogin = normalizeIdentity(commit.authorLogin)
-  const authorName = normalizeIdentity(commit.author)
-  const memberGithub = normalizeIdentity(member.github_username)
-  const memberName = normalizeIdentity(member.full_name)
-  const memberEmailName = normalizeIdentity(member.email?.split('@')[0])
-
-  return Boolean(
-    (memberGithub && authorLogin && memberGithub === authorLogin) ||
-      (memberGithub && authorName && memberGithub === authorName) ||
-      (memberName && authorName && memberName === authorName) ||
-      (memberEmailName && authorLogin && memberEmailName === authorLogin),
-  )
-}
-
 function participantInitials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean)
   const initials = parts.length > 1 ? `${parts[0][0] ?? ''}${parts[1][0] ?? ''}` : name.slice(0, 2)
@@ -405,6 +390,8 @@ export function ProjectsScreen({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            days: 7,
+            limitPerRepo: 20,
             projects: projectCommitSources,
           }),
         })
@@ -424,6 +411,20 @@ export function ProjectsScreen({
     }
   }, [projectCommitSourceSignature, projectCommitSources])
 
+  const memberIdentityMap = useMemo(() => {
+    const map = new Map<string, TeamMember>()
+
+    for (const member of members) {
+      const identities = [member.github_username, member.full_name, member.email?.split('@')[0]]
+      for (const identity of identities) {
+        const key = normalizeIdentity(identity)
+        if (key && !map.has(key)) map.set(key, member)
+      }
+    }
+
+    return map
+  }, [members])
+
   const participantsByProject = useMemo(() => {
     const result: Record<string, ProjectParticipant[]> = {}
 
@@ -431,7 +432,7 @@ export function ProjectsScreen({
       const participants = new Map<string, ProjectParticipant>()
 
       for (const commit of commits) {
-        const member = members.find((item) => memberMatchesCommit(item, commit))
+        const member = memberIdentityMap.get(normalizeIdentity(commit.authorLogin)) ?? memberIdentityMap.get(normalizeIdentity(commit.author))
         const key = member?.id ?? normalizeIdentity(commit.authorLogin || commit.author)
         if (!key || participants.has(key)) continue
 
@@ -447,7 +448,7 @@ export function ProjectsScreen({
     }
 
     return result
-  }, [commitsByProject, members])
+  }, [commitsByProject, memberIdentityMap])
 
   async function updateProject<K extends keyof Pick<ProjectRow, 'name' | 'status' | 'priority' | 'estimated_delivery' | 'note' | 'repository_url' | 'repository_url_secondary' | 'website_url'>>(projectId: string, field: K, value: ProjectRow[K]) {
     setError(null)

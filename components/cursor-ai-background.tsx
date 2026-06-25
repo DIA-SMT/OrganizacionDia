@@ -6,6 +6,12 @@ export function CursorAiBackground({ isDark }: { isDark: boolean }) {
   const faceRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
+    const canAnimate =
+      window.matchMedia('(min-width: 1024px)').matches &&
+      !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+    if (!canAnimate) return
+
     let frame = 0
     let idleTimer = 0
     let running = false

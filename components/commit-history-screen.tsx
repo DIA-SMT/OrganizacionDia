@@ -209,7 +209,9 @@ export function CommitHistoryScreen() {
           cache: 'no-store',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            allTime: true,
+            allTime: selectedDays === null,
+            days: selectedDays,
+            limitPerRepo: selectedDays === null ? 300 : 80,
             projects: projectsWithRepos.map((project) => ({
               id: project.id,
               repositoryUrl: project.repository_url,
@@ -251,7 +253,7 @@ export function CommitHistoryScreen() {
     }
 
     void fetchCommits()
-  }, [projects, seenIds])
+  }, [projects, selectedDays, seenIds])
 
   const filteredItems = useMemo(() => {
     const q = search.trim().toLowerCase()

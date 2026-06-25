@@ -19,11 +19,9 @@ import {
   LogOut,
   Moon,
   Search,
-  Settings,
   Sun,
   Trash2,
   Users,
-  X,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
@@ -186,7 +184,6 @@ export function DashboardView() {
   const router = useRouter()
   const [projects, setProjects] = useState<DashboardProject[]>([])
   const [searchQuery, setSearchQuery] = useState('')
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
   const [pendingTasks, setPendingTasks] = useState<PendingTask[]>([])
@@ -363,6 +360,8 @@ export function DashboardView() {
           cache: 'no-store',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            days: 2,
+            limitPerRepo: 12,
             projects: projectCommitSources,
           }),
         })
@@ -419,7 +418,6 @@ export function DashboardView() {
     }
   }, [projects])
 
-  const normalizedSearch = searchQuery.trim().toLowerCase()
   const recentProjectChanges = useMemo(() => {
     return projects
       .flatMap((project) =>
@@ -454,7 +452,6 @@ export function DashboardView() {
   const isDark = theme === 'dark'
   const shellClass = isDark ? 'bg-slate-950 text-slate-100' : 'bg-[#eef3f6] text-slate-950'
   const surfaceClass = isDark ? 'border-slate-800 bg-slate-900 shadow-slate-950/20' : 'border-slate-200 bg-[#fbfcfd] shadow-sm'
-  const mutedSurfaceClass = isDark ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-[#fbfcfd]'
   const textStrongClass = isDark ? 'text-white' : 'text-slate-950'
   const textMutedClass = isDark ? 'text-slate-400' : 'text-slate-500'
   const chartMax = 10
@@ -542,13 +539,6 @@ export function DashboardView() {
                     Salir
                   </button>
                 )}
-                <button
-                  className={`flex h-10 w-10 items-center justify-center rounded-md border ${isDark ? 'border-slate-700 bg-slate-950 text-slate-300' : 'border-slate-200 bg-white text-slate-500'}`}
-                  onClick={() => setSettingsOpen(true)}
-                  title="Configuracion"
-                >
-                  <Settings className="h-4 w-4" />
-                </button>
               </div>
             </div>
           </header>
@@ -812,68 +802,6 @@ export function DashboardView() {
         </section>
       </div>
 
-      {settingsOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/35">
-          <aside className={`h-full w-full max-w-md border-l p-5 shadow-xl ${isDark ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-white'}`}>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className={`text-lg font-bold ${textStrongClass}`}>Configuracion</h2>
-                <p className={`mt-1 text-sm ${textMutedClass}`}>Ajustes visuales y de experiencia del dashboard.</p>
-              </div>
-              <button className={`rounded-md p-2 ${isDark ? 'text-slate-400 hover:bg-slate-800' : 'text-slate-400 hover:bg-slate-100'}`} onClick={() => setSettingsOpen(false)}>
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="mt-6 space-y-4">
-              <div className={`rounded-lg border p-4 ${mutedSurfaceClass}`}>
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className={`font-semibold ${textStrongClass}`}>Tema</p>
-                    <p className={`mt-1 text-sm ${textMutedClass}`}>Cambiar entre modo claro y oscuro.</p>
-                  </div>
-                  <button className="inline-flex h-10 items-center gap-2 rounded-md bg-[#1677f2] px-3 text-sm font-semibold text-white" onClick={toggleTheme}>
-                    {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                    {isDark ? 'Claro' : 'Oscuro'}
-                  </button>
-                </div>
-              </div>
-
-              <div className={`rounded-lg border p-4 ${mutedSurfaceClass}`}>
-                <p className={`font-semibold ${textStrongClass}`}>Busqueda activa</p>
-                <p className={`mt-1 text-sm ${textMutedClass}`}>
-                  {normalizedSearch ? `Filtrando por "${searchQuery}" en proyectos, tareas y actividad.` : 'Sin filtros activos.'}
-                </p>
-                {normalizedSearch && (
-                  <button
-                    className={`mt-3 rounded-md border px-3 py-2 text-sm font-semibold ${
-                      isDark ? 'border-slate-700 text-slate-300 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                    }`}
-                    onClick={() => setSearchQuery('')}
-                  >
-                    Limpiar busqueda
-                  </button>
-                )}
-              </div>
-
-              <div className={`rounded-lg border p-4 ${mutedSurfaceClass}`}>
-                <p className={`font-semibold ${textStrongClass}`}>Datos</p>
-                <p className={`mt-1 text-sm ${textMutedClass}`}>
-                  {authConfigured ? 'Supabase configurado. El dashboard puede leer datos reales.' : 'Modo demo activo. Los cambios se muestran en pantalla hasta recargar.'}
-                </p>
-              </div>
-
-              <div className={`rounded-lg border p-4 ${mutedSurfaceClass}`}>
-                <p className={`font-semibold ${textStrongClass}`}>Sesion</p>
-                <div className={`mt-2 space-y-1 text-sm ${textMutedClass}`}>
-                  <p>Email: {user?.email ?? 'Sin sesion'}</p>
-                  <p>Permisos: funciones habilitadas para todos los usuarios con acceso</p>
-                </div>
-              </div>
-            </div>
-          </aside>
-        </div>
-      )}
     </main>
   )
 }
