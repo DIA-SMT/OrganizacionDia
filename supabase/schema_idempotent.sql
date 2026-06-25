@@ -157,6 +157,17 @@ create table if not exists public.comments (
   check (project_id is not null or task_id is not null)
 );
 
+create table if not exists public.project_documents (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects(id) on delete cascade,
+  file_name text not null,
+  file_url text not null,
+  storage_path text,
+  mime_type text not null default 'application/pdf',
+  size_bytes bigint,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.blockers (
   id uuid primary key default gen_random_uuid(),
   task_id uuid not null references public.tasks(id) on delete cascade,
@@ -185,6 +196,7 @@ alter table public.projects enable row level security;
 alter table public.tasks enable row level security;
 alter table public.task_assignees enable row level security;
 alter table public.comments enable row level security;
+alter table public.project_documents enable row level security;
 alter table public.blockers enable row level security;
 
 drop policy if exists "authenticated read members" on public.members;
@@ -192,12 +204,14 @@ drop policy if exists "authenticated read projects" on public.projects;
 drop policy if exists "authenticated read tasks" on public.tasks;
 drop policy if exists "authenticated read task assignees" on public.task_assignees;
 drop policy if exists "authenticated read comments" on public.comments;
+drop policy if exists "authenticated read project documents" on public.project_documents;
 drop policy if exists "authenticated read blockers" on public.blockers;
 drop policy if exists "authenticated write members" on public.members;
 drop policy if exists "authenticated write projects" on public.projects;
 drop policy if exists "authenticated write tasks" on public.tasks;
 drop policy if exists "authenticated write task assignees" on public.task_assignees;
 drop policy if exists "authenticated write comments" on public.comments;
+drop policy if exists "authenticated write project documents" on public.project_documents;
 drop policy if exists "authenticated write blockers" on public.blockers;
 
 create policy "authenticated read members" on public.members
@@ -213,6 +227,9 @@ create policy "authenticated read task assignees" on public.task_assignees
   for select to authenticated using (true);
 
 create policy "authenticated read comments" on public.comments
+  for select to authenticated using (true);
+
+create policy "authenticated read project documents" on public.project_documents
   for select to authenticated using (true);
 
 create policy "authenticated read blockers" on public.blockers
@@ -233,6 +250,9 @@ create policy "authenticated write task assignees" on public.task_assignees
 create policy "authenticated write comments" on public.comments
   for all to authenticated using (true) with check (true);
 
+create policy "authenticated write project documents" on public.project_documents
+  for all to authenticated using (true) with check (true);
+
 create policy "authenticated write blockers" on public.blockers
   for all to authenticated using (true) with check (true);
 
@@ -242,3 +262,4 @@ create index if not exists tasks_project_id_idx on public.tasks(project_id);
 create index if not exists tasks_status_idx on public.tasks(status);
 create index if not exists tasks_priority_idx on public.tasks(priority);
 create index if not exists task_assignees_member_id_idx on public.task_assignees(member_id);
+create index if not exists project_documents_project_id_idx on public.project_documents(project_id);

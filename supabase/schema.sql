@@ -86,6 +86,17 @@ create table public.comments (
   check (project_id is not null or task_id is not null)
 );
 
+create table public.project_documents (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects(id) on delete cascade,
+  file_name text not null,
+  file_url text not null,
+  storage_path text,
+  mime_type text not null default 'application/pdf',
+  size_bytes bigint,
+  created_at timestamptz not null default now()
+);
+
 create table public.blockers (
   id uuid primary key default gen_random_uuid(),
   task_id uuid not null references public.tasks(id) on delete cascade,
@@ -118,6 +129,7 @@ alter table public.projects enable row level security;
 alter table public.tasks enable row level security;
 alter table public.task_assignees enable row level security;
 alter table public.comments enable row level security;
+alter table public.project_documents enable row level security;
 alter table public.blockers enable row level security;
 
 create policy "authenticated read members" on public.members
@@ -133,6 +145,9 @@ create policy "authenticated read task assignees" on public.task_assignees
   for select to authenticated using (true);
 
 create policy "authenticated read comments" on public.comments
+  for select to authenticated using (true);
+
+create policy "authenticated read project documents" on public.project_documents
   for select to authenticated using (true);
 
 create policy "authenticated read blockers" on public.blockers
@@ -153,6 +168,9 @@ create policy "authenticated write task assignees" on public.task_assignees
 create policy "authenticated write comments" on public.comments
   for all to authenticated using (true) with check (true);
 
+create policy "authenticated write project documents" on public.project_documents
+  for all to authenticated using (true) with check (true);
+
 create policy "authenticated write blockers" on public.blockers
   for all to authenticated using (true) with check (true);
 
@@ -162,3 +180,4 @@ create index tasks_project_id_idx on public.tasks(project_id);
 create index tasks_status_idx on public.tasks(status);
 create index tasks_priority_idx on public.tasks(priority);
 create index task_assignees_member_id_idx on public.task_assignees(member_id);
+create index project_documents_project_id_idx on public.project_documents(project_id);
