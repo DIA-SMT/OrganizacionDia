@@ -65,14 +65,14 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
   }, [authConfigured, loading, pathname, router, user])
 
   const isDark = theme === 'dark'
-  const shellClass = isDark ? 'dark bg-slate-950 text-slate-100' : 'bg-[#eef3f6] text-slate-950'
+  const shellClass = isDark ? 'dark bg-slate-950 text-slate-100' : 'dia-bg text-slate-950'
   const textStrongClass = isDark ? 'text-white' : 'text-slate-950'
   const textMutedClass = isDark ? 'text-slate-400' : 'text-slate-500'
 
   if (authConfigured && (loading || !user)) {
     return (
       <main className={`relative isolate flex min-h-screen items-center justify-center transition-colors ${shellClass}`}>
-        <div className={`rounded-lg border px-4 py-3 text-sm font-semibold ${isDark ? 'border-slate-800 bg-slate-900 text-slate-300' : 'border-slate-200 bg-[#fbfcfd] text-slate-600'}`}>
+        <div className={`rounded-lg border px-4 py-3 text-sm font-semibold ${isDark ? 'border-slate-800 bg-slate-900 text-slate-300' : 'border-slate-200 dia-surface-bg text-slate-600'}`}>
           Verificando sesion...
         </div>
       </main>
@@ -84,7 +84,7 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
       <CursorAiBackground isDark={isDark} />
       <div className="relative z-10 flex min-h-screen">
         <aside
-          className={`sticky top-0 flex min-h-screen shrink-0 self-stretch flex-col border-r px-3 py-4 transition-[width] duration-200 ${sidebarCollapsed ? 'w-16' : 'w-56'} ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-[#fbfcfd]/95'}`}
+          className={`sticky top-0 flex min-h-screen shrink-0 self-stretch flex-col border-r px-3 py-4 transition-[width] duration-200 ${sidebarCollapsed ? 'w-16' : 'w-56'} ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 dia-surface-glass'}`}
           onMouseEnter={() => setSidebarCollapsed(false)}
           onMouseLeave={() => setSidebarCollapsed(true)}
           onFocusCapture={() => setSidebarCollapsed(false)}
@@ -111,7 +111,7 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
             {navItems.map((item) => {
               const Icon = item.icon
               const active = pathname === item.href || (item.href === '/expedientes' && pathname.startsWith('/expedientes/'))
-              const activeClass = isDark ? 'bg-blue-500/15 text-blue-300' : 'bg-[#eaf3ff] text-[#1554c7]'
+              const activeClass = isDark ? 'bg-blue-500/15 text-blue-300' : 'dia-surface-raised-bg dia-primary-text'
               const idleClass = isDark ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-100' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
               const itemClass = `flex w-full items-center rounded-lg py-2 text-sm font-medium transition ${sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${active ? activeClass : idleClass}`
 
@@ -132,7 +132,7 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
         </aside>
 
         <section className="flex min-w-0 flex-1 flex-col">
-          <header className={`border-b backdrop-blur ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-[#fbfcfd]/90'}`}>
+          <header className={`border-b backdrop-blur ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 dia-surface-glass'}`}>
             <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
               <div>
                 <h1 className={`text-xl font-bold ${textStrongClass}`}>{title}</h1>

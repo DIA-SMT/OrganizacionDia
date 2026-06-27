@@ -160,7 +160,7 @@ function projectPriorityWeight(priority: string | null | undefined) {
 
 
 function SidebarItem({ icon, label, href, active, collapsed, isDark }: { icon: React.ReactNode; label: string; href: string; active?: boolean; collapsed?: boolean; isDark: boolean }) {
-  const activeClass = isDark ? 'bg-blue-500/15 text-blue-300' : 'bg-[#eaf3ff] text-[#1554c7]'
+  const activeClass = isDark ? 'bg-blue-500/15 text-blue-300' : 'dia-surface-raised-bg dia-primary-text'
   const idleClass = isDark ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-100' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
   const className = `flex w-full items-center rounded-lg py-2 text-sm font-medium transition ${collapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${active ? activeClass : idleClass}`
 
@@ -476,8 +476,8 @@ export function DashboardView() {
   }
 
   const isDark = theme === 'dark'
-  const shellClass = isDark ? 'bg-slate-950 text-slate-100' : 'bg-[#eef3f6] text-slate-950'
-  const surfaceClass = isDark ? 'border-slate-800 bg-slate-900 shadow-slate-950/20' : 'border-slate-200 bg-[#fbfcfd] shadow-sm'
+  const shellClass = isDark ? 'bg-slate-950 text-slate-100' : 'dia-bg text-slate-950'
+  const surfaceClass = isDark ? 'border-slate-800 bg-slate-900 shadow-slate-950/20' : 'border-slate-200 dia-surface-bg shadow-sm'
   const textStrongClass = isDark ? 'text-white' : 'text-slate-950'
   const textMutedClass = isDark ? 'text-slate-400' : 'text-slate-500'
   const chartMax = 10
@@ -486,7 +486,7 @@ export function DashboardView() {
   if (authConfigured && (loading || !user)) {
     return (
       <main className={`relative isolate flex min-h-screen items-center justify-center transition-colors ${shellClass}`}>
-        <div className={`rounded-lg border px-4 py-3 text-sm font-semibold ${isDark ? 'border-slate-800 bg-slate-900 text-slate-300' : 'border-slate-200 bg-[#fbfcfd] text-slate-600'}`}>
+        <div className={`rounded-lg border px-4 py-3 text-sm font-semibold ${isDark ? 'border-slate-800 bg-slate-900 text-slate-300' : 'border-slate-200 dia-surface-bg text-slate-600'}`}>
           Verificando sesion...
         </div>
       </main>
@@ -498,7 +498,7 @@ export function DashboardView() {
       <CursorAiBackground isDark={isDark} />
       <div className="relative z-10 flex min-h-screen">
         <aside
-          className={`sticky top-0 flex min-h-screen shrink-0 self-stretch flex-col border-r px-3 py-4 transition-[width] duration-200 ${sidebarCollapsed ? 'w-16' : 'w-56'} ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-[#fbfcfd]/95'}`}
+          className={`sticky top-0 flex min-h-screen shrink-0 self-stretch flex-col border-r px-3 py-4 transition-[width] duration-200 ${sidebarCollapsed ? 'w-16' : 'w-56'} ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 dia-surface-glass'}`}
           onMouseEnter={() => setSidebarCollapsed(false)}
           onMouseLeave={() => setSidebarCollapsed(true)}
           onFocusCapture={() => setSidebarCollapsed(false)}
@@ -532,7 +532,7 @@ export function DashboardView() {
         </aside>
 
         <section className="flex min-w-0 flex-1 flex-col">
-          <header className={`border-b backdrop-blur ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-[#fbfcfd]/90'}`}>
+          <header className={`border-b backdrop-blur ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 dia-surface-glass'}`}>
             <div className="flex items-center justify-between gap-4 px-5 py-4">
               <div>
                 <h1 className={`text-xl font-bold ${textStrongClass}`}>Gestion de proyectos</h1>
@@ -589,7 +589,7 @@ export function DashboardView() {
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <motion.p
-                    className="text-xs font-semibold uppercase text-[#1769e0]"
+                    className="text-xs font-semibold uppercase dia-primary-text"
                     initial={{ opacity: 0, y: 12 }}
                     whileInView={{ opacity: 1, y: 0 }}
                     viewport={{ once: true, amount: 0.8 }}
@@ -624,7 +624,7 @@ export function DashboardView() {
                   transition={{ duration: 0.45, ease: 'easeOut', delay: 0.28 }}
                 >
                   <motion.span
-                    className={`rounded-md px-2 py-1 text-xs font-semibold ${isDark ? 'bg-blue-500/15 text-blue-300' : 'bg-[#eaf3ff] text-[#1554c7]'}`}
+                    className={`rounded-md px-2 py-1 text-xs font-semibold ${isDark ? 'bg-blue-500/15 text-blue-300' : 'dia-surface-raised-bg dia-primary-text'}`}
                     whileHover={{ y: -1, scale: 1.03 }}
                   >
                     En vivo
@@ -656,7 +656,7 @@ export function DashboardView() {
                       }}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className={`truncate text-xs font-semibold ${isDark ? 'text-blue-300' : 'text-[#1769e0]'}`}>{change.projectName}</span>
+                        <span className={`truncate text-xs font-semibold ${isDark ? 'text-blue-300' : 'dia-primary-text'}`}>{change.projectName}</span>
                         <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${isDark ? 'bg-slate-800 text-slate-300' : 'bg-white text-slate-500'}`}>{change.repoLabel}</span>
                       </div>
                       <p className={`mt-2 line-clamp-2 text-sm font-semibold leading-5 ${textStrongClass}`}>{change.message}</p>
@@ -699,7 +699,7 @@ export function DashboardView() {
             >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <p className="text-xs font-semibold uppercase text-[#1769e0]">Trabajo pendiente</p>
+                  <p className="text-xs font-semibold uppercase dia-primary-text">Trabajo pendiente</p>
                   <h2 className={`mt-1 text-xl font-bold ${textStrongClass}`}>Tareas por resolver</h2>
                   <p className={`mt-2 text-sm ${textMutedClass}`}>Tareas activas ordenadas por la modificacion mas reciente.</p>
                 </div>
@@ -728,7 +728,7 @@ export function DashboardView() {
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <span className={`truncate text-xs font-semibold ${isDark ? 'text-blue-300' : 'text-[#1769e0]'}`}>{taskProjectName(task.projects)}</span>
+                        <span className={`truncate text-xs font-semibold ${isDark ? 'text-blue-300' : 'dia-primary-text'}`}>{taskProjectName(task.projects)}</span>
                         <span className={`shrink-0 rounded px-2 py-1 text-[10px] font-semibold ${taskPriorityClass(task.priority, isDark)}`}>{task.priority}</span>
                       </div>
                       <h3 className={`mt-3 line-clamp-2 text-sm font-semibold leading-5 ${textStrongClass}`}>{task.title}</h3>
@@ -756,7 +756,7 @@ export function DashboardView() {
             >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <p className="text-xs font-semibold uppercase text-[#1769e0]">Expedientes</p>
+                  <p className="text-xs font-semibold uppercase dia-primary-text">Expedientes</p>
                   <h2 className={`mt-1 text-xl font-bold ${textStrongClass}`}>PDFs recientes desde Drive</h2>
                   <p className={`mt-2 text-sm ${textMutedClass}`}>Pantallazo rapido de los ultimos expedientes detectados.</p>
                 </div>
@@ -781,7 +781,7 @@ export function DashboardView() {
                           <p className={`mt-1 text-xs ${textMutedClass}`}>{formatExpedienteDate(expediente.drive_created_at)}</p>
                         </div>
                         <div className="flex shrink-0 flex-col items-end gap-1">
-                          <span className={`rounded-md px-2 py-1 text-[10px] font-semibold ${expediente.priority === 'Alta' ? (isDark ? 'bg-red-500/15 text-red-300' : 'bg-red-50 text-red-700') : isDark ? 'bg-blue-500/15 text-blue-300' : 'bg-[#eaf3ff] text-[#1554c7]'}`}>
+                          <span className={`rounded-md px-2 py-1 text-[10px] font-semibold ${expediente.priority === 'Alta' ? (isDark ? 'bg-red-500/15 text-red-300' : 'bg-red-50 text-red-700') : isDark ? 'bg-blue-500/15 text-blue-300' : 'dia-surface-raised-bg dia-primary-text'}`}>
                             {expediente.priority}
                           </span>
                           <span className={`rounded-md px-2 py-1 text-[10px] font-semibold ${isDark ? 'bg-slate-800 text-slate-300' : 'bg-white text-slate-500'}`}>
@@ -795,7 +795,7 @@ export function DashboardView() {
                       <p className={`mt-2 text-[11px] ${expediente.brief_error ? 'text-red-400' : textMutedClass}`}>
                         {expediente.brief_error ? 'Brief OCR pendiente' : expediente.brief_generated_at ? 'Brief OCR guardado' : 'Esperando brief OCR'}
                       </p>
-                      <a className={`mt-3 inline-flex items-center gap-1 text-xs font-semibold ${isDark ? 'text-blue-300' : 'text-[#1769e0]'}`} href={expediente.drive_url} target="_blank" rel="noreferrer">
+                      <a className={`mt-3 inline-flex items-center gap-1 text-xs font-semibold ${isDark ? 'text-blue-300' : 'dia-primary-text'}`} href={expediente.drive_url} target="_blank" rel="noreferrer">
                         Abrir PDF
                         <ExternalLink className="h-3 w-3" />
                       </a>
@@ -818,7 +818,7 @@ export function DashboardView() {
             >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <p className="text-xs font-semibold uppercase text-[#1769e0]">Distribución operativa</p>
+                  <p className="text-xs font-semibold uppercase dia-primary-text">Distribución operativa</p>
                   <h2 className={`mt-1 text-xl font-bold ${textStrongClass}`}>Proyectos por estado</h2>
                   <p className={`mt-2 text-sm ${textMutedClass}`}>Vista rápida del trabajo en marcha, detenido y finalizado.</p>
                 </div>

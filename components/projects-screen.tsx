@@ -193,7 +193,7 @@ function ParticipantAvatar({ participant, size = 'sm', isDark }: { participant: 
   return (
     <div
       className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full border-2 font-bold shadow-sm ${
-        isDark ? 'border-slate-900 bg-blue-500/15 text-blue-200' : 'border-white bg-[#eaf3ff] text-[#1554c7]'
+        isDark ? 'border-slate-900 bg-blue-500/15 text-blue-200' : 'border-white dia-surface-raised-bg dia-primary-text'
       } ${sizeClass}`}
       title={participant.role ? `${participant.name} - ${participant.role}` : participant.name}
     >
@@ -256,7 +256,7 @@ function StatusDropdown({
               key={status}
               type="button"
               className={`flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2 text-left text-sm font-semibold transition hover:scale-[1.01] ${statusTone(status, isDark)} ${
-                status === value ? 'ring-2 ring-[#1677f2]/30' : ''
+                status === value ? 'ring-2 ring-blue-500/30' : ''
               }`}
               onClick={() => {
                 onChange(status)
@@ -691,7 +691,7 @@ export function ProjectsScreen({
                             selected
                               ? isDark
                                 ? 'bg-blue-500/15 font-semibold text-blue-300'
-                                : 'bg-[#eaf3ff] font-semibold text-[#1554c7]'
+                                : 'dia-surface-raised-bg font-semibold dia-primary-text'
                               : isDark
                                 ? 'text-slate-300 hover:bg-slate-800'
                                 : 'text-slate-600 hover:bg-slate-50'
@@ -772,7 +772,7 @@ export function ProjectsScreen({
                   <span>{savingProgressId === project.id ? 'Guardando...' : `${project.progress}%`}</span>
                 </div>
                 <div className={`h-2 overflow-hidden rounded-full ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
-                  <div className="h-full rounded-full bg-[#1677f2]" style={{ width: `${project.progress}%` }} />
+                  <div className="h-full rounded-full dia-primary-bg" style={{ width: `${project.progress}%` }} />
                 </div>
               </div>
 
@@ -781,7 +781,7 @@ export function ProjectsScreen({
                 <motion.a
                   whileHover={{ y: -1, scale: 1.015 }}
                   whileTap={{ scale: 0.985 }}
-                  className="mt-4 inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[#1677f2] px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1268d6]"
+                  className="mt-4 inline-flex h-9 items-center justify-center gap-2 rounded-md dia-primary-bg px-3 text-sm font-semibold text-white shadow-sm transition hover:brightness-110"
                   href={project.website_url}
                   target="_blank"
                   rel="noreferrer"
@@ -850,7 +850,7 @@ export function ProjectsScreen({
               <div className="flex shrink-0 items-center gap-2">
                 {selectedProject.website_url && !selectedProjectEditing && (
                   <a
-                    className="inline-flex h-10 items-center gap-2 rounded-md bg-[#1677f2] px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1268d6]"
+                    className="inline-flex h-10 items-center gap-2 rounded-md dia-primary-bg px-3 text-sm font-semibold text-white shadow-sm transition hover:brightness-110"
                     href={selectedProject.website_url}
                     target="_blank"
                     rel="noreferrer"
@@ -865,7 +865,7 @@ export function ProjectsScreen({
                     selectedProjectEditing
                       ? isDark
                         ? 'border-blue-800 bg-blue-950/40 text-blue-300 hover:bg-blue-950/60'
-                        : 'border-blue-200 bg-blue-50 text-[#1769e0] hover:bg-blue-100'
+                        : 'border-blue-200 bg-blue-50 dia-primary-text hover:bg-blue-100'
                       : isDark
                         ? 'border-slate-700 text-slate-300 hover:bg-slate-900'
                         : 'border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -900,7 +900,7 @@ export function ProjectsScreen({
                 <div className={`block rounded-lg border p-4 ${panelClass}`}>
                   <div className="flex items-center justify-between gap-4">
                     <span className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Nota interna</span>
-                    {savingField === `${selectedProject.id}-note` && <span className={`text-xs font-semibold ${isDark ? 'text-blue-300' : 'text-[#1769e0]'}`}>Guardando...</span>}
+                    {savingField === `${selectedProject.id}-note` && <span className={`text-xs font-semibold ${isDark ? 'text-blue-300' : 'dia-primary-text'}`}>Guardando...</span>}
                   </div>
                   {selectedProjectEditing ? (
                     <textarea
@@ -920,7 +920,7 @@ export function ProjectsScreen({
                 <div className={`rounded-lg border p-4 ${panelClass}`}>
                   <div className="flex items-center justify-between gap-3">
                     <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Pagina web</p>
-                    {savingField === `${selectedProject.id}-website_url` && <span className={`text-xs font-semibold ${isDark ? 'text-blue-300' : 'text-[#1769e0]'}`}>Guardando...</span>}
+                    {savingField === `${selectedProject.id}-website_url` && <span className={`text-xs font-semibold ${isDark ? 'text-blue-300' : 'dia-primary-text'}`}>Guardando...</span>}
                   </div>
                   {selectedProjectEditing ? (
                     <div className="mt-3 flex items-center gap-2">
@@ -933,7 +933,7 @@ export function ProjectsScreen({
                       />
                       {selectedProject.website_url && (
                         <a
-                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md border ${isDark ? 'border-slate-700 text-blue-300 hover:bg-slate-900' : 'border-slate-200 text-[#1769e0] hover:bg-white'}`}
+                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md border ${isDark ? 'border-slate-700 text-blue-300 hover:bg-slate-900' : 'border-slate-200 dia-primary-text hover:bg-white'}`}
                           href={normalizeWebsiteUrl(selectedProject.website_url) ?? undefined}
                           target="_blank"
                           rel="noreferrer"
@@ -945,7 +945,7 @@ export function ProjectsScreen({
                     </div>
                   ) : selectedProject.website_url ? (
                     <a
-                      className="mt-3 inline-flex items-center gap-2 break-all text-sm font-semibold text-[#1769e0] hover:underline dark:text-blue-300"
+                      className="mt-3 inline-flex items-center gap-2 break-all text-sm font-semibold dia-primary-text hover:underline dark:text-blue-300"
                       href={selectedProject.website_url}
                       target="_blank"
                       rel="noreferrer"
@@ -975,7 +975,7 @@ export function ProjectsScreen({
                               key={field}
                               type="button"
                               className={`inline-flex h-10 w-fit items-center gap-2 rounded-md border px-3 text-sm font-semibold transition ${
-                                isDark ? 'border-slate-700 text-blue-300 hover:bg-slate-900' : 'border-slate-200 text-[#1769e0] hover:bg-white'
+                                isDark ? 'border-slate-700 text-blue-300 hover:bg-slate-900' : 'border-slate-200 dia-primary-text hover:bg-white'
                               }`}
                               onClick={() => setAddingSecondaryRepoIds((current) => (current.includes(selectedProject.id) ? current : [...current, selectedProject.id]))}
                             >
@@ -998,7 +998,7 @@ export function ProjectsScreen({
                               />
                               {value && (
                                 <a
-                                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md border ${isDark ? 'border-slate-700 text-blue-300 hover:bg-slate-900' : 'border-slate-200 text-[#1769e0] hover:bg-white'}`}
+                                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md border ${isDark ? 'border-slate-700 text-blue-300 hover:bg-slate-900' : 'border-slate-200 dia-primary-text hover:bg-white'}`}
                                   href={value}
                                   target="_blank"
                                   rel="noreferrer"
@@ -1019,7 +1019,7 @@ export function ProjectsScreen({
                         [selectedProject.repository_url_secondary, 'Repo 2'],
                       ].map(([url, label]) =>
                         url ? (
-                          <a key={label} className="block break-all text-sm font-semibold leading-6 text-[#1769e0] hover:underline" href={url} target="_blank" rel="noreferrer">
+                          <a key={label} className="block break-all text-sm font-semibold leading-6 dia-primary-text hover:underline" href={url} target="_blank" rel="noreferrer">
                             <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>{label}: </span>
                             {url}
                           </a>
@@ -1038,7 +1038,7 @@ export function ProjectsScreen({
                     </div>
                     <label
                       className={`inline-flex h-10 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm font-semibold transition ${
-                        isDark ? 'border-slate-700 text-blue-300 hover:bg-slate-900' : 'border-slate-200 text-[#1769e0] hover:bg-white'
+                        isDark ? 'border-slate-700 text-blue-300 hover:bg-slate-900' : 'border-slate-200 dia-primary-text hover:bg-white'
                       } ${uploadingDocumentId === selectedProject.id ? 'pointer-events-none opacity-60' : ''}`}
                     >
                       <Upload className="h-4 w-4" />
@@ -1069,7 +1069,7 @@ export function ProjectsScreen({
                           rel="noreferrer"
                         >
                           <span className="flex min-w-0 items-center gap-2">
-                            <FileText className={`h-4 w-4 shrink-0 ${isDark ? 'text-blue-300' : 'text-[#1769e0]'}`} />
+                            <FileText className={`h-4 w-4 shrink-0 ${isDark ? 'text-blue-300' : 'dia-primary-text'}`} />
                             <span className={`truncate text-sm font-semibold ${titleClass}`}>{document.file_name}</span>
                           </span>
                           <span className={`shrink-0 text-xs ${mutedClass}`}>{formatFileSize(document.size_bytes)}</span>
@@ -1084,7 +1084,7 @@ export function ProjectsScreen({
                 <div className={`rounded-lg border p-4 ${panelClass}`}>
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
-                      <GitCommitHorizontal className={`h-4 w-4 ${isDark ? 'text-blue-300' : 'text-[#1769e0]'}`} />
+                      <GitCommitHorizontal className={`h-4 w-4 ${isDark ? 'text-blue-300' : 'dia-primary-text'}`} />
                       <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Modificaciones recientes</p>
                     </div>
                     <span className={`text-xs ${mutedClass}`}>{(commitsByProject[selectedProject.id] ?? []).length} commits</span>
@@ -1122,7 +1122,7 @@ export function ProjectsScreen({
                       <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Desarrollo</p>
                       <p className={`mt-0.5 text-xs ${mutedClass}`}>Avance general del proyecto</p>
                     </div>
-                    <p className={`rounded-md px-2.5 py-1 text-sm font-bold ${isDark ? 'bg-blue-500/15 text-blue-300' : 'bg-[#eaf3ff] text-[#1554c7]'}`}>
+                    <p className={`rounded-md px-2.5 py-1 text-sm font-bold ${isDark ? 'bg-blue-500/15 text-blue-300' : 'dia-surface-raised-bg dia-primary-text'}`}>
                       {savingProgressId === selectedProject.id ? 'Guardando...' : `${selectedProject.progress}%`}
                     </p>
                   </div>
@@ -1136,13 +1136,13 @@ export function ProjectsScreen({
                       value={selectedProject.progress}
                       onChange={(event) => updateProgress(selectedProject.id, Number(event.target.value))}
                       style={{
-                        background: `linear-gradient(to right, #1677f2 0%, #1677f2 ${selectedProject.progress}%, ${isDark ? '#1e293b' : '#e2e8f0'} ${selectedProject.progress}%, ${isDark ? '#1e293b' : '#e2e8f0'} 100%)`,
+                        background: `linear-gradient(to right, var(--dia-primary) 0%, var(--dia-primary) ${selectedProject.progress}%, var(--dia-border) ${selectedProject.progress}%, var(--dia-border) 100%)`,
                       }}
                       aria-label={`Progreso de ${selectedProject.name}`}
                     />
                   ) : (
                     <div className={`mt-5 h-3 overflow-hidden rounded-full ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
-                      <div className="h-full rounded-full bg-[#1677f2]" style={{ width: `${selectedProject.progress}%` }} />
+                      <div className="h-full rounded-full dia-primary-bg" style={{ width: `${selectedProject.progress}%` }} />
                     </div>
                   )}
                 </div>

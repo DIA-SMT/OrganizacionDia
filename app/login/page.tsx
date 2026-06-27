@@ -15,9 +15,9 @@ export default function LoginPage() {
 
 function LoginShell() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#eef3f6] px-4">
+    <main className="flex min-h-screen items-center justify-center dia-bg px-4">
       <section className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
-        <Loader2 className="h-5 w-5 animate-spin text-[#1677f2]" />
+        <Loader2 className="h-5 w-5 animate-spin dia-primary-text" />
       </section>
     </main>
   )
@@ -69,9 +69,9 @@ function LoginForm() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#eef3f6] px-4">
+    <main className="flex min-h-screen items-center justify-center dia-bg px-4">
       <section className="grid w-full max-w-5xl overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm md:grid-cols-[1fr_0.85fr]">
-        <div className="hidden bg-[#103b3a] p-10 text-white md:block">
+        <div className="hidden bg-[#0e1630] p-10 text-white md:block">
           <div className="flex h-11 w-11 items-center justify-center rounded-md bg-white/10">
             <Code2 className="h-6 w-6" />
           </div>
@@ -82,7 +82,7 @@ function LoginForm() {
         </div>
 
         <form onSubmit={handleLogin} className="p-8 md:p-10">
-          <p className="text-xs font-semibold uppercase text-[#1769e0]">Acceso interno</p>
+          <p className="text-xs font-semibold uppercase dia-primary-text">Acceso interno</p>
           <h2 className="mt-2 text-2xl font-bold text-slate-950">Iniciar sesion</h2>
           <p className="mt-2 text-sm text-slate-500">Ingresa tus credenciales para entrar al dashboard.</p>
 
@@ -92,7 +92,7 @@ function LoginForm() {
             <label className="block">
               <span className="text-sm font-medium text-slate-700">Correo electronico</span>
               <input
-                className="mt-2 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-[#1677f2] focus:ring-2 focus:ring-blue-100"
+                className="mt-2 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 type="email"
                 required
                 value={email}
@@ -103,7 +103,7 @@ function LoginForm() {
             <label className="block">
               <span className="text-sm font-medium text-slate-700">Contrasena</span>
               <input
-                className="mt-2 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-[#1677f2] focus:ring-2 focus:ring-blue-100"
+                className="mt-2 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 type="password"
                 required
                 value={password}
@@ -113,7 +113,7 @@ function LoginForm() {
           </div>
 
           <button
-            className="mt-6 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[#1677f2] px-4 text-sm font-semibold text-white shadow-sm disabled:opacity-60"
+            className="mt-6 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md dia-primary-bg px-4 text-sm font-semibold text-white shadow-sm disabled:opacity-60"
             type="submit"
             disabled={loading}
           >
@@ -124,7 +124,7 @@ function LoginForm() {
           <button
             type="button"
             onClick={() => router.push('/forgot-password')}
-            className="mt-4 w-full text-center text-sm font-medium text-[#1769e0]"
+            className="mt-4 w-full text-center text-sm font-medium dia-primary-text"
           >
             Olvide mi contrasena
           </button>

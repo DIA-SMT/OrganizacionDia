@@ -211,19 +211,19 @@ export function TasksScreen() {
               <div className="flex flex-wrap items-center gap-2 lg:flex-col lg:items-start">
                 <div className="flex flex-wrap gap-1.5">
                   {task.issue_url && (
-                    <a className="inline-flex h-8 items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 text-xs font-semibold text-[#1769e0] hover:bg-blue-100 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-200" href={task.issue_url} target="_blank" rel="noreferrer">
+                    <a className="inline-flex h-8 items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 text-xs font-semibold dia-primary-text hover:bg-blue-100 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-200" href={task.issue_url} target="_blank" rel="noreferrer">
                       Issue <ExternalLink className="h-3 w-3" />
                     </a>
                   )}
                   {task.pr_url && (
-                    <a className="inline-flex h-8 items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 text-xs font-semibold text-[#1769e0] hover:bg-blue-100 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-200" href={task.pr_url} target="_blank" rel="noreferrer">
+                    <a className="inline-flex h-8 items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 text-xs font-semibold dia-primary-text hover:bg-blue-100 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-200" href={task.pr_url} target="_blank" rel="noreferrer">
                       PR <ExternalLink className="h-3 w-3" />
                     </a>
                   )}
                 </div>
                 <button
                   type="button"
-                  className="inline-flex h-8 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:text-[#1769e0] hover:shadow-md dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:border-blue-500/30 dark:hover:text-blue-200"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:text-blue-500 hover:shadow-md dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:border-blue-500/30 dark:hover:text-blue-200"
                   onClick={() => setEditingTask(task)}
                 >
                   <Pencil className="h-3.5 w-3.5" />
@@ -231,7 +231,7 @@ export function TasksScreen() {
                 </button>
                 <button
                   type="button"
-                  className="inline-flex h-9 items-center gap-2 rounded-full bg-gradient-to-r from-emerald-500 to-[#1677f2] px-3.5 text-xs font-bold text-white shadow-sm shadow-blue-500/20 transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-blue-500/25 disabled:translate-y-0 disabled:opacity-60 disabled:shadow-none"
+                  className="inline-flex h-9 items-center gap-2 rounded-full bg-gradient-to-r from-emerald-500 to-blue-500 px-3.5 text-xs font-bold text-white shadow-sm shadow-blue-500/20 transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-blue-500/25 disabled:translate-y-0 disabled:opacity-60 disabled:shadow-none"
                   disabled={finishingId === task.id}
                   onClick={() => void finishTask(task.id)}
                 >
@@ -367,7 +367,7 @@ export function TasksScreen() {
 
             <button
               type="button"
-              className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-[#1677f2] text-sm font-semibold text-white shadow-sm transition hover:bg-[#1268d6] disabled:opacity-60"
+              className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-md dia-primary-bg text-sm font-semibold text-white shadow-sm transition hover:brightness-110 disabled:opacity-60"
               disabled={savingTaskId === editingTask.id}
               onClick={() => void saveTask(editingTask)}
             >

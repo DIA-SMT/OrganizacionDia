@@ -348,7 +348,7 @@ export function TaskCreateButton({
               </div>
             </div>
 
-            <button className="mt-5 h-10 w-full rounded-md bg-[#1677f2] text-sm font-semibold text-white disabled:opacity-60" disabled={loading || !authConfigured || (projectMode === 'existing' && projectOptions.length === 0)}>
+            <button className="mt-5 h-10 w-full rounded-md dia-primary-bg text-sm font-semibold text-white disabled:opacity-60" disabled={loading || !authConfigured || (projectMode === 'existing' && projectOptions.length === 0)}>
               {loading ? 'Guardando...' : 'Crear tarea'}
             </button>
           </form>
