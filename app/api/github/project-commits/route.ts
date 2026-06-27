@@ -1,3 +1,6 @@
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 type ProjectCommitRequest = {
   projects?: Array<{
     id: string
@@ -83,7 +86,7 @@ async function fetchRepoCommits(repoUrl: string | null | undefined, repoLabel: s
 
   while (commits.length < limitPerRepo) {
     const response = await fetch(
-      `https://api.github.com/repos/${repo.owner}/${repo.repo}/commits?per_page=${perPage}&page=${page}${sinceParam}`,
+      `https://api.github.com/repos/${repo.owner}/${repo.repo}/commits?per_page=${perPage}&page=${page}${sinceParam}&_=${Date.now()}`,
       {
         headers,
         cache: 'no-store',

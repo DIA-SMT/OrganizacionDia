@@ -2,6 +2,7 @@
 
 import { useAuth } from '@/context/AuthContext'
 import { CursorAiBackground } from '@/components/cursor-ai-background'
+import { motion } from 'framer-motion'
 import { Code2, FileText, GitPullRequest, History, LayoutDashboard, LogOut, Search, Sun, Moon, Trash2, Users } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
@@ -31,6 +32,7 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
   const { user, loading, authConfigured, signOut } = useAuth()
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
+  const [localSearch, setLocalSearch] = useState(search)
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -49,6 +51,13 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
       return next
     })
   }
+
+
+  useEffect(() => {
+    if (!onSearchChange || localSearch === search) return
+    const timer = window.setTimeout(() => onSearchChange(localSearch), 0)
+    return () => window.clearTimeout(timer)
+  }, [localSearch, onSearchChange, search])
 
   useEffect(() => {
     if (!authConfigured || loading || user) return
@@ -133,7 +142,7 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
                 {onSearchChange && (
                   <label className={`hidden h-10 items-center gap-2 rounded-md border px-3 text-sm md:flex ${isDark ? 'border-slate-700 bg-slate-950 text-slate-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
                     <Search className="h-4 w-4" />
-                    <input className="w-56 bg-transparent outline-none placeholder:text-inherit" value={search} onChange={(event) => onSearchChange(event.target.value)} placeholder="Buscar" />
+                    <input className="w-56 bg-transparent outline-none placeholder:text-inherit" value={localSearch} onChange={(event) => setLocalSearch(event.target.value)} placeholder="Buscar" />
                   </label>
                 )}
                 <button className={`flex h-10 w-10 items-center justify-center rounded-md border ${isDark ? 'border-slate-700 bg-slate-950 text-slate-300' : 'border-slate-200 bg-white text-slate-500'}`} onClick={toggleTheme} title={isDark ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}>
@@ -149,7 +158,16 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
             </div>
           </header>
 
-          <div className="flex-1 px-5 py-5">{children}</div>
+          <motion.div
+            key={pathname}
+            className="flex-1 px-5 py-5"
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.38, ease: 'easeOut' }}
+          >
+            {children}
+          </motion.div>
         </section>
       </div>
 

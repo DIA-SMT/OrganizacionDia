@@ -2,8 +2,10 @@
 
 import { AppShell } from '@/components/app-shell'
 import { ProjectCreateButton } from '@/components/project-create-button'
+import { filterAndSortProjects, type ProjectFilter } from '@/lib/project-filters'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
-import { Check, ChevronDown, ExternalLink, FileText, GitCommitHorizontal, Globe2, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
+import { Check, ChevronDown, ExternalLink, FileText, Funnel, GitCommitHorizontal, Globe2, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
+import { motion, type Variants } from 'framer-motion'
 import { useEffect, useMemo, useState } from 'react'
 
 type ProjectRow = {
@@ -63,11 +65,61 @@ type ProjectParticipant = {
 
 const priorities = ['Baja', 'Media', 'Alta', 'Critica']
 
-function priorityWeight(priority: string | null | undefined) {
-  if (priority === 'Critica') return 4
-  if (priority === 'Alta') return 3
-  if (priority === 'Media') return 2
-  return 1
+const projectFilterGroups: Array<{
+  label: string
+  options: Array<{ label: string; filter: ProjectFilter }>
+}> = [
+  {
+    label: 'Vista',
+    options: [
+      { label: 'Todos', filter: { kind: 'all' } },
+      { label: 'Activos', filter: { kind: 'active' } },
+      { label: 'Finalizados', filter: { kind: 'finished' } },
+      { label: 'Pausados', filter: { kind: 'paused' } },
+    ],
+  },
+  {
+    label: 'Estado',
+    options: projectStatuses.slice(0, 4).map((status) => ({ label: status, filter: { kind: 'status', value: status } })),
+  },
+  {
+    label: 'Prioridad',
+    options: [...priorities].reverse().map((priority) => ({ label: priority, filter: { kind: 'priority', value: priority } })),
+  },
+]
+
+function filterKey(filter: ProjectFilter) {
+  return filter.kind === 'status' || filter.kind === 'priority' ? `${filter.kind}:${filter.value}` : filter.kind
+}
+
+function initialProjectFilter(statusFilter: string | null): ProjectFilter {
+  if (!statusFilter || statusFilter === 'Todos') return { kind: 'all' }
+  if (statusFilter === 'Activos') return { kind: 'active' }
+  if (statusFilter === 'Pausado') return { kind: 'paused' }
+  if (statusFilter === 'En Producción') return { kind: 'finished' }
+  return { kind: 'status', value: statusFilter }
+}
+
+function projectFilterLabel(filter: ProjectFilter) {
+  for (const group of projectFilterGroups) {
+    const option = group.options.find((item) => filterKey(item.filter) === filterKey(filter))
+    if (option) return option.label
+  }
+  return 'Todos'
+}
+
+const fadeInUpVariants: Variants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: (delay = 0) => ({
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.5, ease: 'easeOut', delay },
+  }),
+}
+
+const staggerContainerVariants: Variants = {
+  hidden: { opacity: 1 },
+  visible: { opacity: 1, transition: { staggerChildren: 0.08, delayChildren: 0.04 } },
 }
 
 function statusTone(status: string, isDark: boolean) {
@@ -155,14 +207,6 @@ function ParticipantAvatar({ participant, size = 'sm', isDark }: { participant: 
   )
 }
 
-function isProduction(project: ProjectRow) {
-  return project.status === 'En Producción'
-}
-
-function isPaused(project: ProjectRow) {
-  return project.status === 'Pausado'
-}
-
 function useStoredTheme() {
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     if (typeof window === 'undefined') return 'light'
@@ -240,12 +284,12 @@ export function ProjectsScreen({
 }) {
   const [projects, setProjects] = useState<ProjectRow[]>([])
   const [search, setSearch] = useState(initialSearch)
-  const [statusFilter, setStatusFilter] = useState<string | null>(initialStatusFilter)
+  const [projectFilter, setProjectFilter] = useState<ProjectFilter>(() => initialProjectFilter(initialStatusFilter))
+  const [filterMenuOpen, setFilterMenuOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [savingProgressId, setSavingProgressId] = useState<string | null>(null)
   const [savingField, setSavingField] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [view, setView] = useState<'active' | 'finished' | 'paused'>('active')
   const [addingSecondaryRepoIds, setAddingSecondaryRepoIds] = useState<string[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(initialSelectedProjectId)
   const [selectedProjectEditing, setSelectedProjectEditing] = useState(false)
@@ -578,96 +622,116 @@ export function ProjectsScreen({
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    const byView = statusFilter
-      ? statusFilter === 'Todos'
-        ? projects
-        : projects.filter((project) => (statusFilter === 'Activos' ? project.status !== 'En Producción' : project.status === statusFilter))
-      : projects.filter((project) => (view === 'finished' ? project.status === 'En Producción' : project.status !== 'En Producción'))
-    const isSpecificStatusFilter = Boolean(statusFilter && statusFilter !== 'Todos' && statusFilter !== 'Activos')
-    const visibleByView =
-      isSpecificStatusFilter || view === 'finished'
-        ? byView
-        : byView.filter((project) => !isProduction(project) && !isPaused(project))
-    const searchedByView = q
-      ? visibleByView.filter((project) => [project.name, project.description, project.note, project.requester_area, project.stack, project.repository_url, project.repository_url_secondary, project.website_url, project.status, project.priority].filter(Boolean).join(' ').toLowerCase().includes(q))
-      : visibleByView
+    const searchedProjects = q
+      ? projects.filter((project) => [project.name, project.description, project.note, project.requester_area, project.stack, project.repository_url, project.repository_url_secondary, project.website_url, project.status, project.priority].filter(Boolean).join(' ').toLowerCase().includes(q))
+      : projects
 
-    return [...searchedByView].sort((a, b) => {
-      const priorityDiff = priorityWeight(b.priority) - priorityWeight(a.priority)
-      if (priorityDiff !== 0) return priorityDiff
-      return a.name.localeCompare(b.name)
-    })
-  }, [projects, search, statusFilter, view])
-
-  const finishedCount = projects.filter((project) => project.status === 'En Producción').length
-  const activeVisibleCount = projects.filter((project) => !isProduction(project) && !isPaused(project)).length
-  const pausedCount = projects.filter((project) => isPaused(project)).length
+    return filterAndSortProjects(searchedProjects, projectFilter)
+  }, [projectFilter, projects, search])
   const selectedProject = selectedProjectId ? projects.find((project) => project.id === selectedProjectId) ?? null : null
   const selectedProjectDocuments = selectedProject ? projectDocuments[selectedProject.id] ?? [] : []
 
   return (
     <AppShell title="Proyectos" subtitle="Informacion cargada de cada proyecto" search={search} onSearchChange={setSearch}>
-      {error && <div className={`mb-4 rounded-lg border p-3 text-sm ${isDark ? 'border-red-900/60 bg-red-950/30 text-red-300' : 'border-red-200 bg-red-50 text-red-700'}`}>{error}</div>}
+      <motion.div
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, amount: 0.12 }}
+        variants={staggerContainerVariants}
+      >
+      {error && <motion.div variants={fadeInUpVariants} className={`mb-4 rounded-lg border p-3 text-sm ${isDark ? 'border-red-900/60 bg-red-950/30 text-red-300' : 'border-red-200 bg-red-50 text-red-700'}`}>{error}</motion.div>}
 
-      {statusFilter && statusFilter !== 'Pausado' && (
-        <div className={`mb-4 flex w-fit items-center gap-3 rounded-lg border px-3 py-2 text-sm font-semibold ${isDark ? 'border-blue-900/60 bg-blue-950/30 text-blue-300' : 'border-blue-200 bg-blue-50 text-[#1554c7]'}`}>
-          <span>Filtro: {statusFilter === 'Todos' ? 'Todos los proyectos activos' : statusFilter}</span>
-          <button type="button" className={isDark ? 'text-slate-300 hover:text-white' : 'text-slate-500 hover:text-slate-900'} onClick={() => setStatusFilter(null)}>
-            Limpiar
-          </button>
-        </div>
-      )}
+      <motion.div variants={fadeInUpVariants} className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="relative z-30">
+          {filterMenuOpen && <button type="button" aria-label="Cerrar filtros" className="fixed inset-0 z-20 cursor-default" onClick={() => setFilterMenuOpen(false)} />}
+          <motion.button
+            type="button"
+            whileHover={{ y: -1 }}
+            whileTap={{ scale: 0.98 }}
+            aria-expanded={filterMenuOpen}
+            aria-haspopup="menu"
+            onClick={() => setFilterMenuOpen((open) => !open)}
+            className={`relative z-30 inline-flex h-11 items-center gap-2 rounded-lg border px-3 text-sm font-semibold shadow-sm transition-colors ${
+              isDark
+                ? 'border-slate-700 bg-slate-900 text-slate-100 hover:border-blue-500/60 hover:bg-slate-800'
+                : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-slate-50'
+            }`}
+          >
+            <Funnel className="h-4 w-4 text-blue-500" />
+            <span>Filtrar</span>
+            <span className={`max-w-40 truncate font-normal ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{projectFilterLabel(projectFilter)}</span>
+            <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${filterMenuOpen ? 'rotate-180' : ''}`} />
+          </motion.button>
 
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className={`inline-flex rounded-lg border p-1 ${isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-200 bg-white'}`}>
-          {[
-            ['active', `Activos (${activeVisibleCount})`],
-            ['finished', `Finalizados (${finishedCount})`],
-            ['paused', `Pausados (${pausedCount})`],
-          ].map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              className={`rounded-md px-3 py-2 text-sm font-semibold transition ${
-                (key === 'paused' ? statusFilter === 'Pausado' : view === key && statusFilter !== 'Pausado')
-                  ? isDark
-                    ? 'bg-blue-500/15 text-blue-300'
-                    : 'bg-[#eaf3ff] text-[#1554c7]'
-                  : isDark
-                    ? 'text-slate-400 hover:bg-slate-900'
-                    : 'text-slate-500 hover:bg-slate-50'
-              }`}
-              onClick={() => {
-                if (key === 'paused') {
-                  setStatusFilter('Pausado')
-                  setView('active')
-                  return
-                }
-                setStatusFilter(null)
-                setView(key as 'active' | 'finished')
-              }}
+          {filterMenuOpen && (
+            <motion.div
+              role="menu"
+              initial={{ opacity: 0, y: -6, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+              className={`absolute left-0 z-30 mt-2 w-72 overflow-hidden rounded-lg border p-2 shadow-xl ${isDark ? 'border-slate-700 bg-slate-900' : 'border-slate-200 bg-white'}`}
             >
-              {label}
-            </button>
-          ))}
+              {projectFilterGroups.map((group, groupIndex) => (
+                <div key={group.label} className={groupIndex > 0 ? `mt-2 border-t pt-2 ${isDark ? 'border-slate-800' : 'border-slate-100'}` : ''}>
+                  <p className={`px-2 pb-1 text-[11px] font-bold uppercase tracking-wide ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{group.label}</p>
+                  <div className="grid grid-cols-2 gap-1">
+                    {group.options.map((option) => {
+                      const selected = filterKey(projectFilter) === filterKey(option.filter)
+                      return (
+                        <button
+                          key={filterKey(option.filter)}
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked={selected}
+                          onClick={() => {
+                            setProjectFilter(option.filter)
+                            setFilterMenuOpen(false)
+                          }}
+                          className={`flex min-h-9 items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
+                            selected
+                              ? isDark
+                                ? 'bg-blue-500/15 font-semibold text-blue-300'
+                                : 'bg-[#eaf3ff] font-semibold text-[#1554c7]'
+                              : isDark
+                                ? 'text-slate-300 hover:bg-slate-800'
+                                : 'text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          <span className="truncate">{option.label}</span>
+                          {selected && <Check className="h-4 w-4 shrink-0" />}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </motion.div>
+          )}
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <ProjectCreateButton onCreated={() => window.location.reload()} isDark={isDark} />
         </div>
-      </div>
+      </motion.div>
 
       {loading ? (
-        <div className={`rounded-lg border p-6 text-sm ${cardClass} ${mutedClass}`}>Cargando proyectos...</div>
+        <motion.div variants={fadeInUpVariants} className={`rounded-lg border p-6 text-sm ${cardClass} ${mutedClass}`}>Cargando proyectos...</motion.div>
       ) : filtered.length === 0 ? (
-        <div className={`rounded-lg border p-6 text-sm ${cardClass} ${mutedClass}`}>No hay proyectos cargados.</div>
+        <motion.div variants={fadeInUpVariants} className={`rounded-lg border p-6 text-sm ${cardClass} ${mutedClass}`}>No hay proyectos cargados.</motion.div>
       ) : (
-        <div className="grid gap-4 xl:grid-cols-2">
-          {filtered.map((project) => {
+        <motion.div variants={staggerContainerVariants} className="grid gap-4 xl:grid-cols-2">
+          {filtered.map((project, index) => {
             const participants = participantsByProject[project.id] ?? []
             return (
-            <article
+            <motion.article
               key={project.id}
-              className={`group cursor-pointer rounded-lg border p-5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg [content-visibility:auto] [contain-intrinsic-size:180px] ${projectPriorityCardClass(project.priority, isDark)}`}
+              variants={fadeInUpVariants}
+              custom={Math.min(index * 0.035, 0.18)}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, amount: 0.22 }}
+              whileHover={{ scale: 1.02, y: -2, transition: { duration: 0.18, ease: 'easeOut' } }}
+              whileTap={{ scale: 0.995 }}
+              className={`group cursor-pointer rounded-lg border p-5 shadow-[0_18px_45px_-34px_rgba(15,23,42,0.45)] transition-shadow duration-300 hover:shadow-[0_24px_60px_-36px_rgba(15,23,42,0.55)] [content-visibility:auto] [contain-intrinsic-size:180px] ${projectPriorityCardClass(project.priority, isDark)}`}
               onClick={(event) => openProjectCard(event, project.id)}
               role="button"
               tabIndex={0}
@@ -714,8 +778,10 @@ export function ProjectsScreen({
 
               {project.note && <p className={`mt-3 line-clamp-2 text-sm leading-6 ${bodyClass}`}>{project.note}</p>}
               {project.website_url && (
-                <a
-                  className="mt-4 inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[#1677f2] px-3 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#1268d6]"
+                <motion.a
+                  whileHover={{ y: -1, scale: 1.015 }}
+                  whileTap={{ scale: 0.985 }}
+                  className="mt-4 inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[#1677f2] px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1268d6]"
                   href={project.website_url}
                   target="_blank"
                   rel="noreferrer"
@@ -724,13 +790,14 @@ export function ProjectsScreen({
                 >
                   <Globe2 className="h-4 w-4" />
                   Ir a web
-                </a>
+                </motion.a>
               )}
-            </article>
+            </motion.article>
             )
           })}
-        </div>
+        </motion.div>
       )}
+      </motion.div>
 
       {selectedProject && (
         <div

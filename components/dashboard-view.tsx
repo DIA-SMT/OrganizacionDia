@@ -6,6 +6,8 @@ import { TaskCreateButton } from '@/components/task-create-button'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
 import { type DashboardProject } from '@/lib/dashboard-data'
 import { expedientePriorityWeight, formatExpedienteDate } from '@/lib/expedientes'
+import { animate, motion, useMotionValue, useTransform } from 'framer-motion'
+import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
@@ -128,6 +130,18 @@ function formatCommitDate(value: string | null) {
 function taskProjectName(projects: TaskProject) {
   if (Array.isArray(projects)) return projects[0]?.name ?? 'Sin proyecto'
   return projects?.name ?? 'Sin proyecto'
+}
+
+function CountUpNumber({ value }: { value: number }) {
+  const count = useMotionValue(0)
+  const rounded = useTransform(count, (latest) => Math.round(latest).toString())
+
+  useEffect(() => {
+    const controls = animate(count, value, { duration: 0.48, ease: 'easeOut' })
+    return () => controls.stop()
+  }, [count, value])
+
+  return <motion.span>{rounded}</motion.span>
 }
 
 function taskPriorityClass(priority: string, isDark: boolean) {
@@ -360,8 +374,8 @@ export function DashboardView() {
           cache: 'no-store',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            days: 2,
-            limitPerRepo: 12,
+            days: 7,
+            limitPerRepo: 40,
             projects: projectCommitSources,
           }),
         })
@@ -369,8 +383,7 @@ export function DashboardView() {
           commitsByProject?: Record<string, ProjectCommitActivity[]>
         }
         if (!cancelled && payload.commitsByProject) {
-          const hasCommits = Object.values(payload.commitsByProject).some((commits) => commits.length > 0)
-          if (hasCommits) setCommitsByProject(payload.commitsByProject)
+          setCommitsByProject(payload.commitsByProject)
           setLastCommitSync(new Date().toISOString())
         }
       } catch {
@@ -379,10 +392,23 @@ export function DashboardView() {
     }
 
     fetchProjectCommits()
-    const interval = window.setInterval(fetchProjectCommits, 180000)
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') void fetchProjectCommits()
+    }
+
+    function handleFocus() {
+      void fetchProjectCommits()
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('focus', handleFocus)
+    const interval = window.setInterval(fetchProjectCommits, 60000)
 
     return () => {
       cancelled = true
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', handleFocus)
       window.clearInterval(interval)
     }
   }, [
@@ -483,8 +509,7 @@ export function DashboardView() {
           <div className={`mb-6 px-1 py-1 ${sidebarCollapsed ? 'flex justify-center' : 'flex items-center justify-between gap-2'}`}>
             <div className={`flex min-w-0 items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'}`}>
               <div className="flex aspect-square h-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#061e3d] ring-1 ring-white/10">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img className="h-full w-full object-cover" src="/logo-dia.png" alt="DIA" />
+                <Image className="h-full w-full object-cover" src="/logo-dia.png" alt="DIA" width={64} height={64} priority={false} />
               </div>
               {!sidebarCollapsed && (
                 <div className="min-w-0">
@@ -554,31 +579,72 @@ export function DashboardView() {
               />
             </label>
 
-            <section className={`mb-5 rounded-lg border p-5 ${surfaceClass}`}>
+            <motion.section
+              className={`mb-5 rounded-lg border p-5 ${surfaceClass}`}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, amount: 0.3 }}
+              transition={{ duration: 0.55, ease: 'easeOut' }}
+            >
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
-                  <p className="text-xs font-semibold uppercase text-[#1769e0]">Ultimas modificaciones</p>
-                  <h2 className={`mt-1 text-xl font-bold ${textStrongClass}`}>Resumen de lo trabajado en los proyectos</h2>
-                  <p className={`mt-2 max-w-2xl text-sm ${textMutedClass}`}>
+                  <motion.p
+                    className="text-xs font-semibold uppercase text-[#1769e0]"
+                    initial={{ opacity: 0, y: 12 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true, amount: 0.8 }}
+                    transition={{ duration: 0.42, ease: 'easeOut' }}
+                  >
+                    Ultimas modificaciones
+                  </motion.p>
+                  <motion.h2
+                    className={`mt-1 text-xl font-bold ${textStrongClass}`}
+                    initial={{ opacity: 0, y: 18 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true, amount: 0.8 }}
+                    transition={{ duration: 0.52, ease: 'easeOut', delay: 0.08 }}
+                  >
+                    Resumen de lo trabajado en los proyectos
+                  </motion.h2>
+                  <motion.p
+                    className={`mt-2 max-w-2xl text-sm ${textMutedClass}`}
+                    initial={{ opacity: 0, y: 14 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true, amount: 0.8 }}
+                    transition={{ duration: 0.5, ease: 'easeOut', delay: 0.18 }}
+                  >
                     Cambios recientes detectados desde los repositorios vinculados. Selecciona uno para abrir el proyecto con mas detalle.
-                  </p>
+                  </motion.p>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className={`rounded-md px-2 py-1 text-xs font-semibold ${isDark ? 'bg-blue-500/15 text-blue-300' : 'bg-[#eaf3ff] text-[#1554c7]'}`}>
+                <motion.div
+                  className="flex flex-wrap items-center gap-2"
+                  initial={{ opacity: 0, y: 12 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, amount: 0.8 }}
+                  transition={{ duration: 0.45, ease: 'easeOut', delay: 0.28 }}
+                >
+                  <motion.span
+                    className={`rounded-md px-2 py-1 text-xs font-semibold ${isDark ? 'bg-blue-500/15 text-blue-300' : 'bg-[#eaf3ff] text-[#1554c7]'}`}
+                    whileHover={{ y: -1, scale: 1.03 }}
+                  >
                     En vivo
-                  </span>
-                  <Link href="/commit-history" className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm font-semibold ${isDark ? 'border-slate-700 text-slate-300 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-                    <History className="h-4 w-4" />
-                    Ver todo
-                  </Link>
-                </div>
+                  </motion.span>
+                  <motion.div whileHover={{ y: -1, scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                    <Link href="/commit-history" className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm font-semibold transition-colors ${isDark ? 'border-slate-700 text-slate-300 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                      <History className="h-4 w-4" />
+                      Ver todo
+                    </Link>
+                  </motion.div>
+                </motion.div>
               </div>
 
-              <div ref={commitsScrollerRef} className="mt-4 flex gap-3 overflow-x-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <div ref={commitsScrollerRef} data-lenis-prevent className="mt-4 flex gap-3 overflow-x-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {recentProjectChanges.length > 0 ? (
                   recentProjectChanges.map((change) => (
-                    <article
+                    <motion.article
                       key={`${change.projectName}-${change.repo}-${change.sha}`}
+                      whileHover={{ y: -3, scale: 1.01 }}
+                      whileTap={{ scale: 0.995 }}
                       className={`min-h-[172px] w-[310px] shrink-0 cursor-pointer rounded-md border p-3 transition hover:-translate-y-0.5 ${
                         isDark ? 'border-slate-800 bg-slate-950/70 hover:bg-slate-950' : 'border-slate-200 bg-slate-50 hover:bg-white'
                       }`}
@@ -611,7 +677,7 @@ export function DashboardView() {
                           <Check className="absolute left-1.5 h-3.5 w-3.5" strokeWidth={3} />
                         </span>
                       </button>
-                    </article>
+                    </motion.article>
                   ))
                 ) : (
                   <div className={`w-full rounded-md border p-4 text-sm ${isDark ? 'border-slate-800 bg-slate-950/70 text-slate-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
@@ -622,9 +688,15 @@ export function DashboardView() {
               <p className={`mt-2 text-xs ${textMutedClass}`}>
                 {lastCommitSync ? `Ultima actualizacion: ${formatCommitDate(lastCommitSync)}. Los commits vistos se guardan en Historial.` : 'Sincronizando commits...'}
               </p>
-            </section>
+            </motion.section>
 
-            <section className={`mb-5 rounded-lg border p-5 ${surfaceClass}`}>
+            <motion.section
+              className={`mb-5 rounded-lg border p-5 ${surfaceClass}`}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, amount: 0.22 }}
+              transition={{ duration: 0.44, ease: 'easeOut' }}
+            >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <p className="text-xs font-semibold uppercase text-[#1769e0]">Trabajo pendiente</p>
@@ -645,7 +717,7 @@ export function DashboardView() {
                 </div>
               </div>
 
-              <div ref={tasksScrollerRef} className="mt-4 flex gap-3 overflow-x-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <div ref={tasksScrollerRef} data-lenis-prevent className="mt-4 flex gap-3 overflow-x-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {pendingTasks.length > 0 ? (
                   pendingTasks.map((task) => (
                     <Link
@@ -673,9 +745,15 @@ export function DashboardView() {
                   </div>
                 )}
               </div>
-            </section>
+            </motion.section>
 
-            <section className={`mb-5 rounded-lg border p-5 ${surfaceClass}`}>
+            <motion.section
+              className={`mb-5 rounded-lg border p-5 ${surfaceClass}`}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, amount: 0.22 }}
+              transition={{ duration: 0.44, ease: 'easeOut' }}
+            >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <p className="text-xs font-semibold uppercase text-[#1769e0]">Expedientes</p>
@@ -696,7 +774,7 @@ export function DashboardView() {
               <div className="mt-4 grid gap-3 lg:grid-cols-2">
                 {recentExpedientes.length > 0 ? (
                   recentExpedientes.map((expediente) => (
-                    <article key={expediente.id} className={`rounded-md border p-4 ${isDark ? 'border-slate-800 bg-slate-950/70' : 'border-slate-200 bg-slate-50'}`}>
+                    <motion.article key={expediente.id} whileHover={{ y: -2, scale: 1.01 }} whileTap={{ scale: 0.995 }} className={`rounded-md border p-4 ${isDark ? 'border-slate-800 bg-slate-950/70' : 'border-slate-200 bg-slate-50'}`}>
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className={`truncate text-sm font-bold ${textStrongClass}`}>{expediente.name}</p>
@@ -721,7 +799,7 @@ export function DashboardView() {
                         Abrir PDF
                         <ExternalLink className="h-3 w-3" />
                       </a>
-                    </article>
+                    </motion.article>
                   ))
                 ) : (
                   <div className={`rounded-md border p-4 text-sm lg:col-span-2 ${isDark ? 'border-slate-800 bg-slate-950/70 text-slate-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
@@ -729,9 +807,15 @@ export function DashboardView() {
                   </div>
                 )}
               </div>
-            </section>
+            </motion.section>
 
-            <section className={`rounded-lg border p-5 ${surfaceClass}`}>
+            <motion.section
+              className={`rounded-lg border p-5 ${surfaceClass}`}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, amount: 0.22 }}
+              transition={{ duration: 0.44, ease: 'easeOut' }}
+            >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <p className="text-xs font-semibold uppercase text-[#1769e0]">Distribución operativa</p>
@@ -773,12 +857,12 @@ export function DashboardView() {
                               className={`absolute bottom-0 left-1/2 w-full max-w-24 -translate-x-1/2 rounded-t-lg ${item.color} shadow-sm transition-[height,filter,transform] duration-500 group-hover:-translate-x-1/2 group-hover:-translate-y-1 group-hover:brightness-95`}
                               style={{ height: `${height}%` }}
                             >
-                              <span className="absolute left-1/2 top-2 -translate-x-1/2 text-sm font-bold text-white drop-shadow-sm">{count}</span>
+                              <span className="absolute left-1/2 top-2 -translate-x-1/2 text-sm font-bold text-white drop-shadow-sm"><CountUpNumber value={count} /></span>
                               <div className={`pointer-events-none absolute bottom-full left-1/2 z-20 mb-3 hidden w-44 -translate-x-1/2 rounded-md border p-3 text-left shadow-xl group-hover:block ${
                                 isDark ? 'border-slate-700 bg-slate-900 text-slate-100' : 'border-slate-200 bg-white text-slate-900'
                               }`}>
                                 <p className="text-sm font-semibold">{item.label}</p>
-                                <p className={`mt-1 text-xs ${textMutedClass}`}>{count} proyecto{count === 1 ? '' : 's'}</p>
+                                <p className={`mt-1 text-xs ${textMutedClass}`}><CountUpNumber value={count} /> proyecto{count === 1 ? '' : 's'}</p>
                               </div>
                             </div>
                         </Link>
@@ -796,7 +880,7 @@ export function DashboardView() {
                   </div>
                 </div>
               </div>
-            </section>
+            </motion.section>
 
           </div>
         </section>
