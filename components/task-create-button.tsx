@@ -1,6 +1,7 @@
 'use client'
 
 import { useAuth } from '@/context/AuthContext'
+import { MemberMultiSelect, type MemberChoice } from '@/components/member-multi-select'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
 import { FolderPlus, GitPullRequest, Link2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -18,6 +19,7 @@ type ProjectOptionRow = {
 type MemberOptionRow = {
   id: string
   full_name: string
+  avatar_url: string | null
 }
 
 export function TaskCreateButton({
@@ -32,7 +34,7 @@ export function TaskCreateButton({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [projects, setProjects] = useState<SelectOption[]>([])
-  const [members, setMembers] = useState<SelectOption[]>([])
+  const [members, setMembers] = useState<MemberChoice[]>([])
   const [projectMode, setProjectMode] = useState<'existing' | 'new'>('existing')
   const [form, setForm] = useState({
     project_id: '',
@@ -41,8 +43,7 @@ export function TaskCreateButton({
     type: 'Feature',
     status: 'Pendiente',
     priority: 'Media',
-    member_id: '',
-    owner_name: '',
+    member_ids: [] as string[],
     branch_name: '',
     pr_url: '',
   })
@@ -80,11 +81,11 @@ export function TaskCreateButton({
 
       const [{ data: projectRows }, { data: memberRows }] = await Promise.all([
         supabase.from('projects').select('id, name').eq('active', true).order('name'),
-        supabase.from('members').select('id, full_name').eq('active', true).order('full_name'),
+        supabase.from('members').select('id, full_name, avatar_url').eq('active', true).order('full_name'),
       ])
 
       setProjects(((projectRows ?? []) as ProjectOptionRow[]).map((project) => ({ id: project.id, label: project.name })))
-      setMembers(((memberRows ?? []) as MemberOptionRow[]).map((member) => ({ id: member.id, label: member.full_name })))
+      setMembers(((memberRows ?? []) as MemberOptionRow[]).map((member) => ({ id: member.id, label: member.full_name, avatarUrl: member.avatar_url })))
     }
 
     fetchOptions().catch((err) => setError(err instanceof Error ? err.message : 'No se pudieron cargar opciones'))
@@ -165,12 +166,14 @@ export function TaskCreateButton({
 
       if (taskError) throw taskError
 
-      if (form.member_id && task?.id) {
-        const { error: assigneeError } = await supabase.from('task_assignees').insert({
-          task_id: task.id,
-          member_id: form.member_id,
-        })
-        if (assigneeError) throw assigneeError
+      if (form.member_ids.length > 0 && task?.id) {
+        const { error: assigneeError } = await supabase.from('task_assignees').insert(
+          form.member_ids.map((memberId) => ({ task_id: task.id, member_id: memberId })),
+        )
+        if (assigneeError) {
+          await supabase.from('tasks').delete().eq('id', task.id)
+          throw assigneeError
+        }
       }
 
       setOpen(false)
@@ -181,8 +184,7 @@ export function TaskCreateButton({
         type: 'Feature',
         status: 'Pendiente',
         priority: 'Media',
-        member_id: '',
-        owner_name: '',
+        member_ids: [],
         branch_name: '',
         pr_url: '',
       })
@@ -331,14 +333,7 @@ export function TaskCreateButton({
                   <option>Critica</option>
                 </select>
               </div>
-              <select className={inputClass} value={form.member_id} onChange={(e) => setForm({ ...form, member_id: e.target.value })}>
-                <option value="">Sin responsable</option>
-                {members.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.label}
-                  </option>
-                ))}
-              </select>
+              <MemberMultiSelect members={members} selectedIds={form.member_ids} onChange={(memberIds) => setForm({ ...form, member_ids: memberIds })} />
               {authConfigured && projectOptions.length === 0 && (
                 <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>No hay proyectos cargados. Podes crear uno nuevo desde este formulario.</p>
               )}

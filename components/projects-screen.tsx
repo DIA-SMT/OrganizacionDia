@@ -301,6 +301,20 @@ export function ProjectsScreen({
   const theme = useStoredTheme()
   const isDark = theme === 'dark'
 
+  useEffect(() => {
+    if (!selectedProjectId) return
+
+    const previousOverflow = document.body.style.overflow
+    const previousHtmlOverflow = document.documentElement.style.overflow
+    document.body.style.overflow = 'hidden'
+    document.documentElement.style.overflow = 'hidden'
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.documentElement.style.overflow = previousHtmlOverflow
+    }
+  }, [selectedProjectId])
+
   const cardClass = isDark ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-white'
   const panelClass = isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-200 bg-slate-50'
   const titleClass = isDark ? 'text-white' : 'text-slate-950'
@@ -808,7 +822,8 @@ export function ProjectsScreen({
           }}
         >
           <section
-            className={`prezi-bubble-in max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-xl border shadow-2xl ${isDark ? 'border-slate-800 bg-slate-950 text-slate-100' : 'border-slate-200 bg-white text-slate-950'}`}
+            data-lenis-prevent
+            className={`prezi-bubble-in max-h-[92vh] w-full max-w-5xl touch-pan-y overflow-y-auto overscroll-contain rounded-xl border shadow-2xl ${isDark ? 'border-slate-800 bg-slate-950 text-slate-100' : 'border-slate-200 bg-white text-slate-950'}`}
             onClick={(event) => event.stopPropagation()}
           >
             <div className={`sticky top-0 z-10 flex items-start justify-between gap-4 border-b p-5 backdrop-blur ${isDark ? 'border-slate-800 bg-slate-950/95' : 'border-slate-200 bg-white/95'}`}>

@@ -1,13 +1,21 @@
 'use client'
 
 import { AppShell } from '@/components/app-shell'
+import { MemberMultiSelect, TaskAssigneeList, type MemberChoice } from '@/components/member-multi-select'
 import { TaskCreateButton } from '@/components/task-create-button'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
+import { getAssigneeChanges } from '@/lib/task-assignees'
 import { CheckCircle2, ExternalLink, History, Pencil, Save, X } from 'lucide-react'
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 type TaskProject = { name: string } | { name: string }[] | null
+type TaskMember = { id: string; full_name: string; avatar_url: string | null } | { id: string; full_name: string; avatar_url: string | null }[] | null
+
+type TaskAssignee = {
+  member_id: string
+  members: TaskMember
+}
 
 type TaskRow = {
   id: string
@@ -22,11 +30,18 @@ type TaskRow = {
   pr_url: string | null
   created_at: string
   projects: TaskProject
+  task_assignees: TaskAssignee[]
 }
 
 type ProjectOption = {
   id: string
   name: string
+}
+
+type MemberOptionRow = {
+  id: string
+  full_name: string
+  avatar_url: string | null
 }
 
 const taskTypes = ['Feature', 'Bug', 'Mejora', 'Refactor', 'Deploy', 'Documentacion', 'Soporte']
@@ -36,6 +51,13 @@ const taskPriorities = ['Baja', 'Media', 'Alta', 'Critica']
 function getProjectName(projects: TaskProject) {
   if (Array.isArray(projects)) return projects[0]?.name ?? null
   return projects?.name ?? null
+}
+
+function getTaskMembers(task: TaskRow): MemberChoice[] {
+  return task.task_assignees.flatMap((assignee) => {
+    const member = Array.isArray(assignee.members) ? assignee.members[0] : assignee.members
+    return member ? [{ id: member.id, label: member.full_name, avatarUrl: member.avatar_url }] : []
+  })
 }
 
 function priorityClass(priority: string) {
@@ -57,10 +79,12 @@ function formatDate(value: string | null | undefined) {
 export function TasksScreen() {
   const [tasks, setTasks] = useState<TaskRow[]>([])
   const [projects, setProjects] = useState<ProjectOption[]>([])
+  const [members, setMembers] = useState<MemberChoice[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [finishingId, setFinishingId] = useState<string | null>(null)
   const [editingTask, setEditingTask] = useState<TaskRow | null>(null)
+  const [editingAssigneeIds, setEditingAssigneeIds] = useState<string[]>([])
   const [savingTaskId, setSavingTaskId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -74,7 +98,7 @@ export function TasksScreen() {
     setLoading(true)
     const { data } = await supabase
       .from('tasks')
-      .select('id, project_id, title, description, type, status, priority, branch_name, issue_url, pr_url, created_at, projects(name)')
+      .select('id, project_id, title, description, type, status, priority, branch_name, issue_url, pr_url, created_at, projects(name), task_assignees(member_id, members(id, full_name, avatar_url))')
       .eq('active', true)
       .neq('status', 'Terminada')
       .order('updated_at', { ascending: false })
@@ -95,6 +119,24 @@ export function TasksScreen() {
 
     setProjects((data ?? []) as ProjectOption[])
   }, [])
+
+  const fetchMembers = useCallback(async () => {
+    const supabase = getSupabaseBrowserClient()
+    if (!supabase) return
+
+    const { data } = await supabase
+      .from('members')
+      .select('id, full_name, avatar_url')
+      .eq('active', true)
+      .order('full_name', { ascending: true })
+
+    setMembers(((data ?? []) as MemberOptionRow[]).map((member) => ({ id: member.id, label: member.full_name, avatarUrl: member.avatar_url })))
+  }, [])
+
+  function openTaskEditor(task: TaskRow) {
+    setEditingTask(task)
+    setEditingAssigneeIds(task.task_assignees.map((assignee) => assignee.member_id))
+  }
 
   async function finishTask(taskId: string) {
     const supabase = getSupabaseBrowserClient()
@@ -132,10 +174,45 @@ export function TasksScreen() {
 
     if (updateError) {
       setError(updateError.message)
-    } else {
-      setEditingTask(null)
-      await fetchTasks()
+      setSavingTaskId(null)
+      return
     }
+
+    const currentAssigneeIds = task.task_assignees.map((assignee) => assignee.member_id)
+    const changes = getAssigneeChanges(currentAssigneeIds, editingAssigneeIds)
+
+    if (changes.removed.length > 0) {
+      const { error: removeError } = await supabase
+        .from('task_assignees')
+        .delete()
+        .eq('task_id', task.id)
+        .in('member_id', changes.removed)
+
+      if (removeError) {
+        setError(removeError.message)
+        setSavingTaskId(null)
+        return
+      }
+    }
+
+    if (changes.added.length > 0) {
+      const { error: addError } = await supabase
+        .from('task_assignees')
+        .upsert(
+          changes.added.map((memberId) => ({ task_id: task.id, member_id: memberId })),
+          { onConflict: 'task_id,member_id' },
+        )
+
+      if (addError) {
+        setError(addError.message)
+        setSavingTaskId(null)
+        return
+      }
+    }
+
+    setEditingTask(null)
+    setEditingAssigneeIds([])
+    await fetchTasks()
 
     setSavingTaskId(null)
   }
@@ -147,6 +224,10 @@ export function TasksScreen() {
   useEffect(() => {
     void Promise.resolve().then(fetchProjects)
   }, [fetchProjects])
+
+  useEffect(() => {
+    void Promise.resolve().then(fetchMembers)
+  }, [fetchMembers])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -200,6 +281,7 @@ export function TasksScreen() {
                 <p className="font-semibold text-slate-950 dark:text-white">{task.title}</p>
                 {task.description && <p className="mt-1 line-clamp-2 text-xs text-slate-500 dark:text-slate-400">{task.description}</p>}
                 {task.branch_name && <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">Branch: {task.branch_name}</p>}
+                <TaskAssigneeList members={getTaskMembers(task)} />
               </div>
               <span className="text-slate-600 dark:text-slate-300">{getProjectName(task.projects) ?? 'Sin proyecto'}</span>
               <span className="text-slate-600 dark:text-slate-300">{task.type}</span>
@@ -224,7 +306,7 @@ export function TasksScreen() {
                 <button
                   type="button"
                   className="inline-flex h-8 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:text-blue-500 hover:shadow-md dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:border-blue-500/30 dark:hover:text-blue-200"
-                  onClick={() => setEditingTask(task)}
+                  onClick={() => openTaskEditor(task)}
                 >
                   <Pencil className="h-3.5 w-3.5" />
                   Editar
@@ -245,9 +327,10 @@ export function TasksScreen() {
       )}
 
       {editingTask && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-sm" onClick={() => setEditingTask(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-sm" onClick={() => { setEditingTask(null); setEditingAssigneeIds([]) }}>
           <section
-            className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-slate-900"
+            data-lenis-prevent
+            className="max-h-[92vh] w-full max-w-2xl overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-slate-900"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-4">
@@ -255,7 +338,7 @@ export function TasksScreen() {
                 <h2 className="text-lg font-bold text-slate-950 dark:text-white">Editar tarea</h2>
                 <p className="text-sm text-slate-500 dark:text-slate-400">Actualiza estado, prioridad, proyecto y datos tecnicos.</p>
               </div>
-              <button type="button" className="rounded-md p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800" onClick={() => setEditingTask(null)} title="Cerrar">
+              <button type="button" className="rounded-md p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800" onClick={() => { setEditingTask(null); setEditingAssigneeIds([]) }} title="Cerrar">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -278,6 +361,8 @@ export function TasksScreen() {
                   onChange={(event) => setEditingTask({ ...editingTask, description: event.target.value })}
                 />
               </label>
+
+              <MemberMultiSelect members={members} selectedIds={editingAssigneeIds} onChange={setEditingAssigneeIds} />
 
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="grid gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
