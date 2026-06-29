@@ -2,8 +2,10 @@
 
 import { AppShell } from '@/components/app-shell'
 import { ProjectCreateButton } from '@/components/project-create-button'
+import { filterAndSortProjects, type ProjectFilter } from '@/lib/project-filters'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
-import { Check, ChevronDown, ExternalLink, FileText, GitCommitHorizontal, Globe2, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
+import { Check, ChevronDown, ExternalLink, FileText, Funnel, GitCommitHorizontal, Globe2, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
+import { motion, type Variants } from 'framer-motion'
 import { useEffect, useMemo, useState } from 'react'
 
 type ProjectRow = {
@@ -63,11 +65,61 @@ type ProjectParticipant = {
 
 const priorities = ['Baja', 'Media', 'Alta', 'Critica']
 
-function priorityWeight(priority: string | null | undefined) {
-  if (priority === 'Critica') return 4
-  if (priority === 'Alta') return 3
-  if (priority === 'Media') return 2
-  return 1
+const projectFilterGroups: Array<{
+  label: string
+  options: Array<{ label: string; filter: ProjectFilter }>
+}> = [
+  {
+    label: 'Vista',
+    options: [
+      { label: 'Todos', filter: { kind: 'all' } },
+      { label: 'Activos', filter: { kind: 'active' } },
+      { label: 'Finalizados', filter: { kind: 'finished' } },
+      { label: 'Pausados', filter: { kind: 'paused' } },
+    ],
+  },
+  {
+    label: 'Estado',
+    options: projectStatuses.slice(0, 4).map((status) => ({ label: status, filter: { kind: 'status', value: status } })),
+  },
+  {
+    label: 'Prioridad',
+    options: [...priorities].reverse().map((priority) => ({ label: priority, filter: { kind: 'priority', value: priority } })),
+  },
+]
+
+function filterKey(filter: ProjectFilter) {
+  return filter.kind === 'status' || filter.kind === 'priority' ? `${filter.kind}:${filter.value}` : filter.kind
+}
+
+function initialProjectFilter(statusFilter: string | null): ProjectFilter {
+  if (!statusFilter || statusFilter === 'Todos') return { kind: 'all' }
+  if (statusFilter === 'Activos') return { kind: 'active' }
+  if (statusFilter === 'Pausado') return { kind: 'paused' }
+  if (statusFilter === 'En Producción') return { kind: 'finished' }
+  return { kind: 'status', value: statusFilter }
+}
+
+function projectFilterLabel(filter: ProjectFilter) {
+  for (const group of projectFilterGroups) {
+    const option = group.options.find((item) => filterKey(item.filter) === filterKey(filter))
+    if (option) return option.label
+  }
+  return 'Todos'
+}
+
+const fadeInUpVariants: Variants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: (delay = 0) => ({
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.5, ease: 'easeOut', delay },
+  }),
+}
+
+const staggerContainerVariants: Variants = {
+  hidden: { opacity: 1 },
+  visible: { opacity: 1, transition: { staggerChildren: 0.08, delayChildren: 0.04 } },
 }
 
 function statusTone(status: string, isDark: boolean) {
@@ -141,7 +193,7 @@ function ParticipantAvatar({ participant, size = 'sm', isDark }: { participant: 
   return (
     <div
       className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full border-2 font-bold shadow-sm ${
-        isDark ? 'border-slate-900 bg-blue-500/15 text-blue-200' : 'border-white bg-[#eaf3ff] text-[#1554c7]'
+        isDark ? 'border-slate-900 bg-blue-500/15 text-blue-200' : 'border-white dia-surface-raised-bg dia-primary-text'
       } ${sizeClass}`}
       title={participant.role ? `${participant.name} - ${participant.role}` : participant.name}
     >
@@ -153,14 +205,6 @@ function ParticipantAvatar({ participant, size = 'sm', isDark }: { participant: 
       )}
     </div>
   )
-}
-
-function isProduction(project: ProjectRow) {
-  return project.status === 'En Producción'
-}
-
-function isPaused(project: ProjectRow) {
-  return project.status === 'Pausado'
 }
 
 function useStoredTheme() {
@@ -212,7 +256,7 @@ function StatusDropdown({
               key={status}
               type="button"
               className={`flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2 text-left text-sm font-semibold transition hover:scale-[1.01] ${statusTone(status, isDark)} ${
-                status === value ? 'ring-2 ring-[#1677f2]/30' : ''
+                status === value ? 'ring-2 ring-blue-500/30' : ''
               }`}
               onClick={() => {
                 onChange(status)
@@ -240,12 +284,12 @@ export function ProjectsScreen({
 }) {
   const [projects, setProjects] = useState<ProjectRow[]>([])
   const [search, setSearch] = useState(initialSearch)
-  const [statusFilter, setStatusFilter] = useState<string | null>(initialStatusFilter)
+  const [projectFilter, setProjectFilter] = useState<ProjectFilter>(() => initialProjectFilter(initialStatusFilter))
+  const [filterMenuOpen, setFilterMenuOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [savingProgressId, setSavingProgressId] = useState<string | null>(null)
   const [savingField, setSavingField] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [view, setView] = useState<'active' | 'finished' | 'paused'>('active')
   const [addingSecondaryRepoIds, setAddingSecondaryRepoIds] = useState<string[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(initialSelectedProjectId)
   const [selectedProjectEditing, setSelectedProjectEditing] = useState(false)
@@ -256,6 +300,20 @@ export function ProjectsScreen({
   const [error, setError] = useState<string | null>(null)
   const theme = useStoredTheme()
   const isDark = theme === 'dark'
+
+  useEffect(() => {
+    if (!selectedProjectId) return
+
+    const previousOverflow = document.body.style.overflow
+    const previousHtmlOverflow = document.documentElement.style.overflow
+    document.body.style.overflow = 'hidden'
+    document.documentElement.style.overflow = 'hidden'
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.documentElement.style.overflow = previousHtmlOverflow
+    }
+  }, [selectedProjectId])
 
   const cardClass = isDark ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-white'
   const panelClass = isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-200 bg-slate-50'
@@ -578,96 +636,116 @@ export function ProjectsScreen({
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    const byView = statusFilter
-      ? statusFilter === 'Todos'
-        ? projects
-        : projects.filter((project) => (statusFilter === 'Activos' ? project.status !== 'En Producción' : project.status === statusFilter))
-      : projects.filter((project) => (view === 'finished' ? project.status === 'En Producción' : project.status !== 'En Producción'))
-    const isSpecificStatusFilter = Boolean(statusFilter && statusFilter !== 'Todos' && statusFilter !== 'Activos')
-    const visibleByView =
-      isSpecificStatusFilter || view === 'finished'
-        ? byView
-        : byView.filter((project) => !isProduction(project) && !isPaused(project))
-    const searchedByView = q
-      ? visibleByView.filter((project) => [project.name, project.description, project.note, project.requester_area, project.stack, project.repository_url, project.repository_url_secondary, project.website_url, project.status, project.priority].filter(Boolean).join(' ').toLowerCase().includes(q))
-      : visibleByView
+    const searchedProjects = q
+      ? projects.filter((project) => [project.name, project.description, project.note, project.requester_area, project.stack, project.repository_url, project.repository_url_secondary, project.website_url, project.status, project.priority].filter(Boolean).join(' ').toLowerCase().includes(q))
+      : projects
 
-    return [...searchedByView].sort((a, b) => {
-      const priorityDiff = priorityWeight(b.priority) - priorityWeight(a.priority)
-      if (priorityDiff !== 0) return priorityDiff
-      return a.name.localeCompare(b.name)
-    })
-  }, [projects, search, statusFilter, view])
-
-  const finishedCount = projects.filter((project) => project.status === 'En Producción').length
-  const activeVisibleCount = projects.filter((project) => !isProduction(project) && !isPaused(project)).length
-  const pausedCount = projects.filter((project) => isPaused(project)).length
+    return filterAndSortProjects(searchedProjects, projectFilter)
+  }, [projectFilter, projects, search])
   const selectedProject = selectedProjectId ? projects.find((project) => project.id === selectedProjectId) ?? null : null
   const selectedProjectDocuments = selectedProject ? projectDocuments[selectedProject.id] ?? [] : []
 
   return (
     <AppShell title="Proyectos" subtitle="Informacion cargada de cada proyecto" search={search} onSearchChange={setSearch}>
-      {error && <div className={`mb-4 rounded-lg border p-3 text-sm ${isDark ? 'border-red-900/60 bg-red-950/30 text-red-300' : 'border-red-200 bg-red-50 text-red-700'}`}>{error}</div>}
+      <motion.div
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, amount: 0.12 }}
+        variants={staggerContainerVariants}
+      >
+      {error && <motion.div variants={fadeInUpVariants} className={`mb-4 rounded-lg border p-3 text-sm ${isDark ? 'border-red-900/60 bg-red-950/30 text-red-300' : 'border-red-200 bg-red-50 text-red-700'}`}>{error}</motion.div>}
 
-      {statusFilter && statusFilter !== 'Pausado' && (
-        <div className={`mb-4 flex w-fit items-center gap-3 rounded-lg border px-3 py-2 text-sm font-semibold ${isDark ? 'border-blue-900/60 bg-blue-950/30 text-blue-300' : 'border-blue-200 bg-blue-50 text-[#1554c7]'}`}>
-          <span>Filtro: {statusFilter === 'Todos' ? 'Todos los proyectos activos' : statusFilter}</span>
-          <button type="button" className={isDark ? 'text-slate-300 hover:text-white' : 'text-slate-500 hover:text-slate-900'} onClick={() => setStatusFilter(null)}>
-            Limpiar
-          </button>
-        </div>
-      )}
+      <motion.div variants={fadeInUpVariants} className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="relative z-30">
+          {filterMenuOpen && <button type="button" aria-label="Cerrar filtros" className="fixed inset-0 z-20 cursor-default" onClick={() => setFilterMenuOpen(false)} />}
+          <motion.button
+            type="button"
+            whileHover={{ y: -1 }}
+            whileTap={{ scale: 0.98 }}
+            aria-expanded={filterMenuOpen}
+            aria-haspopup="menu"
+            onClick={() => setFilterMenuOpen((open) => !open)}
+            className={`relative z-30 inline-flex h-11 items-center gap-2 rounded-lg border px-3 text-sm font-semibold shadow-sm transition-colors ${
+              isDark
+                ? 'border-slate-700 bg-slate-900 text-slate-100 hover:border-blue-500/60 hover:bg-slate-800'
+                : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-slate-50'
+            }`}
+          >
+            <Funnel className="h-4 w-4 text-blue-500" />
+            <span>Filtrar</span>
+            <span className={`max-w-40 truncate font-normal ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{projectFilterLabel(projectFilter)}</span>
+            <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${filterMenuOpen ? 'rotate-180' : ''}`} />
+          </motion.button>
 
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className={`inline-flex rounded-lg border p-1 ${isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-200 bg-white'}`}>
-          {[
-            ['active', `Activos (${activeVisibleCount})`],
-            ['finished', `Finalizados (${finishedCount})`],
-            ['paused', `Pausados (${pausedCount})`],
-          ].map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              className={`rounded-md px-3 py-2 text-sm font-semibold transition ${
-                (key === 'paused' ? statusFilter === 'Pausado' : view === key && statusFilter !== 'Pausado')
-                  ? isDark
-                    ? 'bg-blue-500/15 text-blue-300'
-                    : 'bg-[#eaf3ff] text-[#1554c7]'
-                  : isDark
-                    ? 'text-slate-400 hover:bg-slate-900'
-                    : 'text-slate-500 hover:bg-slate-50'
-              }`}
-              onClick={() => {
-                if (key === 'paused') {
-                  setStatusFilter('Pausado')
-                  setView('active')
-                  return
-                }
-                setStatusFilter(null)
-                setView(key as 'active' | 'finished')
-              }}
+          {filterMenuOpen && (
+            <motion.div
+              role="menu"
+              initial={{ opacity: 0, y: -6, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+              className={`absolute left-0 z-30 mt-2 w-72 overflow-hidden rounded-lg border p-2 shadow-xl ${isDark ? 'border-slate-700 bg-slate-900' : 'border-slate-200 bg-white'}`}
             >
-              {label}
-            </button>
-          ))}
+              {projectFilterGroups.map((group, groupIndex) => (
+                <div key={group.label} className={groupIndex > 0 ? `mt-2 border-t pt-2 ${isDark ? 'border-slate-800' : 'border-slate-100'}` : ''}>
+                  <p className={`px-2 pb-1 text-[11px] font-bold uppercase tracking-wide ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{group.label}</p>
+                  <div className="grid grid-cols-2 gap-1">
+                    {group.options.map((option) => {
+                      const selected = filterKey(projectFilter) === filterKey(option.filter)
+                      return (
+                        <button
+                          key={filterKey(option.filter)}
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked={selected}
+                          onClick={() => {
+                            setProjectFilter(option.filter)
+                            setFilterMenuOpen(false)
+                          }}
+                          className={`flex min-h-9 items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
+                            selected
+                              ? isDark
+                                ? 'bg-blue-500/15 font-semibold text-blue-300'
+                                : 'dia-surface-raised-bg font-semibold dia-primary-text'
+                              : isDark
+                                ? 'text-slate-300 hover:bg-slate-800'
+                                : 'text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          <span className="truncate">{option.label}</span>
+                          {selected && <Check className="h-4 w-4 shrink-0" />}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </motion.div>
+          )}
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <ProjectCreateButton onCreated={() => window.location.reload()} isDark={isDark} />
         </div>
-      </div>
+      </motion.div>
 
       {loading ? (
-        <div className={`rounded-lg border p-6 text-sm ${cardClass} ${mutedClass}`}>Cargando proyectos...</div>
+        <motion.div variants={fadeInUpVariants} className={`rounded-lg border p-6 text-sm ${cardClass} ${mutedClass}`}>Cargando proyectos...</motion.div>
       ) : filtered.length === 0 ? (
-        <div className={`rounded-lg border p-6 text-sm ${cardClass} ${mutedClass}`}>No hay proyectos cargados.</div>
+        <motion.div variants={fadeInUpVariants} className={`rounded-lg border p-6 text-sm ${cardClass} ${mutedClass}`}>No hay proyectos cargados.</motion.div>
       ) : (
-        <div className="grid gap-4 xl:grid-cols-2">
-          {filtered.map((project) => {
+        <motion.div variants={staggerContainerVariants} className="grid gap-4 xl:grid-cols-2">
+          {filtered.map((project, index) => {
             const participants = participantsByProject[project.id] ?? []
             return (
-            <article
+            <motion.article
               key={project.id}
-              className={`group cursor-pointer rounded-lg border p-5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg [content-visibility:auto] [contain-intrinsic-size:180px] ${projectPriorityCardClass(project.priority, isDark)}`}
+              variants={fadeInUpVariants}
+              custom={Math.min(index * 0.035, 0.18)}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, amount: 0.22 }}
+              whileHover={{ scale: 1.02, y: -2, transition: { duration: 0.18, ease: 'easeOut' } }}
+              whileTap={{ scale: 0.995 }}
+              className={`group cursor-pointer rounded-lg border p-5 shadow-[0_18px_45px_-34px_rgba(15,23,42,0.45)] transition-shadow duration-300 hover:shadow-[0_24px_60px_-36px_rgba(15,23,42,0.55)] [content-visibility:auto] [contain-intrinsic-size:180px] ${projectPriorityCardClass(project.priority, isDark)}`}
               onClick={(event) => openProjectCard(event, project.id)}
               role="button"
               tabIndex={0}
@@ -708,14 +786,16 @@ export function ProjectsScreen({
                   <span>{savingProgressId === project.id ? 'Guardando...' : `${project.progress}%`}</span>
                 </div>
                 <div className={`h-2 overflow-hidden rounded-full ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
-                  <div className="h-full rounded-full bg-[#1677f2]" style={{ width: `${project.progress}%` }} />
+                  <div className="h-full rounded-full dia-primary-bg" style={{ width: `${project.progress}%` }} />
                 </div>
               </div>
 
               {project.note && <p className={`mt-3 line-clamp-2 text-sm leading-6 ${bodyClass}`}>{project.note}</p>}
               {project.website_url && (
-                <a
-                  className="mt-4 inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[#1677f2] px-3 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#1268d6]"
+                <motion.a
+                  whileHover={{ y: -1, scale: 1.015 }}
+                  whileTap={{ scale: 0.985 }}
+                  className="mt-4 inline-flex h-9 items-center justify-center gap-2 rounded-md dia-primary-bg px-3 text-sm font-semibold text-white shadow-sm transition hover:brightness-110"
                   href={project.website_url}
                   target="_blank"
                   rel="noreferrer"
@@ -724,13 +804,14 @@ export function ProjectsScreen({
                 >
                   <Globe2 className="h-4 w-4" />
                   Ir a web
-                </a>
+                </motion.a>
               )}
-            </article>
+            </motion.article>
             )
           })}
-        </div>
+        </motion.div>
       )}
+      </motion.div>
 
       {selectedProject && (
         <div
@@ -741,7 +822,8 @@ export function ProjectsScreen({
           }}
         >
           <section
-            className={`prezi-bubble-in max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-xl border shadow-2xl ${isDark ? 'border-slate-800 bg-slate-950 text-slate-100' : 'border-slate-200 bg-white text-slate-950'}`}
+            data-lenis-prevent
+            className={`prezi-bubble-in max-h-[92vh] w-full max-w-5xl touch-pan-y overflow-y-auto overscroll-contain rounded-xl border shadow-2xl ${isDark ? 'border-slate-800 bg-slate-950 text-slate-100' : 'border-slate-200 bg-white text-slate-950'}`}
             onClick={(event) => event.stopPropagation()}
           >
             <div className={`sticky top-0 z-10 flex items-start justify-between gap-4 border-b p-5 backdrop-blur ${isDark ? 'border-slate-800 bg-slate-950/95' : 'border-slate-200 bg-white/95'}`}>
@@ -783,7 +865,7 @@ export function ProjectsScreen({
               <div className="flex shrink-0 items-center gap-2">
                 {selectedProject.website_url && !selectedProjectEditing && (
                   <a
-                    className="inline-flex h-10 items-center gap-2 rounded-md bg-[#1677f2] px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1268d6]"
+                    className="inline-flex h-10 items-center gap-2 rounded-md dia-primary-bg px-3 text-sm font-semibold text-white shadow-sm transition hover:brightness-110"
                     href={selectedProject.website_url}
                     target="_blank"
                     rel="noreferrer"
@@ -798,7 +880,7 @@ export function ProjectsScreen({
                     selectedProjectEditing
                       ? isDark
                         ? 'border-blue-800 bg-blue-950/40 text-blue-300 hover:bg-blue-950/60'
-                        : 'border-blue-200 bg-blue-50 text-[#1769e0] hover:bg-blue-100'
+                        : 'border-blue-200 bg-blue-50 dia-primary-text hover:bg-blue-100'
                       : isDark
                         ? 'border-slate-700 text-slate-300 hover:bg-slate-900'
                         : 'border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -833,7 +915,7 @@ export function ProjectsScreen({
                 <div className={`block rounded-lg border p-4 ${panelClass}`}>
                   <div className="flex items-center justify-between gap-4">
                     <span className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Nota interna</span>
-                    {savingField === `${selectedProject.id}-note` && <span className={`text-xs font-semibold ${isDark ? 'text-blue-300' : 'text-[#1769e0]'}`}>Guardando...</span>}
+                    {savingField === `${selectedProject.id}-note` && <span className={`text-xs font-semibold ${isDark ? 'text-blue-300' : 'dia-primary-text'}`}>Guardando...</span>}
                   </div>
                   {selectedProjectEditing ? (
                     <textarea
@@ -853,7 +935,7 @@ export function ProjectsScreen({
                 <div className={`rounded-lg border p-4 ${panelClass}`}>
                   <div className="flex items-center justify-between gap-3">
                     <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Pagina web</p>
-                    {savingField === `${selectedProject.id}-website_url` && <span className={`text-xs font-semibold ${isDark ? 'text-blue-300' : 'text-[#1769e0]'}`}>Guardando...</span>}
+                    {savingField === `${selectedProject.id}-website_url` && <span className={`text-xs font-semibold ${isDark ? 'text-blue-300' : 'dia-primary-text'}`}>Guardando...</span>}
                   </div>
                   {selectedProjectEditing ? (
                     <div className="mt-3 flex items-center gap-2">
@@ -866,7 +948,7 @@ export function ProjectsScreen({
                       />
                       {selectedProject.website_url && (
                         <a
-                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md border ${isDark ? 'border-slate-700 text-blue-300 hover:bg-slate-900' : 'border-slate-200 text-[#1769e0] hover:bg-white'}`}
+                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md border ${isDark ? 'border-slate-700 text-blue-300 hover:bg-slate-900' : 'border-slate-200 dia-primary-text hover:bg-white'}`}
                           href={normalizeWebsiteUrl(selectedProject.website_url) ?? undefined}
                           target="_blank"
                           rel="noreferrer"
@@ -878,7 +960,7 @@ export function ProjectsScreen({
                     </div>
                   ) : selectedProject.website_url ? (
                     <a
-                      className="mt-3 inline-flex items-center gap-2 break-all text-sm font-semibold text-[#1769e0] hover:underline dark:text-blue-300"
+                      className="mt-3 inline-flex items-center gap-2 break-all text-sm font-semibold dia-primary-text hover:underline dark:text-blue-300"
                       href={selectedProject.website_url}
                       target="_blank"
                       rel="noreferrer"
@@ -908,7 +990,7 @@ export function ProjectsScreen({
                               key={field}
                               type="button"
                               className={`inline-flex h-10 w-fit items-center gap-2 rounded-md border px-3 text-sm font-semibold transition ${
-                                isDark ? 'border-slate-700 text-blue-300 hover:bg-slate-900' : 'border-slate-200 text-[#1769e0] hover:bg-white'
+                                isDark ? 'border-slate-700 text-blue-300 hover:bg-slate-900' : 'border-slate-200 dia-primary-text hover:bg-white'
                               }`}
                               onClick={() => setAddingSecondaryRepoIds((current) => (current.includes(selectedProject.id) ? current : [...current, selectedProject.id]))}
                             >
@@ -931,7 +1013,7 @@ export function ProjectsScreen({
                               />
                               {value && (
                                 <a
-                                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md border ${isDark ? 'border-slate-700 text-blue-300 hover:bg-slate-900' : 'border-slate-200 text-[#1769e0] hover:bg-white'}`}
+                                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md border ${isDark ? 'border-slate-700 text-blue-300 hover:bg-slate-900' : 'border-slate-200 dia-primary-text hover:bg-white'}`}
                                   href={value}
                                   target="_blank"
                                   rel="noreferrer"
@@ -952,7 +1034,7 @@ export function ProjectsScreen({
                         [selectedProject.repository_url_secondary, 'Repo 2'],
                       ].map(([url, label]) =>
                         url ? (
-                          <a key={label} className="block break-all text-sm font-semibold leading-6 text-[#1769e0] hover:underline" href={url} target="_blank" rel="noreferrer">
+                          <a key={label} className="block break-all text-sm font-semibold leading-6 dia-primary-text hover:underline" href={url} target="_blank" rel="noreferrer">
                             <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>{label}: </span>
                             {url}
                           </a>
@@ -971,7 +1053,7 @@ export function ProjectsScreen({
                     </div>
                     <label
                       className={`inline-flex h-10 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm font-semibold transition ${
-                        isDark ? 'border-slate-700 text-blue-300 hover:bg-slate-900' : 'border-slate-200 text-[#1769e0] hover:bg-white'
+                        isDark ? 'border-slate-700 text-blue-300 hover:bg-slate-900' : 'border-slate-200 dia-primary-text hover:bg-white'
                       } ${uploadingDocumentId === selectedProject.id ? 'pointer-events-none opacity-60' : ''}`}
                     >
                       <Upload className="h-4 w-4" />
@@ -1002,7 +1084,7 @@ export function ProjectsScreen({
                           rel="noreferrer"
                         >
                           <span className="flex min-w-0 items-center gap-2">
-                            <FileText className={`h-4 w-4 shrink-0 ${isDark ? 'text-blue-300' : 'text-[#1769e0]'}`} />
+                            <FileText className={`h-4 w-4 shrink-0 ${isDark ? 'text-blue-300' : 'dia-primary-text'}`} />
                             <span className={`truncate text-sm font-semibold ${titleClass}`}>{document.file_name}</span>
                           </span>
                           <span className={`shrink-0 text-xs ${mutedClass}`}>{formatFileSize(document.size_bytes)}</span>
@@ -1017,7 +1099,7 @@ export function ProjectsScreen({
                 <div className={`rounded-lg border p-4 ${panelClass}`}>
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
-                      <GitCommitHorizontal className={`h-4 w-4 ${isDark ? 'text-blue-300' : 'text-[#1769e0]'}`} />
+                      <GitCommitHorizontal className={`h-4 w-4 ${isDark ? 'text-blue-300' : 'dia-primary-text'}`} />
                       <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Modificaciones recientes</p>
                     </div>
                     <span className={`text-xs ${mutedClass}`}>{(commitsByProject[selectedProject.id] ?? []).length} commits</span>
@@ -1055,7 +1137,7 @@ export function ProjectsScreen({
                       <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Desarrollo</p>
                       <p className={`mt-0.5 text-xs ${mutedClass}`}>Avance general del proyecto</p>
                     </div>
-                    <p className={`rounded-md px-2.5 py-1 text-sm font-bold ${isDark ? 'bg-blue-500/15 text-blue-300' : 'bg-[#eaf3ff] text-[#1554c7]'}`}>
+                    <p className={`rounded-md px-2.5 py-1 text-sm font-bold ${isDark ? 'bg-blue-500/15 text-blue-300' : 'dia-surface-raised-bg dia-primary-text'}`}>
                       {savingProgressId === selectedProject.id ? 'Guardando...' : `${selectedProject.progress}%`}
                     </p>
                   </div>
@@ -1069,13 +1151,13 @@ export function ProjectsScreen({
                       value={selectedProject.progress}
                       onChange={(event) => updateProgress(selectedProject.id, Number(event.target.value))}
                       style={{
-                        background: `linear-gradient(to right, #1677f2 0%, #1677f2 ${selectedProject.progress}%, ${isDark ? '#1e293b' : '#e2e8f0'} ${selectedProject.progress}%, ${isDark ? '#1e293b' : '#e2e8f0'} 100%)`,
+                        background: `linear-gradient(to right, var(--dia-primary) 0%, var(--dia-primary) ${selectedProject.progress}%, var(--dia-border) ${selectedProject.progress}%, var(--dia-border) 100%)`,
                       }}
                       aria-label={`Progreso de ${selectedProject.name}`}
                     />
                   ) : (
                     <div className={`mt-5 h-3 overflow-hidden rounded-full ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
-                      <div className="h-full rounded-full bg-[#1677f2]" style={{ width: `${selectedProject.progress}%` }} />
+                      <div className="h-full rounded-full dia-primary-bg" style={{ width: `${selectedProject.progress}%` }} />
                     </div>
                   )}
                 </div>

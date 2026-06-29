@@ -112,7 +112,7 @@ export function TrashScreen() {
 
                 <button
                   type="button"
-                  className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md bg-[#1677f2] px-3 text-sm font-semibold text-white shadow-sm disabled:opacity-60"
+                  className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md dia-primary-bg px-3 text-sm font-semibold text-white shadow-sm disabled:opacity-60"
                   onClick={() => restoreProject(project.id)}
                   disabled={restoringId === project.id}
                 >

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { AuthProvider } from '@/context/AuthContext'
+import { LenisProvider } from '@/components/lenis-provider'
 import { VirtualAssistant } from '@/components/virtual-assistant'
 import './globals.css'
 
@@ -22,6 +23,7 @@ export default function RootLayout({
     <html lang="es">
       <body>
         <AuthProvider>
+          <LenisProvider />
           {children}
           <VirtualAssistant />
         </AuthProvider>

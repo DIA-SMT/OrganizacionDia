@@ -38,7 +38,7 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#f6f8fb] px-4">
+    <main className="flex min-h-screen items-center justify-center dia-bg px-4">
       <form onSubmit={handleSubmit} className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
         <h1 className="text-2xl font-bold text-slate-950">Recuperar contrasena</h1>
         <p className="mt-2 text-sm text-slate-500">Te enviaremos un enlace para crear una nueva contrasena.</p>
@@ -52,14 +52,14 @@ export default function ForgotPasswordPage() {
         <label className="mt-6 block">
           <span className="text-sm font-medium text-slate-700">Correo electronico</span>
           <input
-            className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#1677f2] focus:ring-2 focus:ring-blue-100"
+            className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             type="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
         </label>
-        <button className="mt-6 flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[#1677f2] text-sm font-semibold text-white" disabled={loading}>
+        <button className="mt-6 flex h-10 w-full items-center justify-center gap-2 rounded-md dia-primary-bg text-sm font-semibold text-white" disabled={loading}>
           {loading && <Loader2 className="h-4 w-4 animate-spin" />}
           Enviar enlace
         </button>

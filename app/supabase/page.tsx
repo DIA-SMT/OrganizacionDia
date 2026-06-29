@@ -8,7 +8,7 @@ export default function SupabasePage() {
   const configured = requiredEnv.every((key) => Boolean(process.env[key]))
 
   return (
-    <main className="min-h-screen bg-[#f6f8fb] text-slate-950">
+    <main className="min-h-screen dia-bg text-slate-950">
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-5xl items-center px-5 py-4">
           <Link href="/" className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50">
@@ -21,11 +21,11 @@ export default function SupabasePage() {
       <section className="mx-auto max-w-5xl px-5 py-6">
         <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-start gap-4">
-            <div className="flex h-11 w-11 items-center justify-center rounded-md bg-[#103b3a] text-white">
+            <div className="flex h-11 w-11 items-center justify-center rounded-md dia-primary-bg text-white">
               <Database className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-xs font-semibold uppercase text-[#1769e0]">Configuracion</p>
+              <p className="text-xs font-semibold uppercase dia-primary-text">Configuracion</p>
               <h1 className="mt-1 text-3xl font-bold">Supabase</h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">La aplicacion ya tiene clientes, middleware, login y esquema SQL. Solo faltan las claves del proyecto para usar datos reales.</p>
             </div>

@@ -3,15 +3,155 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --background: #f8fafc;
-  --foreground: #111827;
+  color-scheme: light;
+  --dia-bg: #f4f7fc;
+  --dia-surface: #ffffff;
+  --dia-surface-raised: #eef3ff;
+  --dia-border: #d9e2f2;
+  --dia-primary: #2563eb;
+  --dia-violet: #7c3aed;
+  --dia-coral: #e84a5f;
+  --dia-text: #0b1635;
+  --dia-muted: #60708f;
+  --dia-shadow: rgb(38 61 111 / 12%);
+  --color-slate-50: #f8faff;
+  --color-slate-100: #eef3ff;
+  --color-slate-200: #d9e2f2;
+  --color-slate-300: #b4bfd2;
+  --color-slate-400: #8794ad;
+  --color-slate-500: #60708f;
+  --color-slate-600: #526485;
+  --color-slate-700: #40537a;
+  --color-slate-800: #24365e;
+  --color-slate-900: #152448;
+  --color-slate-950: #0b1635;
+  --color-blue-50: #eef3ff;
+  --color-blue-100: #dbe7ff;
+  --color-blue-200: #bfceff;
+  --color-blue-300: #93adff;
+  --color-blue-400: #6389ff;
+  --color-blue-500: #2563eb;
+  --color-blue-600: #1d4ed8;
+  --color-blue-700: #1e40af;
+  --color-violet-500: #7c3aed;
+  --color-red-500: #e84a5f;
+}
+
+.dark {
+  color-scheme: dark;
+  --dia-bg: #070b1c;
+  --dia-surface: #0e1630;
+  --dia-surface-raised: #141f42;
+  --dia-border: #24325e;
+  --dia-primary: #4f7cff;
+  --dia-violet: #8b5cf6;
+  --dia-coral: #ff5b6e;
+  --dia-text: #f4f7ff;
+  --dia-muted: #a8b3cf;
+  --dia-shadow: rgb(0 0 0 / 32%);
+  --color-slate-50: #f8faff;
+  --color-slate-100: #edf1fb;
+  --color-slate-200: #d9e1f2;
+  --color-slate-300: #c6cee0;
+  --color-slate-400: #a8b3cf;
+  --color-slate-500: #7381a3;
+  --color-slate-600: #42527a;
+  --color-slate-700: #24325e;
+  --color-slate-800: #141f42;
+  --color-slate-900: #0e1630;
+  --color-slate-950: #070b1c;
+  --color-blue-50: #101b3a;
+  --color-blue-100: #152652;
+  --color-blue-200: #29447f;
+  --color-blue-300: #9bb1ff;
+  --color-blue-400: #7195ff;
+  --color-blue-500: #4f7cff;
+  --color-blue-600: #3d67e8;
+  --color-blue-700: #3154bd;
+  --color-violet-500: #8b5cf6;
+  --color-red-500: #ff5b6e;
 }
 
 body {
   margin: 0;
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--dia-bg);
+  color: var(--dia-text);
   font-family: Arial, Helvetica, sans-serif;
+  transition: background-color 240ms ease, color 240ms ease;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--dia-primary) 28%, transparent);
+  color: var(--dia-text);
+}
+
+:focus-visible {
+  outline: 2px solid var(--dia-primary);
+  outline-offset: 2px;
+}
+
+* {
+  scrollbar-color: color-mix(in srgb, var(--dia-primary) 48%, transparent) transparent;
+  scrollbar-width: thin;
+}
+
+.dia-surface {
+  border-color: var(--dia-border);
+  background: var(--dia-surface);
+  color: var(--dia-text);
+  box-shadow: 0 16px 44px -32px var(--dia-shadow);
+}
+
+.dia-bg {
+  background-color: var(--dia-bg);
+}
+
+.dia-surface-bg {
+  background-color: var(--dia-surface);
+}
+
+.dia-surface-glass {
+  background-color: color-mix(in srgb, var(--dia-surface) 94%, transparent);
+}
+
+.dia-surface-raised-bg {
+  background-color: var(--dia-surface-raised);
+}
+
+.dia-primary-bg {
+  background-color: var(--dia-primary);
+}
+
+.dia-primary-text {
+  color: var(--dia-primary);
+}
+
+.dia-primary-border {
+  border-color: var(--dia-primary);
+}
+
+.dia-control {
+  border-color: var(--dia-border);
+  background: var(--dia-surface-raised);
+  color: var(--dia-text);
+  transition: border-color 200ms ease, background-color 200ms ease, box-shadow 200ms ease;
+}
+
+.dia-control:hover,
+.dia-control:focus-within {
+  border-color: color-mix(in srgb, var(--dia-primary) 58%, var(--dia-border));
+}
+
+.dia-primary-action {
+  background: var(--dia-primary);
+  color: #ffffff;
+  box-shadow: 0 10px 28px -16px color-mix(in srgb, var(--dia-primary) 62%, transparent);
+  transition: filter 200ms ease, transform 200ms ease, box-shadow 200ms ease;
+}
+
+.dia-primary-action:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 14px 34px -16px color-mix(in srgb, var(--dia-primary) 74%, transparent);
 }
 
 button,
@@ -75,7 +215,7 @@ select {
   appearance: none;
   border: 4px solid #ffffff;
   border-radius: 999px;
-  background: #1677f2;
+  background: var(--dia-primary);
   box-shadow: 0 8px 20px rgb(15 23 42 / 18%);
 }
 
@@ -84,14 +224,14 @@ select {
   width: 18px;
   border: 4px solid #ffffff;
   border-radius: 999px;
-  background: #1677f2;
+  background: var(--dia-primary);
   box-shadow: 0 8px 20px rgb(15 23 42 / 18%);
 }
 
 .ai-grid-light {
   background:
-    radial-gradient(circle at 82% 38%, rgb(16 185 129 / 18%), transparent 24%),
-    linear-gradient(115deg, rgb(16 185 129 / 13%), transparent 40%),
+    radial-gradient(circle at 82% 38%, rgb(37 99 235 / 16%), transparent 24%),
+    linear-gradient(115deg, rgb(124 58 237 / 10%), transparent 40%),
     linear-gradient(90deg, rgb(15 23 42 / 5%) 1px, transparent 1px),
     linear-gradient(0deg, rgb(15 23 42 / 4%) 1px, transparent 1px);
   background-size: auto, auto, 58px 58px, 58px 58px;
@@ -99,8 +239,8 @@ select {
 
 .ai-grid-dark {
   background:
-    radial-gradient(circle at 82% 38%, rgb(16 185 129 / 20%), transparent 24%),
-    linear-gradient(115deg, rgb(16 185 129 / 12%), transparent 40%),
+    radial-gradient(circle at 82% 38%, rgb(79 124 255 / 18%), transparent 24%),
+    linear-gradient(115deg, rgb(139 92 246 / 12%), transparent 40%),
     linear-gradient(90deg, rgb(148 163 184 / 6%) 1px, transparent 1px),
     linear-gradient(0deg, rgb(148 163 184 / 5%) 1px, transparent 1px);
   background-size: auto, auto, 58px 58px, 58px 58px;
@@ -109,7 +249,7 @@ select {
 .ai-face-shell {
   position: absolute;
   inset: 38px 42px;
-  border: 2px solid rgb(16 185 129 / 42%);
+  border: 2px solid color-mix(in srgb, var(--dia-primary) 48%, transparent);
   clip-path: polygon(47% 0, 70% 8%, 87% 28%, 91% 57%, 78% 84%, 56% 100%, 30% 94%, 11% 72%, 5% 43%, 17% 16%);
   overflow: hidden;
   transform-style: preserve-3d;
@@ -117,16 +257,16 @@ select {
 
 .ai-face-shell-light {
   background:
-    linear-gradient(145deg, rgb(255 255 255 / 82%), rgb(209 250 229 / 32)),
-    radial-gradient(circle at 52% 42%, rgb(16 185 129 / 22%), transparent 48%);
-  box-shadow: inset 0 0 58px rgb(16 185 129 / 18%), 0 28px 100px rgb(15 23 42 / 16%);
+    linear-gradient(145deg, rgb(255 255 255 / 82%), rgb(224 231 255 / 36)),
+    radial-gradient(circle at 52% 42%, rgb(37 99 235 / 20%), transparent 48%);
+  box-shadow: inset 0 0 58px rgb(37 99 235 / 16%), 0 28px 100px rgb(15 23 42 / 16%);
 }
 
 .ai-face-shell-dark {
   background:
-    linear-gradient(145deg, rgb(15 23 42 / 88%), rgb(6 78 59 / 32)),
-    radial-gradient(circle at 52% 42%, rgb(16 185 129 / 25%), transparent 50%);
-  box-shadow: inset 0 0 64px rgb(16 185 129 / 20%), 0 28px 110px rgb(0 0 0 / 42%);
+    linear-gradient(145deg, rgb(14 22 48 / 90%), rgb(50 34 112 / 30)),
+    radial-gradient(circle at 52% 42%, rgb(79 124 255 / 24%), transparent 50%);
+  box-shadow: inset 0 0 64px rgb(79 124 255 / 20%), 0 28px 110px rgb(0 0 0 / 42%);
 }
 
 .ai-face-shell::before,
@@ -134,7 +274,7 @@ select {
   content: "";
   position: absolute;
   inset: 12%;
-  border: 1px solid rgb(16 185 129 / 34%);
+  border: 1px solid color-mix(in srgb, var(--dia-violet) 38%, transparent);
   clip-path: polygon(46% 0, 68% 9%, 84% 30%, 86% 58%, 74% 80%, 56% 94%, 34% 88%, 18% 68%, 13% 43%, 22% 18%);
 }
 
@@ -146,7 +286,7 @@ select {
 .ai-face-scanline {
   position: absolute;
   inset: 0;
-  background: repeating-linear-gradient(0deg, transparent 0 12px, rgb(16 185 129 / 16%) 13px, transparent 14px);
+  background: repeating-linear-gradient(0deg, transparent 0 12px, rgb(79 124 255 / 15%) 13px, transparent 14px);
 }
 
 .ai-face-brow,
@@ -155,8 +295,8 @@ select {
 .ai-face-mouth,
 .ai-face-circuit {
   position: absolute;
-  background: #1677f2;
-  box-shadow: 0 0 24px rgb(16 185 129 / 56%);
+  background: var(--dia-primary);
+  box-shadow: 0 0 24px color-mix(in srgb, var(--dia-violet) 58%, transparent);
 }
 
 .ai-face-brow {
@@ -210,10 +350,10 @@ select {
   position: absolute;
   height: 9px;
   width: 9px;
-  border: 2px solid #1677f2;
+  border: 2px solid var(--dia-primary);
   border-radius: 999px;
   background: transparent;
-  box-shadow: 0 0 18px rgb(16 185 129 / 42%);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--dia-violet) 48%, transparent);
 }
 
 .ai-face-node-one {

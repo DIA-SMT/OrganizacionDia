@@ -208,7 +208,7 @@ export function ExpedientesScreen({ archivedOnly = false }: { archivedOnly?: boo
           {!archivedOnly && (
             <button
               type="button"
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#1677f2] px-4 text-sm font-semibold text-white shadow-sm disabled:opacity-60"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md dia-primary-bg px-4 text-sm font-semibold text-white shadow-sm disabled:opacity-60"
               disabled={syncing}
               onClick={() => void syncDrive()}
             >
@@ -227,7 +227,7 @@ export function ExpedientesScreen({ archivedOnly = false }: { archivedOnly?: boo
               type="button"
               className={`rounded-md border px-3 py-2 text-sm font-semibold transition ${
                 status === option
-                  ? 'border-blue-200 bg-[#eaf3ff] text-[#1554c7] dark:border-blue-500/30 dark:bg-blue-500/15 dark:text-blue-200'
+                  ? 'border-blue-200 dia-surface-raised-bg dia-primary-text dark:border-blue-500/30 dark:bg-blue-500/15 dark:text-blue-200'
                   : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800'
               }`}
               onClick={() => setStatus(option)}
@@ -255,7 +255,7 @@ export function ExpedientesScreen({ archivedOnly = false }: { archivedOnly?: boo
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <FileText className="h-4 w-4 shrink-0 text-[#1769e0] dark:text-blue-300" />
+                    <FileText className="h-4 w-4 shrink-0 dia-primary-text dark:text-blue-300" />
                     <h2 className="truncate text-base font-bold text-slate-950 dark:text-white">{expediente.name}</h2>
                   </div>
                   <p
@@ -311,7 +311,7 @@ export function ExpedientesScreen({ archivedOnly = false }: { archivedOnly?: boo
                   </select>
                   <button
                     type="button"
-                    className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[#1677f2] px-3 text-sm font-semibold text-white disabled:opacity-60"
+                    className="inline-flex h-9 items-center justify-center gap-2 rounded-md dia-primary-bg px-3 text-sm font-semibold text-white disabled:opacity-60"
                     disabled={generatingBriefId === expediente.id}
                     onClick={() => void generateBrief(expediente.id)}
                   >
@@ -323,7 +323,7 @@ export function ExpedientesScreen({ archivedOnly = false }: { archivedOnly?: boo
                         : 'Generar brief'}
                   </button>
                 </div>
-                <a className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#1769e0] hover:underline dark:text-blue-300" href={expediente.drive_url} target="_blank" rel="noreferrer">
+                <a className="inline-flex items-center gap-1.5 text-sm font-semibold dia-primary-text hover:underline dark:text-blue-300" href={expediente.drive_url} target="_blank" rel="noreferrer">
                   Ver en Drive
                   <ExternalLink className="h-3.5 w-3.5" />
                 </a>

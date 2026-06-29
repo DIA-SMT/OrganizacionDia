@@ -63,14 +63,14 @@ export default function ResetPasswordPage() {
 
   if (validSession === null) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f6f8fb]">
-        <Loader2 className="h-6 w-6 animate-spin text-[#1677f2]" />
+      <main className="flex min-h-screen items-center justify-center dia-bg">
+        <Loader2 className="h-6 w-6 animate-spin dia-primary-text" />
       </main>
     )
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#f6f8fb] px-4">
+    <main className="flex min-h-screen items-center justify-center dia-bg px-4">
       <form onSubmit={handleSubmit} className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
         <h1 className="text-2xl font-bold text-slate-950">Nueva contrasena</h1>
         <p className="mt-2 text-sm text-slate-500">Define una nueva contrasena para tu cuenta.</p>
@@ -86,7 +86,7 @@ export default function ResetPasswordPage() {
           <input className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm" type="password" placeholder="Nueva contrasena" value={password} onChange={(e) => setPassword(e.target.value)} required />
           <input className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm" type="password" placeholder="Confirmar contrasena" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
         </div>
-        <button className="mt-6 flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[#1677f2] text-sm font-semibold text-white disabled:opacity-60" disabled={loading || !validSession}>
+        <button className="mt-6 flex h-10 w-full items-center justify-center gap-2 rounded-md dia-primary-bg text-sm font-semibold text-white disabled:opacity-60" disabled={loading || !validSession}>
           {loading && <Loader2 className="h-4 w-4 animate-spin" />}
           Restablecer
         </button>

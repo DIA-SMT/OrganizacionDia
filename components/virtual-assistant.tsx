@@ -99,7 +99,7 @@ export function VirtualAssistant() {
     <>
       <button
         type="button"
-        className="fixed bottom-5 right-5 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-[#1677f2] text-white shadow-lg shadow-blue-900/20 transition hover:-translate-y-0.5 hover:shadow-xl"
+        className="fixed bottom-5 right-5 z-40 flex h-12 w-12 items-center justify-center rounded-full dia-primary-bg text-white shadow-lg shadow-blue-900/20 transition hover:-translate-y-0.5 hover:shadow-xl"
         onClick={() => setOpen(true)}
         title="Abrir asistente"
       >
@@ -110,7 +110,7 @@ export function VirtualAssistant() {
         <section className="fixed bottom-20 right-5 z-50 flex h-[min(680px,calc(100vh-7rem))] w-[min(440px,calc(100vw-2rem))] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl shadow-slate-900/20">
           <header className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-md bg-[#103b3a] text-white">
+              <div className="flex h-9 w-9 items-center justify-center rounded-md dia-primary-bg text-white shadow-lg shadow-blue-500/20">
                 <Bot className="h-4 w-4" />
               </div>
               <div>
@@ -148,7 +148,7 @@ export function VirtualAssistant() {
                 <div
                   className={`rounded-lg px-3 py-2 text-sm leading-6 ${
                     message.role === 'user'
-                      ? 'bg-[#1677f2] text-white'
+                      ? 'dia-primary-bg text-white'
                       : 'border border-slate-200 bg-white text-slate-700'
                   }`}
                 >
@@ -171,10 +171,10 @@ export function VirtualAssistant() {
                               {project.requester_area ?? 'Sin área'} - {project.priority}
                             </p>
                           </div>
-                          <ExternalLink className="mt-1 h-3.5 w-3.5 shrink-0 text-[#1769e0]" />
+                          <ExternalLink className="mt-1 h-3.5 w-3.5 shrink-0 dia-primary-text" />
                         </div>
                         <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                          <span className="rounded-md bg-[#eaf3ff] px-2 py-1 font-semibold text-[#1554c7]">
+                          <span className="rounded-md dia-surface-raised-bg px-2 py-1 font-semibold dia-primary-text">
                             {project.status}
                           </span>
                           <span className="rounded-md bg-slate-100 px-2 py-1 font-semibold text-slate-600">
@@ -205,7 +205,7 @@ export function VirtualAssistant() {
               />
               <button
                 type="submit"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#1677f2] text-white disabled:opacity-50"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md dia-primary-bg text-white disabled:opacity-50"
                 disabled={thinking || !question.trim()}
               >
                 {thinking ? (

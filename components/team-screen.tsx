@@ -305,7 +305,7 @@ export function TeamScreen() {
 
   function renderAvatar(member: MemberRow, sizeClass: string, textClass = 'text-3xl') {
     return (
-      <div className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#eaf3ff] font-bold text-[#1554c7] ring-4 ring-white dark:bg-blue-500/15 dark:text-blue-300 dark:ring-slate-800 ${sizeClass} ${textClass}`}>
+      <div className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full dia-surface-raised-bg font-bold dia-primary-text ring-4 ring-white dark:bg-blue-500/15 dark:text-blue-300 dark:ring-slate-800 ${sizeClass} ${textClass}`}>
         {member.avatar_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img className="h-full w-full object-cover" src={member.avatar_url} alt={`Foto de ${member.full_name}`} />
@@ -354,7 +354,7 @@ export function TeamScreen() {
           <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{filtered.length} personas visibles</p>
           <p className="text-xs text-slate-500 dark:text-slate-400">Integrantes que trabajan en proyectos de la DIA.</p>
         </div>
-        <button className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-[#1677f2] text-white shadow-sm hover:bg-[#1268d6]" onClick={() => setCreateOpen(true)} title="Agregar persona">
+        <button className="inline-flex h-10 w-10 items-center justify-center rounded-md dia-primary-bg text-white shadow-sm hover:brightness-110" onClick={() => setCreateOpen(true)} title="Agregar persona">
           <Plus className="h-4 w-4" />
         </button>
       </div>
@@ -380,7 +380,7 @@ export function TeamScreen() {
                 </div>
               </div>
               <p className="mt-4 line-clamp-1 text-base font-bold text-slate-950 dark:text-white">{member.full_name || 'Sin nombre'}</p>
-              <p className="mt-1 text-sm font-semibold text-[#1769e0] dark:text-blue-300">{member.role ?? 'Sin rol'}</p>
+              <p className="mt-1 text-sm font-semibold dia-primary-text dark:text-blue-300">{member.role ?? 'Sin rol'}</p>
             </article>
           ))}
         </div>
@@ -408,7 +408,7 @@ export function TeamScreen() {
               </div>
             </div>
             <h2 className="mt-5 text-2xl font-bold text-slate-950 dark:text-white">{selectedMember.full_name || 'Sin nombre'}</h2>
-            <p className="mt-1 text-sm font-semibold text-[#1769e0] dark:text-blue-300">{selectedMember.role ?? 'Sin rol'}</p>
+            <p className="mt-1 text-sm font-semibold dia-primary-text dark:text-blue-300">{selectedMember.role ?? 'Sin rol'}</p>
             <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{selectedMember.specialty || 'Sin skill cargado'}</p>
 
             <div className="mt-6 grid gap-3 text-left sm:grid-cols-2">
@@ -498,7 +498,7 @@ export function TeamScreen() {
                 </label>
               </div>
             </div>
-            <button className="mt-5 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[#1677f2] text-sm font-semibold text-white disabled:opacity-60" onClick={() => saveMember(editingMember)} disabled={savingId === editingMember.id}>
+            <button className="mt-5 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md dia-primary-bg text-sm font-semibold text-white disabled:opacity-60" onClick={() => saveMember(editingMember)} disabled={savingId === editingMember.id}>
               <Save className="h-4 w-4" />
               {savingId === editingMember.id ? 'Guardando...' : 'Guardar cambios'}
             </button>
@@ -574,7 +574,7 @@ export function TeamScreen() {
               </div>
             </div>
 
-            <button className="mt-5 h-10 w-full rounded-md bg-[#1677f2] text-sm font-semibold text-white disabled:opacity-60" disabled={creating}>
+            <button className="mt-5 h-10 w-full rounded-md dia-primary-bg text-sm font-semibold text-white disabled:opacity-60" disabled={creating}>
               {creating ? 'Guardando...' : 'Agregar persona'}
             </button>
           </form>
