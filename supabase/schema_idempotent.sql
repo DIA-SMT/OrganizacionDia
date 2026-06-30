@@ -157,6 +157,30 @@ create table if not exists public.comments (
   check (project_id is not null or task_id is not null)
 );
 
+create table if not exists public.project_members (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects(id) on delete cascade,
+  member_id uuid not null references public.members(id) on delete cascade,
+  assigned_at timestamptz not null default now(),
+  unique (project_id, member_id)
+);
+
+create table if not exists public.project_commits (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects(id) on delete cascade,
+  sha text not null,
+  message text not null,
+  author text not null,
+  author_login text,
+  author_avatar_url text,
+  committed_at timestamptz,
+  commit_url text not null,
+  repository text not null,
+  repository_label text not null,
+  synced_at timestamptz not null default now(),
+  unique (project_id, sha)
+);
+
 create table if not exists public.project_documents (
   id uuid primary key default gen_random_uuid(),
   project_id uuid not null references public.projects(id) on delete cascade,
@@ -195,6 +219,8 @@ alter table public.members enable row level security;
 alter table public.projects enable row level security;
 alter table public.tasks enable row level security;
 alter table public.task_assignees enable row level security;
+alter table public.project_members enable row level security;
+alter table public.project_commits enable row level security;
 alter table public.comments enable row level security;
 alter table public.project_documents enable row level security;
 alter table public.blockers enable row level security;
@@ -203,6 +229,8 @@ drop policy if exists "authenticated read members" on public.members;
 drop policy if exists "authenticated read projects" on public.projects;
 drop policy if exists "authenticated read tasks" on public.tasks;
 drop policy if exists "authenticated read task assignees" on public.task_assignees;
+drop policy if exists "authenticated read project members" on public.project_members;
+drop policy if exists "authenticated read project commits" on public.project_commits;
 drop policy if exists "authenticated read comments" on public.comments;
 drop policy if exists "authenticated read project documents" on public.project_documents;
 drop policy if exists "authenticated read blockers" on public.blockers;
@@ -210,6 +238,7 @@ drop policy if exists "authenticated write members" on public.members;
 drop policy if exists "authenticated write projects" on public.projects;
 drop policy if exists "authenticated write tasks" on public.tasks;
 drop policy if exists "authenticated write task assignees" on public.task_assignees;
+drop policy if exists "authenticated write project members" on public.project_members;
 drop policy if exists "authenticated write comments" on public.comments;
 drop policy if exists "authenticated write project documents" on public.project_documents;
 drop policy if exists "authenticated write blockers" on public.blockers;
@@ -224,6 +253,12 @@ create policy "authenticated read tasks" on public.tasks
   for select to authenticated using (true);
 
 create policy "authenticated read task assignees" on public.task_assignees
+  for select to authenticated using (true);
+
+create policy "authenticated read project members" on public.project_members
+  for select to authenticated using (true);
+
+create policy "authenticated read project commits" on public.project_commits
   for select to authenticated using (true);
 
 create policy "authenticated read comments" on public.comments
@@ -247,6 +282,9 @@ create policy "authenticated write tasks" on public.tasks
 create policy "authenticated write task assignees" on public.task_assignees
   for all to authenticated using (true) with check (true);
 
+create policy "authenticated write project members" on public.project_members
+  for all to authenticated using (true) with check (true);
+
 create policy "authenticated write comments" on public.comments
   for all to authenticated using (true) with check (true);
 
@@ -262,4 +300,8 @@ create index if not exists tasks_project_id_idx on public.tasks(project_id);
 create index if not exists tasks_status_idx on public.tasks(status);
 create index if not exists tasks_priority_idx on public.tasks(priority);
 create index if not exists task_assignees_member_id_idx on public.task_assignees(member_id);
+create index if not exists project_members_project_id_idx on public.project_members(project_id);
+create index if not exists project_members_member_id_idx on public.project_members(member_id);
+create index if not exists project_commits_project_id_idx on public.project_commits(project_id);
+create index if not exists project_commits_committed_at_idx on public.project_commits(committed_at desc);
 create index if not exists project_documents_project_id_idx on public.project_documents(project_id);

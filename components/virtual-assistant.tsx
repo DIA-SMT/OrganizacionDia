@@ -1,8 +1,8 @@
 'use client'
 
-import { Bot, ExternalLink, MessageCircle, Search, Send, X } from 'lucide-react'
+import { Bot, Database, ExternalLink, MessageCircle, Search, Send, X } from 'lucide-react'
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 type AssistantProject = {
   id: string
@@ -23,6 +23,8 @@ type AssistantMessage = {
   role: 'assistant' | 'user'
   text: string
   projects?: AssistantProject[]
+  sources?: string[]
+  updatedAt?: string
 }
 
 type AssistantResponse = {
@@ -30,6 +32,8 @@ type AssistantResponse = {
   error?: string
   projects?: AssistantProject[]
   totalProjects?: number
+  sources?: string[]
+  updatedAt?: string
 }
 
 export function VirtualAssistant() {
@@ -38,12 +42,22 @@ export function VirtualAssistant() {
   const [thinking, setThinking] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [projectCount, setProjectCount] = useState<number | null>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
   const [messages, setMessages] = useState<AssistantMessage[]>([
     {
       role: 'assistant',
-      text: 'Hola, soy el asistente DIA. Preguntame por proyectos, tareas, prioridades, entregas o estados.',
+      text: 'Hola, soy el asistente DIA. Puedo consultar proyectos, tareas, commits, responsables, expedientes, documentos, prioridades y entregas.',
     },
   ])
+
+  useEffect(() => {
+    if (!open) return
+    const frame = window.requestAnimationFrame(() => {
+      const container = messagesContainerRef.current
+      if (container) container.scrollTop = container.scrollHeight
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [messages, open, thinking])
 
   async function getAssistantAnswer(questionText: string) {
     const response = await fetch('/api/assistant/query', {
@@ -81,6 +95,8 @@ export function VirtualAssistant() {
           role: 'assistant',
           text: assistantResponse.text ?? 'No pude responder esa consulta.',
           projects: assistantResponse.projects,
+          sources: assistantResponse.sources,
+          updatedAt: assistantResponse.updatedAt,
         },
       ])
     } catch (caughtError) {
@@ -107,7 +123,7 @@ export function VirtualAssistant() {
       </button>
 
       {open && (
-        <section className="fixed bottom-20 right-5 z-50 flex h-[min(680px,calc(100vh-7rem))] w-[min(440px,calc(100vw-2rem))] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl shadow-slate-900/20">
+        <section data-lenis-prevent className="fixed bottom-20 right-5 z-50 flex h-[min(680px,calc(100vh-7rem))] w-[min(440px,calc(100vw-2rem))] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl shadow-slate-900/20">
           <header className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-md dia-primary-bg text-white shadow-lg shadow-blue-500/20">
@@ -134,7 +150,7 @@ export function VirtualAssistant() {
             </button>
           </header>
 
-          <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 px-4 py-4">
+          <div ref={messagesContainerRef} data-lenis-prevent className="min-h-0 flex-1 touch-pan-y space-y-3 overflow-y-auto overscroll-contain bg-slate-50 px-4 py-4">
             {error && (
               <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
                 {error}
@@ -154,6 +170,14 @@ export function VirtualAssistant() {
                 >
                   {message.text}
                 </div>
+
+                {message.role === 'assistant' && message.sources && message.sources.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-[10px] font-medium text-slate-400">
+                    <Database className="h-3 w-3" />
+                    <span>{message.sources.join(' · ')}</span>
+                    {message.updatedAt && <span>Actualizado {new Intl.DateTimeFormat('es-AR', { hour: '2-digit', minute: '2-digit' }).format(new Date(message.updatedAt))}</span>}
+                  </div>
+                )}
 
                 {message.projects && message.projects.length > 0 && (
                   <div className="mt-2 space-y-2">

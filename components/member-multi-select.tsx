@@ -39,11 +39,13 @@ export function MemberMultiSelect({
   selectedIds,
   onChange,
   label = 'Responsables',
+  disabled = false,
 }: {
   members: MemberChoice[]
   selectedIds: string[]
   onChange: (memberIds: string[]) => void
   label?: string
+  disabled?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const selectedMembers = members.filter((member) => selectedIds.includes(member.id))
@@ -59,7 +61,8 @@ export function MemberMultiSelect({
         type="button"
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="flex min-h-10 w-full items-center justify-between gap-3 rounded-md border border-slate-200 bg-white px-3 py-2 text-left text-sm text-slate-800 transition hover:border-blue-300 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:hover:border-blue-500/50"
+        disabled={disabled}
+        className="flex min-h-10 w-full items-center justify-between gap-3 rounded-md border border-slate-200 bg-white px-3 py-2 text-left text-sm text-slate-800 transition hover:border-blue-300 disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:hover:border-blue-500/50"
         onClick={() => setOpen((current) => !current)}
       >
         <span className="flex min-w-0 items-center gap-2">
@@ -80,7 +83,7 @@ export function MemberMultiSelect({
         </div>
       )}
 
-      {open && (
+      {open && !disabled && (
         <>
           <button type="button" aria-label="Cerrar responsables" className="fixed inset-0 z-40 cursor-default" onClick={() => setOpen(false)} />
           <div data-lenis-prevent role="listbox" aria-multiselectable="true" className="absolute left-0 right-0 z-50 mt-2 max-h-64 overflow-y-auto overscroll-contain rounded-lg border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900">

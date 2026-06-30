@@ -1,6 +1,7 @@
 'use client'
 
 import { AppShell } from '@/components/app-shell'
+import { MemberMultiSelect } from '@/components/member-multi-select'
 import { ProjectCreateButton } from '@/components/project-create-button'
 import { filterAndSortProjects, type ProjectFilter } from '@/lib/project-filters'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
@@ -297,6 +298,9 @@ export function ProjectsScreen({
   const [projectDocuments, setProjectDocuments] = useState<Record<string, ProjectDocument[]>>({})
   const [uploadingDocumentId, setUploadingDocumentId] = useState<string | null>(null)
   const [members, setMembers] = useState<TeamMember[]>([])
+  const [projectMemberIds, setProjectMemberIds] = useState<Record<string, string[]>>({})
+  const [projectMembersAvailable, setProjectMembersAvailable] = useState(false)
+  const [savingProjectMembersId, setSavingProjectMembersId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const theme = useStoredTheme()
   const isDark = theme === 'dark'
@@ -385,6 +389,33 @@ export function ProjectsScreen({
     }
 
     void fetchMembers()
+  }, [])
+
+  useEffect(() => {
+    async function fetchProjectMembers() {
+      const supabase = getSupabaseBrowserClient()
+      if (!supabase) return
+
+      const { data, error: projectMembersError } = await supabase
+        .from('project_members')
+        .select('project_id, member_id')
+
+      if (projectMembersError) {
+        setProjectMembersAvailable(false)
+        setError('Falta configurar responsables de proyectos en Supabase. Ejecuta supabase/add_project_members.sql.')
+        return
+      }
+
+      const rows = (data ?? []) as Array<{ project_id: string; member_id: string }>
+      const grouped = rows.reduce<Record<string, string[]>>((acc, row) => {
+        acc[row.project_id] = [...(acc[row.project_id] ?? []), row.member_id]
+        return acc
+      }, {})
+      setProjectMemberIds(grouped)
+      setProjectMembersAvailable(true)
+    }
+
+    void fetchProjectMembers()
   }, [])
 
   const projectDocumentSourceSignature = useMemo(() => projects.map((project) => project.id).join('|'), [projects])
@@ -483,11 +514,30 @@ export function ProjectsScreen({
     return map
   }, [members])
 
+  const responsibleParticipantsByProject = useMemo(() => {
+    const memberById = new Map(members.map((member) => [member.id, member]))
+    return Object.fromEntries(
+      Object.entries(projectMemberIds).map(([projectId, memberIds]) => [
+        projectId,
+        memberIds.flatMap((memberId) => {
+          const member = memberById.get(memberId)
+          return member
+            ? [{ key: member.id, name: member.full_name, role: member.role, avatarUrl: member.avatar_url }]
+            : []
+        }),
+      ]),
+    ) as Record<string, ProjectParticipant[]>
+  }, [members, projectMemberIds])
+
   const participantsByProject = useMemo(() => {
     const result: Record<string, ProjectParticipant[]> = {}
 
+    for (const [projectId, responsibleParticipants] of Object.entries(responsibleParticipantsByProject)) {
+      result[projectId] = [...responsibleParticipants]
+    }
+
     for (const [projectId, commits] of Object.entries(commitsByProject)) {
-      const participants = new Map<string, ProjectParticipant>()
+      const participants = new Map((result[projectId] ?? []).map((participant) => [participant.key, participant]))
 
       for (const commit of commits) {
         const member = memberIdentityMap.get(normalizeIdentity(commit.authorLogin)) ?? memberIdentityMap.get(normalizeIdentity(commit.author))
@@ -506,7 +556,12 @@ export function ProjectsScreen({
     }
 
     return result
-  }, [commitsByProject, memberIdentityMap])
+  }, [commitsByProject, memberIdentityMap, responsibleParticipantsByProject])
+
+  const memberChoices = useMemo(
+    () => members.map((member) => ({ id: member.id, label: member.full_name, avatarUrl: member.avatar_url })),
+    [members],
+  )
 
   async function updateProject<K extends keyof Pick<ProjectRow, 'name' | 'status' | 'priority' | 'estimated_delivery' | 'note' | 'repository_url' | 'repository_url_secondary' | 'website_url'>>(projectId: string, field: K, value: ProjectRow[K]) {
     setError(null)
@@ -526,6 +581,42 @@ export function ProjectsScreen({
     setSavingField(null)
 
     if (updateError) setError(updateError.message)
+  }
+
+  async function updateProjectMembers(projectId: string, nextMemberIds: string[]) {
+    if (!projectMembersAvailable) {
+      setError('Falta configurar responsables de proyectos en Supabase. Ejecuta supabase/add_project_members.sql.')
+      return
+    }
+
+    const previousMemberIds = projectMemberIds[projectId] ?? []
+    setError(null)
+    setProjectMemberIds((current) => ({ ...current, [projectId]: nextMemberIds }))
+
+    const supabase = getSupabaseBrowserClient()
+    if (!supabase) {
+      setProjectMemberIds((current) => ({ ...current, [projectId]: previousMemberIds }))
+      setError('Supabase no esta configurado.')
+      return
+    }
+
+    setSavingProjectMembersId(projectId)
+    const removedIds = previousMemberIds.filter((memberId) => !nextMemberIds.includes(memberId))
+    const addedIds = nextMemberIds.filter((memberId) => !previousMemberIds.includes(memberId))
+
+    const removeResult = removedIds.length > 0
+      ? await supabase.from('project_members').delete().eq('project_id', projectId).in('member_id', removedIds)
+      : { error: null }
+    const addResult = !removeResult.error && addedIds.length > 0
+      ? await supabase.from('project_members').insert(addedIds.map((memberId) => ({ project_id: projectId, member_id: memberId })))
+      : { error: null }
+
+    setSavingProjectMembersId(null)
+    const persistenceError = removeResult.error || addResult.error
+    if (persistenceError) {
+      setProjectMemberIds((current) => ({ ...current, [projectId]: previousMemberIds }))
+      setError(`${persistenceError.message}. Si falta la tabla, ejecuta supabase/add_project_members.sql.`)
+    }
   }
 
   async function updateProgress(projectId: string, progress: number) {
@@ -849,15 +940,15 @@ export function ProjectsScreen({
                   <h2 className={`text-2xl font-bold ${titleClass}`}>{selectedProject.name}</h2>
                 )}
                 <p className={`mt-2 text-sm ${mutedClass}`}>{selectedProject.requester_area ?? 'Sin area'} - {selectedProject.stack ?? 'Sin stack'}</p>
-                {(participantsByProject[selectedProject.id] ?? []).length > 0 && (
+                {(responsibleParticipantsByProject[selectedProject.id] ?? []).length > 0 && (
                   <div className="mt-3 flex flex-wrap items-center gap-3">
                     <div className="-space-x-2 flex">
-                      {(participantsByProject[selectedProject.id] ?? []).map((participant) => (
+                      {(responsibleParticipantsByProject[selectedProject.id] ?? []).map((participant) => (
                         <ParticipantAvatar key={participant.key} participant={participant} size="md" isDark={isDark} />
                       ))}
                     </div>
                     <span className={`text-xs font-semibold ${mutedClass}`}>
-                      Equipo detectado por commits
+                      Responsables del proyecto
                     </span>
                   </div>
                 )}
@@ -907,6 +998,43 @@ export function ProjectsScreen({
 
             <div className="grid gap-5 p-5 lg:grid-cols-[1.2fr_0.8fr]">
               <div className="space-y-5">
+                <div className={`rounded-lg border p-4 ${panelClass}`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Responsables del proyecto</p>
+                    {savingProjectMembersId === selectedProject.id && <span className={`text-xs font-semibold ${isDark ? 'text-blue-300' : 'dia-primary-text'}`}>Guardando...</span>}
+                  </div>
+                  {selectedProjectEditing ? (
+                    <div className="mt-3">
+                      <MemberMultiSelect
+                        members={memberChoices}
+                        selectedIds={projectMemberIds[selectedProject.id] ?? []}
+                        onChange={(memberIds) => void updateProjectMembers(selectedProject.id, memberIds)}
+                        label="Seleccionar responsables"
+                        disabled={!projectMembersAvailable}
+                      />
+                      {!projectMembersAvailable && (
+                        <p className="mt-2 text-xs font-medium text-amber-600 dark:text-amber-300">
+                          Ejecuta supabase/add_project_members.sql para habilitar la seleccion.
+                        </p>
+                      )}
+                    </div>
+                  ) : (responsibleParticipantsByProject[selectedProject.id] ?? []).length > 0 ? (
+                    <div className="mt-3 flex flex-wrap gap-3">
+                      {(responsibleParticipantsByProject[selectedProject.id] ?? []).map((participant) => (
+                        <div key={participant.key} className={`flex items-center gap-2 rounded-md border px-3 py-2 ${isDark ? 'border-slate-700 bg-slate-900' : 'border-slate-200 bg-white'}`}>
+                          <ParticipantAvatar participant={participant} isDark={isDark} />
+                          <div className="min-w-0">
+                            <p className={`truncate text-sm font-semibold ${titleClass}`}>{participant.name}</p>
+                            {participant.role && <p className={`truncate text-xs ${mutedClass}`}>{participant.role}</p>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className={`mt-3 text-sm ${mutedClass}`}>Sin responsables asignados.</p>
+                  )}
+                </div>
+
                 <div className={`rounded-lg border p-4 ${panelClass}`}>
                   <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Descripcion</p>
                   <p className={`mt-3 text-sm leading-7 ${bodyClass}`}>{selectedProject.description || 'Sin descripcion cargada.'}</p>

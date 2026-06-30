@@ -1,4 +1,5 @@
 import { runAssistantQuery } from '@/lib/assistant/engine'
+import { synthesizeAssistantAnswer } from '@/lib/assistant/synthesis'
 import { createClient } from '@/lib/supabase/server'
 
 export async function POST(request: Request) {
@@ -18,7 +19,12 @@ export async function POST(request: Request) {
     if (!user) return Response.json({ error: 'Sesión no autorizada.' }, { status: 401 })
 
     const result = await runAssistantQuery(supabase, question)
-    return Response.json(result)
+    const text = await synthesizeAssistantAnswer({
+      question,
+      evidence: result.text,
+      sources: result.sources,
+    })
+    return Response.json({ ...result, text })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Error inesperado del asistente.'
     return Response.json({ error: message }, { status: 500 })
