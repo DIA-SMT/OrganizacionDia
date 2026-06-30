@@ -1,3 +1,5 @@
+import { getSupabaseAdminClient } from '@/lib/supabase/admin'
+
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
@@ -42,6 +44,19 @@ type ProjectCommitActivity = {
   url: string
   repo: string
   repoLabel: string
+}
+
+type CachedCommitRow = {
+  project_id: string
+  sha: string
+  message: string
+  author: string
+  author_login: string | null
+  author_avatar_url: string | null
+  committed_at: string | null
+  commit_url: string
+  repository: string
+  repository_label: string
 }
 
 function parseGithubRepo(url: string | null | undefined) {
@@ -115,6 +130,41 @@ async function fetchRepoCommits(repoUrl: string | null | undefined, repoLabel: s
   }))
 }
 
+async function loadCachedCommits(projectIds: string[], days: number | null, limitPerProject: number) {
+  const supabase = getSupabaseAdminClient()
+  if (!supabase || projectIds.length === 0) return {} as Record<string, ProjectCommitActivity[]>
+
+  let query = supabase
+    .from('project_commits')
+    .select('project_id, sha, message, author, author_login, author_avatar_url, committed_at, commit_url, repository, repository_label')
+    .in('project_id', projectIds)
+    .order('committed_at', { ascending: false })
+    .limit(Math.max(50, projectIds.length * limitPerProject * 2))
+
+  if (days) query = query.gte('committed_at', new Date(Date.now() - days * 86400000).toISOString())
+  const { data, error } = await query
+  if (error) return {}
+
+  const grouped: Record<string, ProjectCommitActivity[]> = {}
+  for (const row of (data ?? []) as CachedCommitRow[]) {
+    const list = grouped[row.project_id] ?? []
+    if (list.length >= limitPerProject * 2) continue
+    list.push({
+      sha: row.sha,
+      message: row.message,
+      author: row.author,
+      authorLogin: row.author_login,
+      authorAvatarUrl: row.author_avatar_url,
+      date: row.committed_at,
+      url: row.commit_url,
+      repo: row.repository,
+      repoLabel: row.repository_label,
+    })
+    grouped[row.project_id] = list
+  }
+  return grouped
+}
+
 export async function POST(request: Request) {
   const body = (await request.json()) as ProjectCommitRequest
   const projects = body.projects ?? []
@@ -146,8 +196,40 @@ export async function POST(request: Request) {
     }),
   )
 
+  const liveByProject = Object.fromEntries(entries) as Record<string, ProjectCommitActivity[]>
+  const supabase = getSupabaseAdminClient()
+  const rowsToCache = entries.flatMap(([projectId, commits]) => commits.map((commit) => ({
+    project_id: projectId,
+    sha: commit.sha,
+    message: commit.message,
+    author: commit.author,
+    author_login: commit.authorLogin,
+    author_avatar_url: commit.authorAvatarUrl,
+    committed_at: commit.date,
+    commit_url: commit.url,
+    repository: commit.repo,
+    repository_label: commit.repoLabel,
+    synced_at: new Date().toISOString(),
+  })))
+
+  if (supabase && rowsToCache.length > 0) {
+    await supabase.from('project_commits').upsert(rowsToCache, { onConflict: 'project_id,sha' })
+  }
+
+  const cachedByProject = await loadCachedCommits(projects.map((project) => project.id), days, limitPerRepo)
+  const commitsByProject = Object.fromEntries(projects.map((project) => {
+    const merged = new Map<string, ProjectCommitActivity>()
+    for (const commit of [...(liveByProject[project.id] ?? []), ...(cachedByProject[project.id] ?? [])]) {
+      merged.set(commit.sha, commit)
+    }
+    return [project.id, Array.from(merged.values())
+      .sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime())
+      .slice(0, limitPerRepo * 2)]
+  }))
+
   return Response.json({
-    commitsByProject: Object.fromEntries(entries) as Record<string, ProjectCommitActivity[]>,
+    commitsByProject,
     configured: Boolean(token),
+    cached: Object.values(cachedByProject).some((commits) => commits.length > 0),
   })
 }

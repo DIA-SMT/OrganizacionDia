@@ -6,6 +6,8 @@ alter table public.members enable row level security;
 alter table public.projects enable row level security;
 alter table public.tasks enable row level security;
 alter table public.task_assignees enable row level security;
+alter table public.project_members enable row level security;
+alter table public.project_commits enable row level security;
 alter table public.comments enable row level security;
 alter table public.blockers enable row level security;
 
@@ -17,6 +19,9 @@ drop policy if exists "authenticated read tasks" on public.tasks;
 drop policy if exists "authenticated write tasks" on public.tasks;
 drop policy if exists "authenticated read task assignees" on public.task_assignees;
 drop policy if exists "authenticated write task assignees" on public.task_assignees;
+drop policy if exists "authenticated read project members" on public.project_members;
+drop policy if exists "authenticated write project members" on public.project_members;
+drop policy if exists "authenticated read project commits" on public.project_commits;
 drop policy if exists "authenticated read comments" on public.comments;
 drop policy if exists "authenticated write comments" on public.comments;
 drop policy if exists "authenticated read blockers" on public.blockers;
@@ -60,8 +65,24 @@ on public.task_assignees for select
 to authenticated
 using (true);
 
+create policy "authenticated read project members"
+on public.project_members for select
+to authenticated
+using (true);
+
+create policy "authenticated read project commits"
+on public.project_commits for select
+to authenticated
+using (true);
+
 create policy "authenticated write task assignees"
 on public.task_assignees for all
+to authenticated
+using (true)
+with check (true);
+
+create policy "authenticated write project members"
+on public.project_members for all
 to authenticated
 using (true)
 with check (true);
