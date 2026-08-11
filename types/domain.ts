@@ -27,3 +27,11 @@ export type TaskType =
 export type Priority = 'Baja' | 'Media' | 'Alta' | 'Critica'
 
 export type TeamRole = 'Admin' | 'PM' | 'Dev' | 'QA' | 'Viewer'
+
+export type Team = {
+  id: string
+  name: string
+  slug: string
+  color: string | null
+  active: boolean
+}

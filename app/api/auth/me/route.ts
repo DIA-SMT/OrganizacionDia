@@ -5,7 +5,12 @@ type MemberLookup = {
   role: string
   full_name: string | null
   email: string | null
+  team_id: string | null
+  teams: { slug: string; name: string } | null
 }
+
+const MEMBER_SELECT = 'id, role, full_name, email, team_id, teams:team_id (slug, name)'
+const LEGACY_MEMBER_SELECT = 'id, role, full_name, email'
 
 function normalizeRole(value: string | null | undefined) {
   const normalized = String(value ?? '').trim()
@@ -13,6 +18,35 @@ function normalizeRole(value: string | null | undefined) {
     return normalized
   }
   return 'Viewer'
+}
+
+type MemberFilter = { column: 'auth_user_id'; value: string } | { column: 'email'; value: string }
+
+async function lookupMember(
+  supabase: NonNullable<Awaited<ReturnType<typeof createClient>>>,
+  filter: MemberFilter
+): Promise<MemberLookup | null> {
+  function buildQuery(select: string) {
+    const query = supabase.from('members').select(select).eq('active', true)
+    return filter.column === 'auth_user_id'
+      ? query.eq('auth_user_id', filter.value)
+      : query.ilike('email', filter.value)
+  }
+
+  const { data, error } = await buildQuery(MEMBER_SELECT).maybeSingle()
+
+  if (!error) {
+    return data as MemberLookup | null
+  }
+
+  // Base sin migrar (add_teams.sql pendiente): reintenta sin datos de equipo.
+  const { data: legacy } = await buildQuery(LEGACY_MEMBER_SELECT).maybeSingle()
+
+  if (!legacy) {
+    return null
+  }
+
+  return { ...(legacy as unknown as Omit<MemberLookup, 'team_id' | 'teams'>), team_id: null, teams: null }
 }
 
 export async function GET() {
@@ -28,28 +62,12 @@ export async function GET() {
     return Response.json({ user: null }, { status: 401 })
   }
 
-  let member: MemberLookup | null = null
-
-  const { data: byAuthUser } = await supabase
-    .from('members')
-    .select('id, role, full_name, email')
-    .eq('auth_user_id', data.user.id)
-    .eq('active', true)
-    .maybeSingle()
-
-  member = byAuthUser as MemberLookup | null
+  let member = await lookupMember(supabase, { column: 'auth_user_id', value: data.user.id })
 
   const userEmail = data.user.email?.trim()
 
   if (!member && userEmail) {
-    const { data: byEmail } = await supabase
-      .from('members')
-      .select('id, role, full_name, email')
-      .ilike('email', userEmail)
-      .eq('active', true)
-      .maybeSingle()
-
-    member = byEmail as MemberLookup | null
+    member = await lookupMember(supabase, { column: 'email', value: userEmail })
   }
 
   return Response.json(
@@ -61,6 +79,9 @@ export async function GET() {
       memberId: member?.id ?? null,
       memberName: member?.full_name ?? null,
       role: normalizeRole(member?.role),
+      teamId: member?.team_id ?? null,
+      teamSlug: member?.teams?.slug ?? null,
+      teamName: member?.teams?.name ?? null,
       configured: true,
     },
     { status: 200 }
