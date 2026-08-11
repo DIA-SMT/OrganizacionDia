@@ -78,6 +78,12 @@ editarlo, y no ve nada interno de DIA.
 
 ## Etapa 2 — Catálogo cruzado de proyectos
 
+> **Estado: implementada en código (2026-08-11).** Página `/radar` ("Radar de
+> proyectos"), visible para todos los equipos en el sidebar. Lee la vista
+> `project_catalog` (solo ficha pública), con chips de filtro por equipo
+> (con color y conteo), búsqueda sobre todos los campos de la ficha y links
+> a repos/sitio. Lógica de filtrado en `lib/catalog-filters.ts` con tests.
+
 **Objetivo:** cada equipo puede revisar qué está haciendo el otro.
 
 - Nueva página "Proyectos por equipo" (o "Radar"): lista sobre `project_catalog` con

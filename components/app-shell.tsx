@@ -4,7 +4,7 @@ import { useAuth } from '@/context/AuthContext'
 import { CursorAiBackground } from '@/components/cursor-ai-background'
 import { filterNavItemsForTeam, isTeamRestricted } from '@/lib/team-access'
 import { motion } from 'framer-motion'
-import { Code2, FileText, GitPullRequest, History, LayoutDashboard, LogOut, Search, Sun, Moon, Trash2, Users } from 'lucide-react'
+import { Code2, FileText, GitPullRequest, History, LayoutDashboard, LogOut, Radar, Search, Sun, Moon, Trash2, Users } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
@@ -20,6 +20,7 @@ type AppShellProps = {
 const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/projects', label: 'Proyectos', icon: Code2 },
+  { href: '/radar', label: 'Radar', icon: Radar },
   { href: '/tasks', label: 'Tareas', icon: GitPullRequest },
   { href: '/team', label: 'Equipo', icon: Users },
   { href: '/expedientes', label: 'Expedientes', icon: FileText },

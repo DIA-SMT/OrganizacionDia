@@ -2,7 +2,7 @@ export const DIA_TEAM_SLUG = 'dia'
 
 // Rutas accesibles para cualquier equipo. Todo lo que no figure aca
 // (y no sea publico) es interno de DIA: cerrado por defecto.
-const SHARED_ROUTE_PREFIXES = ['/projects', '/proyectos', '/team', '/equipo']
+const SHARED_ROUTE_PREFIXES = ['/projects', '/proyectos', '/radar', '/team', '/equipo']
 
 // Rutas fuera del dashboard (login y recuperacion de clave).
 const PUBLIC_ROUTE_PREFIXES = ['/login', '/forgot-password', '/reset-password']

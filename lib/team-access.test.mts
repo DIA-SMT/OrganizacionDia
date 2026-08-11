@@ -4,6 +4,7 @@ import test from 'node:test'
 const navItems = [
   { href: '/', label: 'Dashboard' },
   { href: '/projects', label: 'Proyectos' },
+  { href: '/radar', label: 'Radar' },
   { href: '/tasks', label: 'Tareas' },
   { href: '/team', label: 'Equipo' },
   { href: '/expedientes', label: 'Expedientes' },
@@ -30,6 +31,7 @@ test('un equipo externo solo accede a proyectos y equipo', async () => {
 
   assert.equal(canAccessRoute('ditec', '/projects'), true)
   assert.equal(canAccessRoute('ditec', '/proyectos'), true)
+  assert.equal(canAccessRoute('ditec', '/radar'), true)
   assert.equal(canAccessRoute('ditec', '/team'), true)
   assert.equal(canAccessRoute('ditec', '/equipo'), true)
 
@@ -44,7 +46,7 @@ test('un equipo externo solo accede a proyectos y equipo', async () => {
 
   assert.deepEqual(
     filterNavItemsForTeam('ditec', navItems).map((item) => item.href),
-    ['/projects', '/team']
+    ['/projects', '/radar', '/team']
   )
 })
 
