@@ -60,6 +60,9 @@ no puede leer tareas/documentos/expedientes de DIA ni escribir sobre sus proyect
 
 ## Etapa 1 — Cuentas DITEC y su espacio de trabajo
 
+> **Estado: implementada en código (2026-08-11).** El alta de cuentas es un
+> procedimiento manual documentado en "Etapa 1 — Alta de cuentas DITEC" al final.
+
 **Objetivo:** DITEC entra al dashboard y gestiona su catálogo de proyectos.
 
 - Alta de usuarios DITEC (Supabase Auth + `members` con `team_id = ditec`).
@@ -161,3 +164,49 @@ la Etapa 3 lo vuelve automático.
   `add_teams.sql` (evita que una re-ejecución vieja reabra el acceso).
 - Pendiente para revisar en Etapa 1: políticas del bucket de Storage de documentos
   (hoy no están versionadas en el repo).
+
+---
+
+## Etapa 1 — Qué se implementó y cómo dar de alta cuentas DITEC
+
+**Cambios de la app (2026-08-11):**
+
+- `lib/team-access.ts` — reglas de acceso por equipo, con default cerrado:
+  para un equipo externo solo son accesibles Proyectos (`/projects`, `/proyectos`)
+  y Equipo (`/team`, `/equipo`); todo lo demás es interno de DIA.
+- `components/team-gate.tsx` (montado en el layout) — redirige a un usuario de
+  equipo externo fuera de los módulos internos; su "home" es `/projects`.
+  Es solo UX: la protección real de datos es RLS (Etapa 0).
+- `components/app-shell.tsx` — el sidebar muestra solo los módulos permitidos;
+  para equipos externos el branding muestra el nombre del equipo.
+- `components/virtual-assistant.tsx` — el asistente DIA solo aparece para
+  usuarios logueados del equipo DIA.
+- Un usuario con equipo desconocido (`teamSlug` null: base sin migrar o sin fila
+  en `members`) conserva el comportamiento histórico de la UI; RLS decide los datos.
+
+**Alta de una cuenta DITEC (procedimiento manual, lo hace un admin de Supabase):**
+
+1. En Supabase → Authentication → Users → *Add user*: crear el usuario con el
+   correo de la persona y una contraseña temporal (marcar *Auto confirm*).
+2. En el SQL Editor, crear su ficha de miembro en el equipo DITEC:
+
+   ```sql
+   insert into public.members (full_name, email, role, team_id)
+   values (
+     'Nombre Apellido',
+     'persona@ditec.example',  -- mismo correo que en Auth
+     'PM',                      -- o 'Dev' / 'Viewer' segun corresponda
+     (select id from public.teams where slug = 'ditec')
+   );
+   ```
+
+   El vínculo con el usuario de Auth se resuelve por correo (no hace falta
+   `auth_user_id`). La persona cambia su contraseña con "Olvidé mi contraseña".
+3. Desde ahí, esa persona entra al dashboard y ve solo Proyectos y Equipo,
+   con sus datos. Puede cargar fichas de miembros de su equipo desde Equipo
+   (el trigger las asigna a DITEC), pero **cada login nuevo requiere además
+   su usuario en Supabase Auth** (paso 1).
+
+**Verificación sugerida:** entrar con una cuenta DITEC y confirmar que el
+sidebar muestra solo Proyectos y Equipo, que `/expedientes` o `/` redirigen a
+`/projects`, que no aparece el asistente, y que puede crear/editar un proyecto.

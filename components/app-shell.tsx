@@ -2,6 +2,7 @@
 
 import { useAuth } from '@/context/AuthContext'
 import { CursorAiBackground } from '@/components/cursor-ai-background'
+import { filterNavItemsForTeam, isTeamRestricted } from '@/lib/team-access'
 import { motion } from 'framer-motion'
 import { Code2, FileText, GitPullRequest, History, LayoutDashboard, LogOut, Search, Sun, Moon, Trash2, Users } from 'lucide-react'
 import Link from 'next/link'
@@ -29,9 +30,11 @@ const navItems = [
 export function AppShell({ title, subtitle, search = '', onSearchChange, children }: AppShellProps) {
   const pathname = usePathname()
   const router = useRouter()
-  const { user, loading, authConfigured, signOut } = useAuth()
+  const { user, loading, authConfigured, signOut, teamSlug, teamName } = useAuth()
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
+  const isExternalTeam = isTeamRestricted(teamSlug)
+  const visibleNavItems = filterNavItemsForTeam(teamSlug, navItems)
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -91,15 +94,15 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
             </div>
             {!sidebarCollapsed && (
             <div className="min-w-0">
-              <p className={`text-sm font-bold ${textStrongClass}`}>DIA</p>
-              <p className="text-xs leading-tight text-slate-400">Direccion de Inteligencia Artificial</p>
+              <p className={`text-sm font-bold ${textStrongClass}`}>{isExternalTeam ? teamName ?? 'Equipo' : 'DIA'}</p>
+              <p className="text-xs leading-tight text-slate-400">{isExternalTeam ? 'Catalogo de proyectos' : 'Direccion de Inteligencia Artificial'}</p>
             </div>
             )}
             </div>
           </div>
 
           <nav className="space-y-1">
-            {navItems.map((item) => {
+            {visibleNavItems.map((item) => {
               const Icon = item.icon
               const active = pathname === item.href || (item.href === '/expedientes' && pathname.startsWith('/expedientes/'))
               const activeClass = isDark ? 'bg-blue-500/15 text-blue-300' : 'dia-surface-raised-bg dia-primary-text'
