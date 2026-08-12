@@ -1,9 +1,10 @@
 'use client'
 
 import { useAuth } from '@/context/AuthContext'
+import { formatOverlapScore, type SimilarProject } from '@/lib/overlaps'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
-import { Plus, X } from 'lucide-react'
-import { useState } from 'react'
+import { Plus, TriangleAlert, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 export function ProjectCreateButton({
   onCreated,
@@ -16,6 +17,7 @@ export function ProjectCreateButton({
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [similarProjects, setSimilarProjects] = useState<SimilarProject[]>([])
   const [form, setForm] = useState({
     name: '',
     description: '',
@@ -36,6 +38,40 @@ export function ProjectCreateButton({
   const textAreaClass = `min-h-24 rounded-md border px-3 py-2 text-sm outline-none ${
     isDark ? 'border-slate-700 bg-slate-950 text-slate-100 placeholder:text-slate-500' : 'border-slate-200 bg-white text-slate-950'
   }`
+
+  // Aviso no bloqueante: busca proyectos parecidos de otros equipos
+  // mientras se completa el formulario (Radar / Etapa 3).
+  useEffect(() => {
+    if (!open) return
+
+    const timer = window.setTimeout(async () => {
+      const trimmedName = form.name.trim()
+      if (trimmedName.length < 3) {
+        setSimilarProjects([])
+        return
+      }
+
+      const supabase = getSupabaseBrowserClient()
+      if (!supabase) return
+
+      const { data, error: rpcError } = await supabase.rpc('find_similar_projects', {
+        p_name: trimmedName,
+        p_description: form.description.trim() || null,
+        p_repository_url: form.repository_url.trim() || null,
+        p_repository_url_secondary: form.repository_url_secondary.trim() || null,
+      })
+
+      // Base sin migrar (add_project_overlaps.sql pendiente): sin aviso.
+      if (rpcError) {
+        setSimilarProjects([])
+        return
+      }
+
+      setSimilarProjects(((data ?? []) as SimilarProject[]).slice(0, 3))
+    }, 600)
+
+    return () => window.clearTimeout(timer)
+  }, [open, form.name, form.description, form.repository_url, form.repository_url_secondary])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -95,6 +131,7 @@ export function ProjectCreateButton({
       }
 
       setOpen(false)
+      setSimilarProjects([])
       setForm({ name: '', description: '', requester_area: '', stack: '', repository_url: '', repository_url_secondary: '', website_url: '', status: 'Planificación', priority: 'Media', progress: '0', estimated_delivery: '' })
       onCreated?.()
     } catch (err) {
@@ -134,12 +171,37 @@ export function ProjectCreateButton({
                 <h2 className={`text-lg font-bold ${isDark ? 'text-white' : 'text-slate-950'}`}>Crear proyecto</h2>
                 <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Alta rapida para un sistema, modulo o integracion.</p>
               </div>
-              <button type="button" onClick={() => setOpen(false)} className={`rounded-md p-2 text-slate-400 ${isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-100'}`}>
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false)
+                  setSimilarProjects([])
+                }}
+                className={`rounded-md p-2 text-slate-400 ${isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-100'}`}
+              >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             {error && <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+            {similarProjects.length > 0 && (
+              <div className={`mt-4 rounded-md border px-3 py-2 text-sm ${isDark ? 'border-amber-500/30 bg-amber-500/10 text-amber-100' : 'border-amber-300 bg-amber-50 text-amber-900'}`}>
+                <p className="flex items-center gap-2 font-semibold">
+                  <TriangleAlert className="h-4 w-4 shrink-0" />
+                  Posible cruce con otro equipo
+                </p>
+                <ul className="mt-1 space-y-0.5">
+                  {similarProjects.map((similar) => (
+                    <li key={similar.project_id}>
+                      {similar.team_name} ya tiene <span className="font-semibold">{similar.project_name}</span> ({similar.project_status.toLowerCase()}) — {similar.match_reason.toLowerCase()}, {formatOverlapScore(similar.score)}
+                    </li>
+                  ))}
+                </ul>
+                <p className={`mt-1 text-xs ${isDark ? 'text-amber-200/80' : 'text-amber-700'}`}>
+                  Podes crearlo igual: el cruce queda registrado en el Radar para revisarlo entre equipos.
+                </p>
+              </div>
+            )}
             {!authConfigured && (
               <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                 Para crear proyectos reales falta configurar Supabase en <a className="font-semibold underline" href="/supabase">/supabase</a>.

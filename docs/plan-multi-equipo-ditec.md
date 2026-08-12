@@ -96,6 +96,18 @@ editarlo, y no ve nada interno de DIA.
 
 ## Etapa 3 — Detección de cruces
 
+> **Estado: implementada en código (2026-08-11).** Pendiente: ejecutar
+> `supabase/add_project_overlaps.sql` en el SQL Editor de Supabase (corre una
+> detección inicial sobre los proyectos existentes). Detalles técnicos:
+> similitud con `pg_trgm` + `unaccent` (nombre↔nombre, nombre↔descripción y
+> repos normalizados), trigger `projects_detect_overlaps` que recalcula los
+> pares Pendientes de un proyecto al crearlo/editarlo (conserva los revisados),
+> alerta con debounce en el formulario de alta, y panel "Posibles cruces" en el
+> Radar con acciones Confirmar/Descartar sobre la vista
+> `project_overlaps_detail`. También se actualizaron `add_expedientes.sql` y
+> `add_alexa_activity_log.sql` para que una instalación desde cero no recree
+> las políticas abiertas.
+
 **Objetivo:** que el sistema avise solo, sin depender de que alguien mire el catálogo.
 
 - **Similitud en Postgres:** extensiones `pg_trgm` + `unaccent`; función

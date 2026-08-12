@@ -3,8 +3,9 @@
 import { AppShell } from '@/components/app-shell'
 import { useAuth } from '@/context/AuthContext'
 import { filterCatalog, getTeamOptions, type CatalogProject } from '@/lib/catalog-filters'
+import { formatOverlapScore, sortOverlaps, type OverlapDetail, type OverlapStatus } from '@/lib/overlaps'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
-import { ExternalLink, GitBranch, Globe, Radar } from 'lucide-react'
+import { ArrowLeftRight, Check, ExternalLink, GitBranch, Globe, Radar, TriangleAlert, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 function formatDate(value: string | null) {
@@ -33,12 +34,53 @@ function repoLabel(url: string) {
 }
 
 export function RadarScreen() {
-  const { teamSlug: ownTeamSlug } = useAuth()
+  const { teamSlug: ownTeamSlug, memberId } = useAuth()
   const [search, setSearch] = useState('')
   const [teamFilter, setTeamFilter] = useState<string | null>(null)
   const [projects, setProjects] = useState<CatalogProject[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [overlaps, setOverlaps] = useState<OverlapDetail[]>([])
+  const [overlapsVersion, setOverlapsVersion] = useState(0)
+  const [showReviewed, setShowReviewed] = useState(false)
+  const [reviewingId, setReviewingId] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function fetchOverlaps() {
+      const supabase = getSupabaseBrowserClient()
+      if (!supabase) return
+
+      const { data, error: overlapsError } = await supabase.from('project_overlaps_detail').select('*')
+
+      // Base sin migrar (add_project_overlaps.sql pendiente): sin panel.
+      if (overlapsError) {
+        setOverlaps([])
+        return
+      }
+
+      setOverlaps(sortOverlaps((data ?? []) as OverlapDetail[]))
+    }
+
+    void fetchOverlaps()
+  }, [overlapsVersion])
+
+  async function reviewOverlap(overlap: OverlapDetail, status: OverlapStatus) {
+    const supabase = getSupabaseBrowserClient()
+    if (!supabase) return
+
+    setReviewingId(overlap.id)
+    const { error: reviewError } = await supabase
+      .from('project_overlaps')
+      .update({ status, reviewed_by_id: memberId, reviewed_at: new Date().toISOString() })
+      .eq('id', overlap.id)
+
+    if (reviewError) {
+      setError(reviewError.message)
+    } else {
+      setOverlapsVersion((version) => version + 1)
+    }
+    setReviewingId(null)
+  }
 
   useEffect(() => {
     async function fetchCatalog() {
@@ -71,6 +113,8 @@ export function RadarScreen() {
 
   const teamOptions = useMemo(() => getTeamOptions(projects), [projects])
   const filteredProjects = useMemo(() => filterCatalog(projects, teamFilter, search), [projects, teamFilter, search])
+  const pendingOverlaps = useMemo(() => overlaps.filter((overlap) => overlap.status === 'Pendiente'), [overlaps])
+  const reviewedOverlaps = useMemo(() => overlaps.filter((overlap) => overlap.status !== 'Pendiente'), [overlaps])
 
   return (
     <AppShell title="Radar de proyectos" subtitle="Que esta desarrollando cada equipo" search={search} onSearchChange={setSearch}>
@@ -78,6 +122,94 @@ export function RadarScreen() {
         <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-100">
           {error}
         </div>
+      )}
+
+      {overlaps.length > 0 && (
+        <section className="mb-5 rounded-lg border border-amber-300 bg-amber-50/70 shadow-sm dark:border-amber-500/30 dark:bg-amber-500/10">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-200/70 px-5 py-4 dark:border-amber-500/20">
+            <div>
+              <div className="flex items-center gap-2">
+                <TriangleAlert className="h-4 w-4 text-amber-600 dark:text-amber-300" />
+                <h2 className="font-semibold text-slate-950 dark:text-white">Posibles cruces entre equipos</h2>
+              </div>
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                {pendingOverlaps.length > 0
+                  ? `${pendingOverlaps.length} sin revisar - confirmalos o descartalos entre equipos`
+                  : 'Sin cruces pendientes de revision'}
+              </p>
+            </div>
+            {reviewedOverlaps.length > 0 && (
+              <button
+                type="button"
+                className="h-9 rounded-md border border-amber-300 px-3 text-sm font-semibold text-amber-800 transition hover:bg-amber-100 dark:border-amber-500/30 dark:text-amber-200 dark:hover:bg-amber-500/10"
+                onClick={() => setShowReviewed((current) => !current)}
+              >
+                {showReviewed ? 'Ocultar revisados' : `Ver revisados (${reviewedOverlaps.length})`}
+              </button>
+            )}
+          </div>
+
+          <div className="divide-y divide-amber-200/60 dark:divide-amber-500/15">
+            {(showReviewed ? [...pendingOverlaps, ...reviewedOverlaps] : pendingOverlaps).map((overlap) => (
+              <article key={overlap.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <span
+                      className="rounded px-1.5 py-0.5 text-xs font-semibold text-white"
+                      style={{ backgroundColor: overlap.team_a_color ?? '#64748b' }}
+                    >
+                      {overlap.team_a_name}
+                    </span>
+                    <span className="font-semibold text-slate-950 dark:text-white">{overlap.project_a_name}</span>
+                    <ArrowLeftRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                    <span
+                      className="rounded px-1.5 py-0.5 text-xs font-semibold text-white"
+                      style={{ backgroundColor: overlap.team_b_color ?? '#64748b' }}
+                    >
+                      {overlap.team_b_name}
+                    </span>
+                    <span className="font-semibold text-slate-950 dark:text-white">{overlap.project_b_name}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    {overlap.match_reason} - coincidencia {formatOverlapScore(overlap.score)}
+                    {overlap.status !== 'Pendiente' && (
+                      <>
+                        {' '}- <span className="font-semibold">{overlap.status}</span>
+                        {overlap.reviewed_by_name ? ` por ${overlap.reviewed_by_name}` : ''}
+                      </>
+                    )}
+                  </p>
+                </div>
+
+                {overlap.status === 'Pendiente' && (
+                  <div className="flex shrink-0 gap-2">
+                    <button
+                      type="button"
+                      disabled={reviewingId === overlap.id}
+                      className="flex h-8 items-center gap-1.5 rounded-md border border-emerald-300 px-2.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-60 dark:border-emerald-500/40 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
+                      onClick={() => void reviewOverlap(overlap, 'Confirmado')}
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      Confirmar cruce
+                    </button>
+                    <button
+                      type="button"
+                      disabled={reviewingId === overlap.id}
+                      className="flex h-8 items-center gap-1.5 rounded-md border border-slate-300 px-2.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+                      onClick={() => void reviewOverlap(overlap, 'Descartado')}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      Descartar
+                    </button>
+                  </div>
+                )}
+              </article>
+            ))}
+            {pendingOverlaps.length === 0 && !showReviewed && (
+              <p className="px-5 py-3 text-sm text-slate-500 dark:text-slate-400">No hay cruces pendientes.</p>
+            )}
+          </div>
+        </section>
       )}
 
       <section className="rounded-lg border border-slate-200 dia-surface-bg shadow-sm dark:border-slate-800 dark:bg-slate-900">
