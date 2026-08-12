@@ -45,33 +45,21 @@ end $$;
 
 alter table public.expedientes enable row level security;
 
-do $$
-begin
-  if not exists (
-    select 1 from pg_policies
-    where schemaname = 'public'
-      and tablename = 'expedientes'
-      and policyname = 'Authenticated users can read expedientes'
-  ) then
-    create policy "Authenticated users can read expedientes"
-      on public.expedientes for select
-      to authenticated
-      using (true);
-  end if;
+-- Modulo interno de DIA: requiere las funciones de equipo de add_teams.sql
+-- (en una base nueva, ejecutar schema.sql antes que este archivo).
+drop policy if exists "Authenticated users can read expedientes" on public.expedientes;
+drop policy if exists "Authenticated users can update expedientes" on public.expedientes;
+drop policy if exists "dia read expedientes" on public.expedientes;
+drop policy if exists "dia update expedientes" on public.expedientes;
 
-  if not exists (
-    select 1 from pg_policies
-    where schemaname = 'public'
-      and tablename = 'expedientes'
-      and policyname = 'Authenticated users can update expedientes'
-  ) then
-    create policy "Authenticated users can update expedientes"
-      on public.expedientes for update
-      to authenticated
-      using (true)
-      with check (true);
-  end if;
-end $$;
+create policy "dia read expedientes" on public.expedientes
+  for select to authenticated
+  using (public.current_team_slug() = 'dia');
+
+create policy "dia update expedientes" on public.expedientes
+  for update to authenticated
+  using (public.current_team_slug() = 'dia')
+  with check (public.current_team_slug() = 'dia');
 
 create index if not exists expedientes_drive_created_at_idx on public.expedientes (drive_created_at desc);
 create index if not exists expedientes_status_idx on public.expedientes (status);

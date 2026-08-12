@@ -70,6 +70,17 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=tu_anon_key
 supabase/schema.sql
 ```
 
+En una base existente (creada antes del modelo multi-equipo), ejecutar en su lugar:
+
+```text
+supabase/add_teams.sql
+supabase/add_project_overlaps.sql
+```
+
+El primero agrega la tabla `teams`, la columna `team_id` y el aislamiento RLS
+por equipo (DIA / DITEC); el segundo, la deteccion de cruces entre proyectos
+de equipos distintos. Ver `docs/plan-multi-equipo-ditec.md`.
+
 5. Opcional: cargar datos de ejemplo:
 
 ```text

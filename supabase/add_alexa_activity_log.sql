@@ -12,11 +12,15 @@ create table if not exists public.alexa_activity_log (
 
 alter table public.alexa_activity_log enable row level security;
 
+-- Modulo interno de DIA: requiere las funciones de equipo de add_teams.sql
+-- (en una base nueva, ejecutar schema.sql antes que este archivo).
 drop policy if exists "authenticated read alexa activity" on public.alexa_activity_log;
-create policy "authenticated read alexa activity"
+drop policy if exists "dia read alexa activity" on public.alexa_activity_log;
+
+create policy "dia read alexa activity"
 on public.alexa_activity_log for select
 to authenticated
-using (true);
+using (public.current_team_slug() = 'dia');
 
 create index if not exists alexa_activity_log_created_at_idx
 on public.alexa_activity_log(created_at desc);

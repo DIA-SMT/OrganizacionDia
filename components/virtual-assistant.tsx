@@ -1,5 +1,7 @@
 'use client'
 
+import { useAuth } from '@/context/AuthContext'
+import { isTeamRestricted } from '@/lib/team-access'
 import { Bot, Database, ExternalLink, MessageCircle, Search, Send, X } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
@@ -37,6 +39,7 @@ type AssistantResponse = {
 }
 
 export function VirtualAssistant() {
+  const { user, teamSlug } = useAuth()
   const [open, setOpen] = useState(false)
   const [question, setQuestion] = useState('')
   const [thinking, setThinking] = useState(false)
@@ -110,6 +113,10 @@ export function VirtualAssistant() {
       setThinking(false)
     }
   }
+
+  // El asistente consulta datos internos de DIA: solo para usuarios
+  // logueados del equipo DIA (o sin equipo conocido, por compatibilidad).
+  if (!user || isTeamRestricted(teamSlug)) return null
 
   return (
     <>

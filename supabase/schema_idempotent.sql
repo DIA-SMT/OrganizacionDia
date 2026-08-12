@@ -1,5 +1,8 @@
 -- Organizacion DIA - esquema idempotente
 -- Se puede ejecutar varias veces en Supabase SQL Editor.
+-- IMPORTANTE: despues de este archivo ejecutar supabase/add_teams.sql,
+-- que crea la tabla teams, la columna team_id y las politicas RLS por equipo.
+-- Este archivo ya no crea politicas: solo tablas e indices.
 
 create extension if not exists pgcrypto;
 
@@ -243,56 +246,10 @@ drop policy if exists "authenticated write comments" on public.comments;
 drop policy if exists "authenticated write project documents" on public.project_documents;
 drop policy if exists "authenticated write blockers" on public.blockers;
 
-create policy "authenticated read members" on public.members
-  for select to authenticated using (true);
-
-create policy "authenticated read projects" on public.projects
-  for select to authenticated using (true);
-
-create policy "authenticated read tasks" on public.tasks
-  for select to authenticated using (true);
-
-create policy "authenticated read task assignees" on public.task_assignees
-  for select to authenticated using (true);
-
-create policy "authenticated read project members" on public.project_members
-  for select to authenticated using (true);
-
-create policy "authenticated read project commits" on public.project_commits
-  for select to authenticated using (true);
-
-create policy "authenticated read comments" on public.comments
-  for select to authenticated using (true);
-
-create policy "authenticated read project documents" on public.project_documents
-  for select to authenticated using (true);
-
-create policy "authenticated read blockers" on public.blockers
-  for select to authenticated using (true);
-
-create policy "authenticated write members" on public.members
-  for all to authenticated using (true) with check (true);
-
-create policy "authenticated write projects" on public.projects
-  for all to authenticated using (true) with check (true);
-
-create policy "authenticated write tasks" on public.tasks
-  for all to authenticated using (true) with check (true);
-
-create policy "authenticated write task assignees" on public.task_assignees
-  for all to authenticated using (true) with check (true);
-
-create policy "authenticated write project members" on public.project_members
-  for all to authenticated using (true) with check (true);
-
-create policy "authenticated write comments" on public.comments
-  for all to authenticated using (true) with check (true);
-
-create policy "authenticated write project documents" on public.project_documents
-  for all to authenticated using (true) with check (true);
-
-create policy "authenticated write blockers" on public.blockers
-  for all to authenticated using (true) with check (true);
+-- Las politicas RLS por equipo (y la limpieza de las politicas abiertas
+-- anteriores) viven en supabase/add_teams.sql. Ejecutarlo despues de este
+-- archivo: sin el, las tablas quedan con RLS activo y sin politicas
+-- (nadie lee nada), nunca con acceso abierto.
 
 create index if not exists projects_status_idx on public.projects(status);
 create index if not exists projects_priority_idx on public.projects(priority);

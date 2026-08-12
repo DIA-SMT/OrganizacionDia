@@ -19,3 +19,4 @@ pnpm-debug.log*
 Thumbs.db
 alexa-skill/*.zip
 *.traineddata
+tsconfig.tsbuildinfo

@@ -8,6 +8,8 @@ import type { TeamRole } from '@/types/domain'
 type MemberLookup = {
   id: string
   role: string
+  team_id: string | null
+  teams: { slug: string; name: string } | null
 }
 
 type AuthContextType = {
@@ -15,6 +17,9 @@ type AuthContextType = {
   session: Session | null
   role: TeamRole | null
   memberId: string | null
+  teamId: string | null
+  teamSlug: string | null
+  teamName: string | null
   loading: boolean
   authConfigured: boolean
   signOut: () => Promise<void>
@@ -25,16 +30,25 @@ const AuthContext = createContext<AuthContextType>({
   session: null,
   role: null,
   memberId: null,
+  teamId: null,
+  teamSlug: null,
+  teamName: null,
   loading: true,
   authConfigured: false,
   signOut: async () => {},
 })
+
+const MEMBER_SELECT = 'id, role, team_id, teams:team_id (slug, name)'
+const LEGACY_MEMBER_SELECT = 'id, role'
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [role, setRole] = useState<TeamRole | null>(null)
   const [memberId, setMemberId] = useState<string | null>(null)
+  const [teamId, setTeamId] = useState<string | null>(null)
+  const [teamSlug, setTeamSlug] = useState<string | null>(null)
+  const [teamName, setTeamName] = useState<string | null>(null)
   const supabase = getSupabaseBrowserClient()
   const [loading, setLoading] = useState(Boolean(supabase))
   const lastUserId = useRef<string | null>(null)
@@ -48,6 +62,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return 'Viewer'
   }
 
+  function clearMember() {
+    setRole(null)
+    setMemberId(null)
+    setTeamId(null)
+    setTeamSlug(null)
+    setTeamName(null)
+  }
+
   useEffect(() => {
     if (!supabase) {
       return
@@ -55,45 +77,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     loadingTimeoutRef.current = window.setTimeout(() => setLoading(false), 8000)
 
+    async function lookupMember(column: 'auth_user_id' | 'email', value: string): Promise<MemberLookup | null> {
+      if (!supabase) return null
+
+      function buildQuery(select: string) {
+        const query = supabase!.from('members').select(select).eq('active', true)
+        return column === 'auth_user_id' ? query.eq('auth_user_id', value) : query.ilike('email', value)
+      }
+
+      const { data, error } = await buildQuery(MEMBER_SELECT).maybeSingle()
+
+      if (!error) {
+        return data as MemberLookup | null
+      }
+
+      // Base sin migrar (add_teams.sql pendiente): reintenta sin datos de equipo.
+      const { data: legacy } = await buildQuery(LEGACY_MEMBER_SELECT).maybeSingle()
+
+      if (!legacy) {
+        return null
+      }
+
+      return { ...(legacy as Omit<MemberLookup, 'team_id' | 'teams'>), team_id: null, teams: null }
+    }
+
     async function loadMember(currentUser: User | null) {
       if (!supabase || !currentUser) {
-        setRole(null)
-        setMemberId(null)
+        clearMember()
         return
       }
 
-      let member: MemberLookup | null = null
-
-      const { data: byAuthUser } = await supabase
-        .from('members')
-        .select('id, role')
-        .eq('auth_user_id', currentUser.id)
-        .eq('active', true)
-        .maybeSingle()
-
-      member = byAuthUser as MemberLookup | null
+      let member = await lookupMember('auth_user_id', currentUser.id)
 
       const userEmail = currentUser.email?.trim()
 
       if (!member && userEmail) {
-        const { data: byEmail } = await supabase
-          .from('members')
-          .select('id, role')
-          .ilike('email', userEmail)
-          .eq('active', true)
-          .maybeSingle()
-
-        member = byEmail as MemberLookup | null
+        member = await lookupMember('email', userEmail)
       }
 
       if (!member) {
         setRole('Viewer')
         setMemberId(null)
+        setTeamId(null)
+        setTeamSlug(null)
+        setTeamName(null)
         return
       }
 
       setRole(normalizeRole(member.role))
       setMemberId(member.id)
+      setTeamId(member.team_id)
+      setTeamSlug(member.teams?.slug ?? null)
+      setTeamName(member.teams?.name ?? null)
     }
 
     async function initializeAuth() {
@@ -121,11 +156,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const payload = await res.json()
             setRole(payload.role ?? 'Viewer')
             setMemberId(payload.memberId ?? null)
+            setTeamId(payload.teamId ?? null)
+            setTeamSlug(payload.teamSlug ?? null)
+            setTeamName(payload.teamName ?? null)
           } else if (res.status === 401) {
             setSession(null)
             setUser(null)
-            setRole(null)
-            setMemberId(null)
+            clearMember()
             lastUserId.current = null
           }
         } catch {
@@ -135,8 +172,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.error('Error initializing auth:', error)
         setSession(null)
         setUser(null)
-        setRole(null)
-        setMemberId(null)
+        clearMember()
       } finally {
         setLoading(false)
         if (loadingTimeoutRef.current) {
@@ -155,8 +191,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (event === 'SIGNED_OUT' || eventName === 'TOKEN_REFRESH_REVOKED') {
         setSession(null)
         setUser(null)
-        setRole(null)
-        setMemberId(null)
+        clearMember()
         lastUserId.current = null
         setLoading(false)
         return
@@ -184,6 +219,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSession(null)
     setRole(null)
     setMemberId(null)
+    setTeamId(null)
+    setTeamSlug(null)
+    setTeamName(null)
   }
 
   return (
@@ -193,6 +231,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         session,
         role,
         memberId,
+        teamId,
+        teamSlug,
+        teamName,
         loading,
         authConfigured: Boolean(supabase),
         signOut,

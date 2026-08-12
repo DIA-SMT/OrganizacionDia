@@ -1,9 +1,13 @@
--- Organizacion DIA - esquema inicial
--- Ejecutar en Supabase SQL Editor sobre una base nueva.
+-- Organizacion DIA - Etapa 0 multi-equipo (DIA + DITEC)
+-- Agrega la tabla teams, columna team_id y aislamiento RLS por equipo.
+-- Ejecutar en Supabase SQL Editor. Idempotente: se puede ejecutar varias veces.
+-- Detalle de diseño: docs/plan-multi-equipo-ditec.md
 
-create extension if not exists pgcrypto;
+-- ============================================================
+-- 1) Tabla de equipos + seed
+-- ============================================================
 
-create table public.teams (
+create table if not exists public.teams (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   slug text not null unique,
@@ -14,157 +18,37 @@ create table public.teams (
 
 insert into public.teams (name, slug, color) values
   ('DIA', 'dia', '#7c3aed'),
-  ('DITEC', 'ditec', '#0ea5e9');
+  ('DITEC', 'ditec', '#0ea5e9')
+on conflict (slug) do nothing;
 
-create table public.members (
-  id uuid primary key default gen_random_uuid(),
-  auth_user_id uuid references auth.users(id) on delete set null,
-  team_id uuid not null references public.teams(id),
-  full_name text not null,
-  email text unique,
-  role text not null default 'Dev' check (role in ('Admin', 'PM', 'Dev', 'QA', 'Viewer')),
-  specialty text,
-  avatar_url text,
-  github_username text,
-  birthday date,
-  favorite_food text,
-  hobby text,
-  favorite_game text,
-  active boolean not null default true,
-  created_at timestamptz not null default now()
-);
+-- ============================================================
+-- 2) team_id en members y projects (backfill: lo existente es de DIA)
+-- ============================================================
 
-create table public.projects (
-  id uuid primary key default gen_random_uuid(),
-  team_id uuid not null references public.teams(id),
-  name text not null,
-  description text,
-  requester_area text,
-  functional_owner text,
-  technical_owner_id uuid references public.members(id) on delete set null,
-  stack text,
-  repository_url text,
-  repository_url_secondary text,
-  website_url text,
-  staging_url text,
-  production_url text,
-  note text,
-  status text not null default 'Planificación' check (
-    status in ('Planificación', 'En desarrollo', 'MVP aprobado', 'QA', 'En Producción', 'Pausado')
-  ),
-  priority text not null default 'Media' check (priority in ('Baja', 'Media', 'Alta', 'Critica')),
-  progress integer not null default 0 check (progress >= 0 and progress <= 100),
-  start_date date,
-  estimated_delivery date,
-  active boolean not null default true,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
+alter table public.members add column if not exists team_id uuid references public.teams(id);
+alter table public.projects add column if not exists team_id uuid references public.teams(id);
 
-create table public.tasks (
-  id uuid primary key default gen_random_uuid(),
-  project_id uuid not null references public.projects(id) on delete cascade,
-  title text not null,
-  description text,
-  type text not null default 'Feature' check (
-    type in ('Feature', 'Bug', 'Mejora', 'Refactor', 'Deploy', 'Documentacion', 'Soporte')
-  ),
-  status text not null default 'Backlog' check (
-    status in ('Backlog', 'Pendiente', 'En desarrollo', 'En revision', 'QA', 'Bloqueada', 'Terminada')
-  ),
-  priority text not null default 'Media' check (priority in ('Baja', 'Media', 'Alta', 'Critica')),
-  reporter_id uuid references public.members(id) on delete set null,
-  due_date date,
-  branch_name text,
-  issue_url text,
-  pr_url text,
-  active boolean not null default true,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
+update public.members
+set team_id = (select id from public.teams where slug = 'dia')
+where team_id is null;
 
-create table public.task_assignees (
-  id uuid primary key default gen_random_uuid(),
-  task_id uuid not null references public.tasks(id) on delete cascade,
-  member_id uuid not null references public.members(id) on delete cascade,
-  assigned_at timestamptz not null default now(),
-  unique (task_id, member_id)
-);
+update public.projects
+set team_id = (select id from public.teams where slug = 'dia')
+where team_id is null;
 
-create table public.comments (
-  id uuid primary key default gen_random_uuid(),
-  project_id uuid references public.projects(id) on delete cascade,
-  task_id uuid references public.tasks(id) on delete cascade,
-  author_id uuid references public.members(id) on delete set null,
-  body text not null,
-  created_at timestamptz not null default now(),
-  check (project_id is not null or task_id is not null)
-);
+alter table public.members alter column team_id set not null;
+alter table public.projects alter column team_id set not null;
 
-create table public.project_members (
-  id uuid primary key default gen_random_uuid(),
-  project_id uuid not null references public.projects(id) on delete cascade,
-  member_id uuid not null references public.members(id) on delete cascade,
-  assigned_at timestamptz not null default now(),
-  unique (project_id, member_id)
-);
+create index if not exists members_team_id_idx on public.members(team_id);
+create index if not exists projects_team_id_idx on public.projects(team_id);
+create index if not exists members_auth_user_id_idx on public.members(auth_user_id);
 
-create table public.project_commits (
-  id uuid primary key default gen_random_uuid(),
-  project_id uuid not null references public.projects(id) on delete cascade,
-  sha text not null,
-  message text not null,
-  author text not null,
-  author_login text,
-  author_avatar_url text,
-  committed_at timestamptz,
-  commit_url text not null,
-  repository text not null,
-  repository_label text not null,
-  synced_at timestamptz not null default now(),
-  unique (project_id, sha)
-);
+-- ============================================================
+-- 3) Funciones helper (security definer: evitan recursion de RLS)
+-- ============================================================
 
-create table public.project_documents (
-  id uuid primary key default gen_random_uuid(),
-  project_id uuid not null references public.projects(id) on delete cascade,
-  file_name text not null,
-  file_url text not null,
-  storage_path text,
-  mime_type text not null default 'application/pdf',
-  size_bytes bigint,
-  created_at timestamptz not null default now()
-);
-
-create table public.blockers (
-  id uuid primary key default gen_random_uuid(),
-  task_id uuid not null references public.tasks(id) on delete cascade,
-  reason text not null,
-  status text not null default 'Abierto' check (status in ('Abierto', 'Resuelto')),
-  blocked_by_id uuid references public.members(id) on delete set null,
-  resolved_by_id uuid references public.members(id) on delete set null,
-  resolved_at timestamptz,
-  created_at timestamptz not null default now()
-);
-
-create or replace function public.set_updated_at()
-returns trigger as $$
-begin
-  new.updated_at = now();
-  return new;
-end;
-$$ language plpgsql;
-
-create trigger projects_set_updated_at
-before update on public.projects
-for each row execute function public.set_updated_at();
-
-create trigger tasks_set_updated_at
-before update on public.tasks
-for each row execute function public.set_updated_at();
-
--- Funciones helper de equipo (security definer: evitan recursion de RLS)
-
+-- Miembro activo asociado al usuario logueado.
+-- Replica la logica de la app: primero por auth_user_id, si no por email.
 create or replace function public.current_member_id()
 returns uuid
 language sql
@@ -241,8 +125,11 @@ as $$
   )
 $$;
 
--- team_id automatico en inserts: se toma del usuario logueado.
+-- ============================================================
+-- 4) team_id automatico en inserts
+-- La app no envia team_id: se toma del usuario logueado.
 -- Inserts con service role (Alexa, imports) caen en DIA.
+-- ============================================================
 
 create or replace function public.set_default_team_id()
 returns trigger
@@ -261,13 +148,19 @@ begin
 end;
 $$;
 
+drop trigger if exists members_set_team_id on public.members;
 create trigger members_set_team_id
 before insert on public.members
 for each row execute function public.set_default_team_id();
 
+drop trigger if exists projects_set_team_id on public.projects;
 create trigger projects_set_team_id
 before insert on public.projects
 for each row execute function public.set_default_team_id();
+
+-- ============================================================
+-- 5) RLS: se reemplazan las politicas abiertas por politicas por equipo
+-- ============================================================
 
 alter table public.teams enable row level security;
 alter table public.members enable row level security;
@@ -279,14 +172,60 @@ alter table public.project_commits enable row level security;
 alter table public.comments enable row level security;
 alter table public.project_documents enable row level security;
 alter table public.blockers enable row level security;
+alter table public.expedientes enable row level security;
+alter table public.alexa_activity_log enable row level security;
 
--- teams: todos los autenticados ven la lista de equipos.
+-- Politicas abiertas anteriores
+drop policy if exists "authenticated read members" on public.members;
+drop policy if exists "authenticated write members" on public.members;
+drop policy if exists "authenticated read projects" on public.projects;
+drop policy if exists "authenticated write projects" on public.projects;
+drop policy if exists "authenticated read tasks" on public.tasks;
+drop policy if exists "authenticated write tasks" on public.tasks;
+drop policy if exists "authenticated read task assignees" on public.task_assignees;
+drop policy if exists "authenticated write task assignees" on public.task_assignees;
+drop policy if exists "authenticated read project members" on public.project_members;
+drop policy if exists "authenticated write project members" on public.project_members;
+drop policy if exists "authenticated read project commits" on public.project_commits;
+drop policy if exists "authenticated read comments" on public.comments;
+drop policy if exists "authenticated write comments" on public.comments;
+drop policy if exists "authenticated read project documents" on public.project_documents;
+drop policy if exists "authenticated write project documents" on public.project_documents;
+drop policy if exists "authenticated read blockers" on public.blockers;
+drop policy if exists "authenticated write blockers" on public.blockers;
+drop policy if exists "Authenticated users can read expedientes" on public.expedientes;
+drop policy if exists "Authenticated users can update expedientes" on public.expedientes;
+drop policy if exists "authenticated read alexa activity" on public.alexa_activity_log;
+
+-- Politicas nuevas (por si se re-ejecuta este archivo)
+drop policy if exists "authenticated read teams" on public.teams;
+drop policy if exists "team read members" on public.members;
+drop policy if exists "team write members" on public.members;
+drop policy if exists "team read projects" on public.projects;
+drop policy if exists "team write projects" on public.projects;
+drop policy if exists "team read tasks" on public.tasks;
+drop policy if exists "team write tasks" on public.tasks;
+drop policy if exists "team read task assignees" on public.task_assignees;
+drop policy if exists "team write task assignees" on public.task_assignees;
+drop policy if exists "team read project members" on public.project_members;
+drop policy if exists "team write project members" on public.project_members;
+drop policy if exists "team read project commits" on public.project_commits;
+drop policy if exists "team read comments" on public.comments;
+drop policy if exists "team write comments" on public.comments;
+drop policy if exists "team read project documents" on public.project_documents;
+drop policy if exists "team write project documents" on public.project_documents;
+drop policy if exists "team read blockers" on public.blockers;
+drop policy if exists "team write blockers" on public.blockers;
+drop policy if exists "dia read expedientes" on public.expedientes;
+drop policy if exists "dia update expedientes" on public.expedientes;
+drop policy if exists "dia read alexa activity" on public.alexa_activity_log;
+
+-- teams: todos los autenticados ven la lista de equipos (nombres y colores).
 -- Sin politica de escritura: los equipos se administran por SQL / service role.
 create policy "authenticated read teams" on public.teams
   for select to authenticated using (true);
 
--- Cada equipo ve y administra solo sus datos.
--- La ficha cruzada entre equipos se expone via la vista project_catalog.
+-- members: cada equipo ve y administra solo sus miembros.
 create policy "team read members" on public.members
   for select to authenticated
   using (team_id = public.current_team_id());
@@ -296,6 +235,8 @@ create policy "team write members" on public.members
   using (team_id = public.current_team_id())
   with check (team_id = public.current_team_id());
 
+-- projects: fila completa solo para el equipo dueño.
+-- La ficha cruzada entre equipos se expone via la vista project_catalog.
 create policy "team read projects" on public.projects
   for select to authenticated
   using (team_id = public.current_team_id());
@@ -305,6 +246,7 @@ create policy "team write projects" on public.projects
   using (team_id = public.current_team_id())
   with check (team_id = public.current_team_id());
 
+-- Detalle interno: solo el equipo dueño del proyecto.
 create policy "team read tasks" on public.tasks
   for select to authenticated
   using (public.project_belongs_to_current_team(project_id));
@@ -372,9 +314,28 @@ create policy "team write blockers" on public.blockers
   using (public.task_belongs_to_current_team(task_id))
   with check (public.task_belongs_to_current_team(task_id));
 
--- Vista project_catalog: ficha publica de proyectos entre equipos.
--- Vista security definer (dueño postgres): expone solo campos de ficha.
--- Excluye note, progress, staging y production.
+-- Modulos internos de DIA (no ligados a proyectos): solo equipo DIA.
+create policy "dia read expedientes" on public.expedientes
+  for select to authenticated
+  using (public.current_team_slug() = 'dia');
+
+create policy "dia update expedientes" on public.expedientes
+  for update to authenticated
+  using (public.current_team_slug() = 'dia')
+  with check (public.current_team_slug() = 'dia');
+
+create policy "dia read alexa activity" on public.alexa_activity_log
+  for select to authenticated
+  using (public.current_team_slug() = 'dia');
+
+-- ============================================================
+-- 6) Vista project_catalog: ficha publica de proyectos entre equipos
+-- Vista security definer (dueño postgres): expone solo campos de ficha
+-- de todos los equipos. Excluye note, progress, staging y production.
+-- ============================================================
+
+drop view if exists public.project_catalog;
+
 create view public.project_catalog as
 select
   p.id,
@@ -404,18 +365,3 @@ left join public.members m on m.id = p.technical_owner_id;
 
 revoke all on public.project_catalog from anon;
 grant select on public.project_catalog to authenticated;
-
-create index members_team_id_idx on public.members(team_id);
-create index members_auth_user_id_idx on public.members(auth_user_id);
-create index projects_team_id_idx on public.projects(team_id);
-create index projects_status_idx on public.projects(status);
-create index projects_priority_idx on public.projects(priority);
-create index tasks_project_id_idx on public.tasks(project_id);
-create index tasks_status_idx on public.tasks(status);
-create index tasks_priority_idx on public.tasks(priority);
-create index task_assignees_member_id_idx on public.task_assignees(member_id);
-create index project_members_project_id_idx on public.project_members(project_id);
-create index project_members_member_id_idx on public.project_members(member_id);
-create index project_commits_project_id_idx on public.project_commits(project_id);
-create index project_commits_committed_at_idx on public.project_commits(committed_at desc);
-create index project_documents_project_id_idx on public.project_documents(project_id);
