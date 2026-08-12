@@ -2,6 +2,7 @@
 
 import { useAuth } from '@/context/AuthContext'
 import { CursorAiBackground } from '@/components/cursor-ai-background'
+import { getSupabaseBrowserClient } from '@/lib/supabase'
 import { filterNavItemsForTeam, isTeamRestricted } from '@/lib/team-access'
 import { motion } from 'framer-motion'
 import { Code2, FileText, GitPullRequest, History, LayoutDashboard, LogOut, Radar, Search, Sun, Moon, Trash2, Users } from 'lucide-react'
@@ -36,6 +37,33 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
   const isExternalTeam = isTeamRestricted(teamSlug)
   const visibleNavItems = filterNavItemsForTeam(teamSlug, navItems)
+  const [pendingOverlaps, setPendingOverlaps] = useState(0)
+
+  // Aviso de cruces entre equipos: contador de pendientes en el item Radar.
+  useEffect(() => {
+    if (!user) return
+
+    let cancelled = false
+
+    async function fetchPendingOverlaps() {
+      const supabase = getSupabaseBrowserClient()
+      if (!supabase) return
+
+      const { count, error: overlapsError } = await supabase
+        .from('project_overlaps_detail')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'Pendiente')
+
+      // Base sin migrar (add_project_overlaps.sql pendiente): sin badge.
+      if (!cancelled && !overlapsError) setPendingOverlaps(count ?? 0)
+    }
+
+    void fetchPendingOverlaps()
+
+    return () => {
+      cancelled = true
+    }
+  }, [user, pathname])
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -110,6 +138,8 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
               const idleClass = isDark ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-100' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
               const itemClass = `flex w-full items-center rounded-lg py-2 text-sm font-medium transition ${sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${active ? activeClass : idleClass}`
 
+              const showOverlapsBadge = item.href === '/radar' && pendingOverlaps > 0
+
               return (
                 <Link
                   key={item.href}
@@ -118,8 +148,22 @@ export function AppShell({ title, subtitle, search = '', onSearchChange, childre
                   title={sidebarCollapsed ? item.label : undefined}
                   aria-label={item.label}
                 >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  {!sidebarCollapsed && item.label}
+                  <span className="relative shrink-0">
+                    <Icon className="h-4 w-4 shrink-0" />
+                    {showOverlapsBadge && sidebarCollapsed && (
+                      <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-500" />
+                    )}
+                  </span>
+                  {!sidebarCollapsed && (
+                    <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                      <span className="truncate">{item.label}</span>
+                      {showOverlapsBadge && (
+                        <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+                          {pendingOverlaps}
+                        </span>
+                      )}
+                    </span>
+                  )}
                 </Link>
               )
             })}

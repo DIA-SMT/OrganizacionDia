@@ -128,6 +128,17 @@ equipo dispara el aviso, y el par queda registrado en el panel.
 
 ## Etapa 4 — Adopción y pulido
 
+> **Estado: implementada en código (2026-08-12), con una decisión pendiente.**
+> Hecho: badge de cruces pendientes sobre "Radar" en el sidebar (aviso in-app
+> para ambos equipos), métricas del panel (detectados / confirmados /
+> descartados), plantilla de carga inicial `supabase/import_ditec_projects.sql`
+> (reemplazar las filas de ejemplo antes de ejecutar) y guía de uso
+> `docs/guia-ditec.md`.
+> **Pendiente de decisión:** notificación por correo al detectar un cruce
+> nuevo — requiere elegir y configurar un proveedor de email (hoy el proyecto
+> no tiene ninguno). Alternativa ya cubierta: el badge in-app.
+> Fuera de alcance por ahora: integrar los cruces al asistente DIA.
+
 **Objetivo:** que la herramienta se use de verdad.
 
 - Notificación al detectar un cruce nuevo (correo o aviso del asistente DIA a ambos

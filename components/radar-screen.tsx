@@ -115,6 +115,8 @@ export function RadarScreen() {
   const filteredProjects = useMemo(() => filterCatalog(projects, teamFilter, search), [projects, teamFilter, search])
   const pendingOverlaps = useMemo(() => overlaps.filter((overlap) => overlap.status === 'Pendiente'), [overlaps])
   const reviewedOverlaps = useMemo(() => overlaps.filter((overlap) => overlap.status !== 'Pendiente'), [overlaps])
+  const confirmedCount = useMemo(() => overlaps.filter((overlap) => overlap.status === 'Confirmado').length, [overlaps])
+  const dismissedCount = useMemo(() => overlaps.filter((overlap) => overlap.status === 'Descartado').length, [overlaps])
 
   return (
     <AppShell title="Radar de proyectos" subtitle="Que esta desarrollando cada equipo" search={search} onSearchChange={setSearch}>
@@ -136,6 +138,9 @@ export function RadarScreen() {
                 {pendingOverlaps.length > 0
                   ? `${pendingOverlaps.length} sin revisar - confirmalos o descartalos entre equipos`
                   : 'Sin cruces pendientes de revision'}
+              </p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                {overlaps.length} detectados en total · {confirmedCount} confirmados · {dismissedCount} descartados
               </p>
             </div>
             {reviewedOverlaps.length > 0 && (
