@@ -5,7 +5,7 @@ import { CursorAiBackground } from '@/components/cursor-ai-background'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
 import { filterNavItemsForTeam, isTeamRestricted } from '@/lib/team-access'
 import { motion } from 'framer-motion'
-import { Code2, FileText, GitPullRequest, History, LayoutDashboard, LogOut, Radar, Search, Sun, Moon, Trash2, Users } from 'lucide-react'
+import { Code2, Database, FileText, GitPullRequest, History, LayoutDashboard, LogOut, Radar, Search, Sun, Moon, Trash2, Users } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
@@ -25,6 +25,7 @@ const navItems = [
   { href: '/tasks', label: 'Tareas', icon: GitPullRequest },
   { href: '/team', label: 'Equipo', icon: Users },
   { href: '/expedientes', label: 'Expedientes', icon: FileText },
+  { href: '/cuentas-supabase', label: 'Cuentas Supabase', icon: Database },
   { href: '/commit-history', label: 'Historial', icon: History },
   { href: '/papelera', label: 'Papelera', icon: Trash2 },
 ]

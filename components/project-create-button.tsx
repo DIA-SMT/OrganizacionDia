@@ -3,6 +3,7 @@
 import { useAuth } from '@/context/AuthContext'
 import { formatOverlapScore, type SimilarProject } from '@/lib/overlaps'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
+import type { SupabaseAccount } from '@/lib/supabase-accounts'
 import { Plus, TriangleAlert, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
@@ -18,6 +19,7 @@ export function ProjectCreateButton({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [similarProjects, setSimilarProjects] = useState<SimilarProject[]>([])
+  const [accounts, setAccounts] = useState<SupabaseAccount[]>([])
   const [form, setForm] = useState({
     name: '',
     description: '',
@@ -30,6 +32,7 @@ export function ProjectCreateButton({
     priority: 'Media',
     progress: '0',
     estimated_delivery: '',
+    supabase_account_id: '',
   })
 
   const inputClass = `h-10 rounded-md border px-3 text-sm outline-none ${
@@ -73,6 +76,33 @@ export function ProjectCreateButton({
     return () => window.clearTimeout(timer)
   }, [open, form.name, form.description, form.repository_url, form.repository_url_secondary])
 
+  // Cuentas Supabase para vincular el proyecto. RLS solo devuelve filas al
+  // equipo DIA, asi que el selector aparece unicamente para ellos.
+  useEffect(() => {
+    if (!open) return
+
+    let cancelled = false
+
+    async function loadAccounts() {
+      const supabase = getSupabaseBrowserClient()
+      if (!supabase) return
+
+      const { data, error: accountsError } = await supabase
+        .from('supabase_accounts')
+        .select('*')
+        .eq('active', true)
+        .order('alias_number', { ascending: true })
+
+      if (!cancelled && !accountsError) setAccounts((data ?? []) as SupabaseAccount[])
+    }
+
+    void loadAccounts()
+
+    return () => {
+      cancelled = true
+    }
+  }, [open])
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
@@ -109,6 +139,7 @@ export function ProjectCreateButton({
         progress: Number(form.progress),
         estimated_delivery: form.estimated_delivery || null,
         status: form.status,
+        ...(form.supabase_account_id ? { supabase_account_id: form.supabase_account_id } : {}),
       }
 
       const fallbackPayload = {
@@ -132,7 +163,7 @@ export function ProjectCreateButton({
 
       setOpen(false)
       setSimilarProjects([])
-      setForm({ name: '', description: '', requester_area: '', stack: '', repository_url: '', repository_url_secondary: '', website_url: '', status: 'Planificación', priority: 'Media', progress: '0', estimated_delivery: '' })
+      setForm({ name: '', description: '', requester_area: '', stack: '', repository_url: '', repository_url_secondary: '', website_url: '', status: 'Planificación', priority: 'Media', progress: '0', estimated_delivery: '', supabase_account_id: '' })
       onCreated?.()
     } catch (err) {
       const message =
@@ -252,6 +283,20 @@ export function ProjectCreateButton({
                 </select>
               </div>
               <input className={inputClass} type="date" value={form.estimated_delivery} onChange={(e) => setForm({ ...form, estimated_delivery: e.target.value })} />
+              {accounts.length > 0 && (
+                <label className="grid gap-1 text-sm">
+                  <span className={`font-semibold ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>Cuenta Supabase (opcional)</span>
+                  <select className={inputClass} value={form.supabase_account_id} onChange={(e) => setForm({ ...form, supabase_account_id: e.target.value })}>
+                    <option value="">Sin asignar</option>
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        +{account.alias_number}
+                        {account.label ? ` (${account.label})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
             </div>
 
             <button className="mt-5 h-10 w-full rounded-md dia-primary-bg text-sm font-semibold text-white disabled:opacity-60" disabled={loading || !authConfigured}>

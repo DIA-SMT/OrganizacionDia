@@ -43,6 +43,7 @@ test('un equipo externo solo accede a proyectos y equipo', async () => {
   assert.equal(canAccessRoute('ditec', '/papelera'), false)
   assert.equal(canAccessRoute('ditec', '/testing'), false)
   assert.equal(canAccessRoute('ditec', '/supabase'), false)
+  assert.equal(canAccessRoute('ditec', '/cuentas-supabase'), false)
 
   assert.deepEqual(
     filterNavItemsForTeam('ditec', navItems).map((item) => item.href),
