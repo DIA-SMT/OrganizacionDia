@@ -75,11 +75,13 @@ En una base existente (creada antes del modelo multi-equipo), ejecutar en su lug
 ```text
 supabase/add_teams.sql
 supabase/add_project_overlaps.sql
+supabase/add_supabase_accounts.sql
 ```
 
 El primero agrega la tabla `teams`, la columna `team_id` y el aislamiento RLS
 por equipo (DIA / DITEC); el segundo, la deteccion de cruces entre proyectos
-de equipos distintos. Ver `docs/plan-multi-equipo-ditec.md`.
+de equipos distintos; el tercero, el inventario de cuentas Supabase free tier
+(alias +N). Ver `docs/plan-multi-equipo-ditec.md` y `docs/cuentas-supabase.md`.
 
 5. Opcional: cargar datos de ejemplo:
 
