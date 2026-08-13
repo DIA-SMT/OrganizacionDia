@@ -13,6 +13,7 @@ import { useRouter } from 'next/navigation'
 import {
   Check,
   Code2,
+  Database,
   ExternalLink,
   FileText,
   GitPullRequest,
@@ -20,6 +21,7 @@ import {
   LayoutDashboard,
   LogOut,
   Moon,
+  Radar,
   Search,
   Sun,
   Trash2,
@@ -523,9 +525,11 @@ export function DashboardView() {
           <nav className="space-y-1">
             <SidebarItem icon={<LayoutDashboard className="h-4 w-4 shrink-0" />} label="Dashboard" href="/" active collapsed={sidebarCollapsed} isDark={isDark} />
             <SidebarItem icon={<Code2 className="h-4 w-4 shrink-0" />} label="Proyectos" href="/projects" collapsed={sidebarCollapsed} isDark={isDark} />
+            <SidebarItem icon={<Radar className="h-4 w-4 shrink-0" />} label="Radar" href="/radar" collapsed={sidebarCollapsed} isDark={isDark} />
             <SidebarItem icon={<GitPullRequest className="h-4 w-4 shrink-0" />} label="Tareas" href="/tasks" collapsed={sidebarCollapsed} isDark={isDark} />
             <SidebarItem icon={<Users className="h-4 w-4 shrink-0" />} label="Equipo" href="/team" collapsed={sidebarCollapsed} isDark={isDark} />
             <SidebarItem icon={<FileText className="h-4 w-4 shrink-0" />} label="Expedientes" href="/expedientes" collapsed={sidebarCollapsed} isDark={isDark} />
+            <SidebarItem icon={<Database className="h-4 w-4 shrink-0" />} label="Cuentas Supabase" href="/cuentas-supabase" collapsed={sidebarCollapsed} isDark={isDark} />
             <SidebarItem icon={<History className="h-4 w-4 shrink-0" />} label="Historial" href="/commit-history" collapsed={sidebarCollapsed} isDark={isDark} />
             <SidebarItem icon={<Trash2 className="h-4 w-4 shrink-0" />} label="Papelera" href="/papelera" collapsed={sidebarCollapsed} isDark={isDark} />
           </nav>
