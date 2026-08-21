@@ -17,8 +17,9 @@ export type AccountProject = {
   supabase_account_id: string | null
 }
 
-export function sortAccounts<T extends { alias_number: number }>(accounts: T[]): T[] {
-  return [...accounts].sort((a, b) => a.alias_number - b.alias_number)
+export function sortAccounts<T extends { alias_number: number }>(accounts: T[], direction: 'asc' | 'desc' = 'asc'): T[] {
+  const factor = direction === 'desc' ? -1 : 1
+  return [...accounts].sort((a, b) => (a.alias_number - b.alias_number) * factor)
 }
 
 export function latestAccount<T extends { alias_number: number }>(accounts: T[]): T | null {
