@@ -2,30 +2,24 @@
 
 import { useAuth } from '@/context/AuthContext'
 import { CursorAiBackground } from '@/components/cursor-ai-background'
+import { Sidebar } from '@/components/sidebar'
 import { TaskCreateButton } from '@/components/task-create-button'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
 import { type DashboardProject } from '@/lib/dashboard-data'
 import { expedientePriorityWeight, formatExpedienteDate } from '@/lib/expedientes'
 import { animate, motion, useMotionValue, useTransform } from 'framer-motion'
-import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   Check,
-  Code2,
-  Database,
   ExternalLink,
   FileText,
   GitPullRequest,
   History,
-  LayoutDashboard,
   LogOut,
   Moon,
-  Radar,
   Search,
   Sun,
-  Trash2,
-  Users,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
@@ -161,47 +155,12 @@ function projectPriorityWeight(priority: string | null | undefined) {
 }
 
 
-function SidebarItem({ icon, label, href, active, collapsed, isDark }: { icon: React.ReactNode; label: string; href: string; active?: boolean; collapsed?: boolean; isDark: boolean }) {
-  const activeClass = isDark ? 'bg-blue-500/15 text-blue-300' : 'dia-surface-raised-bg dia-primary-text'
-  const idleClass = isDark ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-100' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
-  const className = `flex w-full items-center rounded-lg py-2 text-sm font-medium transition ${collapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${active ? activeClass : idleClass}`
-
-  if (href.startsWith('http')) {
-    return (
-      <a
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={className}
-        title={collapsed ? label : undefined}
-        aria-label={`${label} (abre en una pestaña nueva)`}
-      >
-        {icon}
-        {!collapsed && label}
-      </a>
-    )
-  }
-
-  return (
-    <Link
-      href={href}
-      className={className}
-      title={collapsed ? label : undefined}
-      aria-label={label}
-    >
-      {icon}
-      {!collapsed && label}
-    </Link>
-  )
-}
-
 export function DashboardView() {
   const { user, loading, authConfigured, signOut } = useAuth()
   const router = useRouter()
   const [projects, setProjects] = useState<DashboardProject[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
   const [pendingTasks, setPendingTasks] = useState<PendingTask[]>([])
   const [recentExpedientes, setRecentExpedientes] = useState<DashboardExpediente[]>([])
   const [commitsByProject, setCommitsByProject] = useState<Record<string, ProjectCommitActivity[]>>({})
@@ -499,41 +458,7 @@ export function DashboardView() {
     <main className={`relative isolate min-h-screen overflow-x-hidden transition-colors ${shellClass}`}>
       <CursorAiBackground isDark={isDark} />
       <div className="relative z-10 flex min-h-screen">
-        <aside
-          className={`sticky top-0 flex min-h-screen shrink-0 self-stretch flex-col border-r px-3 py-4 transition-[width] duration-200 ${sidebarCollapsed ? 'w-16' : 'w-56'} ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 dia-surface-glass'}`}
-          onMouseEnter={() => setSidebarCollapsed(false)}
-          onMouseLeave={() => setSidebarCollapsed(true)}
-          onFocusCapture={() => setSidebarCollapsed(false)}
-          onBlurCapture={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget)) setSidebarCollapsed(true)
-          }}
-        >
-          <div className={`mb-6 px-1 py-1 ${sidebarCollapsed ? 'flex justify-center' : 'flex items-center justify-between gap-2'}`}>
-            <div className={`flex min-w-0 items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'}`}>
-              <div className="flex aspect-square h-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#061e3d] ring-1 ring-white/10">
-                <Image className="h-full w-full object-cover" src="/logo-dia.png" alt="DIA" width={64} height={64} priority={false} />
-              </div>
-              {!sidebarCollapsed && (
-                <div className="min-w-0">
-                  <p className={`text-sm font-bold ${textStrongClass}`}>DIA</p>
-                  <p className="text-xs leading-tight text-slate-400">Direccion de Inteligencia Artificial</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <nav className="space-y-1">
-            <SidebarItem icon={<LayoutDashboard className="h-4 w-4 shrink-0" />} label="Dashboard" href="/" active collapsed={sidebarCollapsed} isDark={isDark} />
-            <SidebarItem icon={<Code2 className="h-4 w-4 shrink-0" />} label="Proyectos" href="/projects" collapsed={sidebarCollapsed} isDark={isDark} />
-            <SidebarItem icon={<Radar className="h-4 w-4 shrink-0" />} label="Radar" href="/radar" collapsed={sidebarCollapsed} isDark={isDark} />
-            <SidebarItem icon={<GitPullRequest className="h-4 w-4 shrink-0" />} label="Tareas" href="/tasks" collapsed={sidebarCollapsed} isDark={isDark} />
-            <SidebarItem icon={<Users className="h-4 w-4 shrink-0" />} label="Equipo" href="/team" collapsed={sidebarCollapsed} isDark={isDark} />
-            <SidebarItem icon={<FileText className="h-4 w-4 shrink-0" />} label="Expedientes" href="/expedientes" collapsed={sidebarCollapsed} isDark={isDark} />
-            <SidebarItem icon={<Database className="h-4 w-4 shrink-0" />} label="Cuentas Supabase" href="/cuentas-supabase" collapsed={sidebarCollapsed} isDark={isDark} />
-            <SidebarItem icon={<History className="h-4 w-4 shrink-0" />} label="Historial" href="/commit-history" collapsed={sidebarCollapsed} isDark={isDark} />
-            <SidebarItem icon={<Trash2 className="h-4 w-4 shrink-0" />} label="Papelera" href="/papelera" collapsed={sidebarCollapsed} isDark={isDark} />
-          </nav>
-        </aside>
+        <Sidebar isDark={isDark} />
 
         <section className="flex min-w-0 flex-1 flex-col">
           <header className={`border-b backdrop-blur ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 dia-surface-glass'}`}>

@@ -67,3 +67,13 @@ test('sortAccounts ordena por alias ascendente sin mutar', async () => {
   )
   assert.deepEqual(accounts, original)
 })
+
+test('sortAccounts puede ordenar del ultimo alias al primero', async () => {
+  const { sortAccounts } = await import('./supabase-accounts.ts')
+  const original = [...accounts]
+  assert.deepEqual(
+    sortAccounts(accounts, 'desc').map((a) => a.alias_number),
+    [14, 13, 12]
+  )
+  assert.deepEqual(accounts, original)
+})

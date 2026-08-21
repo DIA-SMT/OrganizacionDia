@@ -70,7 +70,8 @@ export function SupabaseAccountsScreen() {
     void load()
   }, [version])
 
-  const sortedAccounts = useMemo(() => sortAccounts(accounts), [accounts])
+  // Del ultimo alias creado al primero: las cuentas nuevas son las que mas se consultan.
+  const sortedAccounts = useMemo(() => sortAccounts(accounts, 'desc'), [accounts])
   const latest = useMemo(() => latestAccount(accounts), [accounts])
   const nextAlias = useMemo(() => nextAliasNumber(accounts), [accounts])
   const unassigned = useMemo(() => unassignedProjects(projects), [projects])
@@ -292,6 +293,22 @@ export function SupabaseAccountsScreen() {
                     ))}
                   </ul>
                 )}
+
+                {unassigned.length > 0 && (
+                  <select
+                    className={`${selectClass} mt-2 w-full`}
+                    value=""
+                    onChange={(event) => event.target.value && void assignProject(event.target.value, account.id)}
+                    title="Vincular un proyecto a esta cuenta"
+                  >
+                    <option value="">+ Vincular proyecto ({unassigned.length} sin cuenta)</option>
+                    {unassigned.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
             </article>
           )
@@ -302,41 +319,6 @@ export function SupabaseAccountsScreen() {
           </p>
         )}
       </div>
-
-      <section className="mt-6 rounded-lg border border-slate-200 dia-surface-bg shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="border-b border-slate-100 px-5 py-4 dark:border-slate-800">
-          <h2 className="font-semibold text-slate-950 dark:text-white">Proyectos sin cuenta ({unassigned.length})</h2>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Proyectos activos que todavia no estan asignados a una cuenta Supabase.</p>
-        </div>
-        <div className="divide-y divide-slate-100 dark:divide-slate-800">
-          {unassigned.map((project) => (
-            <div key={project.id} className="flex items-center justify-between gap-3 px-5 py-3 text-sm">
-              <span className="min-w-0 truncate text-slate-700 dark:text-slate-200">
-                {project.name} <span className="text-xs text-slate-400">· {project.status}</span>
-              </span>
-              <select
-                className={selectClass}
-                defaultValue=""
-                disabled={busyProjectId === project.id || accounts.length === 0}
-                onChange={(event) => event.target.value && void assignProject(project.id, event.target.value)}
-              >
-                <option value="" disabled>
-                  Asignar a...
-                </option>
-                {sortedAccounts.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    +{option.alias_number}
-                    {option.label ? ` (${option.label})` : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ))}
-          {unassigned.length === 0 && !loading && (
-            <p className="px-5 py-3 text-sm text-slate-500 dark:text-slate-400">Todos los proyectos activos tienen cuenta asignada.</p>
-          )}
-        </div>
-      </section>
 
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 px-4">
