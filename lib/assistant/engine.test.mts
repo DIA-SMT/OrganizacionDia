@@ -60,3 +60,18 @@ test('interpreta rangos temporales habituales', async () => {
   assert.equal(engine.resolveAssistantDays('todos los commits'), null)
   assert.equal(engine.resolveAssistantDays('ultimos commits'), null)
 })
+
+test('un pedido de resumen no cuenta como pregunta sin respuesta', async () => {
+  const engine = await import('./engine.ts')
+  assert.equal(engine.isDashboardSummaryQuestion('dame un resumen del dashboard'), true)
+  assert.equal(engine.isDashboardSummaryQuestion('Resumen general, por favor'), true)
+  assert.equal(engine.isDashboardSummaryQuestion('resumen de la reunion con ambiente'), false)
+  assert.equal(engine.isDashboardSummaryQuestion('cuanto cuesta el estacionamiento'), false)
+})
+
+test('una busqueda que solo coincide por palabras genericas cuenta como no entendida', async () => {
+  const engine = await import('./engine.ts')
+  assert.equal(engine.isWeakSearchMatch(['que', 'los']), true)
+  assert.equal(engine.isWeakSearchMatch(['municipalidad', 'tucuman']), true)
+  assert.equal(engine.isWeakSearchMatch(['turismo', 'los']), false)
+})

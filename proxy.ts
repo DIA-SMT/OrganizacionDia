@@ -6,5 +6,7 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+  // Los .glb (modelos 3D) y /vendor (decodificador de esos modelos) son estaticos de /public,
+  // como las imagenes: no pasan por la sesion.
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|vendor/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|glb)$).*)'],
 }
