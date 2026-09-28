@@ -321,8 +321,12 @@ export function SupabaseAccountsScreen() {
       </div>
 
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 px-4">
-          <form onSubmit={saveAccount} className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-800 dark:bg-slate-900">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 p-4">
+          <form
+            onSubmit={saveAccount}
+            data-lenis-prevent
+            className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto overscroll-contain rounded-lg border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-800 dark:bg-slate-900"
+          >
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-bold text-slate-950 dark:text-white">{editingId ? 'Editar cuenta' : 'Nueva cuenta'}</h2>
               <button type="button" onClick={() => setModalOpen(false)} className="rounded-md p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
