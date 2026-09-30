@@ -13,7 +13,9 @@ export async function updateSession(request: NextRequest) {
     url.pathname.startsWith('/reset-password') ||
     url.pathname.startsWith('/api/auth') ||
     url.pathname.startsWith('/api/drive') ||
-    url.pathname === '/api/alexa'
+    url.pathname === '/api/alexa' ||
+    // Los bots se autentican con su propia clave, no con sesion.
+    url.pathname === '/api/migue/conversaciones'
 
   if (!supabaseUrl || !supabaseAnonKey) {
     if (publicPath) return NextResponse.next({ request })

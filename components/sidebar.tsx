@@ -4,6 +4,7 @@ import { useAuth } from '@/context/AuthContext'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
 import { filterNavItemsForTeam, isTeamRestricted } from '@/lib/team-access'
 import {
+  Bot,
   Code2,
   Database,
   FileText,
@@ -27,6 +28,7 @@ const navItems: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/projects', label: 'Proyectos', icon: Code2 },
   { href: '/radar', label: 'Radar', icon: Radar },
+  { href: '/migue', label: 'Migue', icon: Bot },
   { href: '/tasks', label: 'Tareas', icon: GitPullRequest },
   { href: '/team', label: 'Equipo', icon: Users },
   { href: '/expedientes', label: 'Expedientes', icon: FileText },

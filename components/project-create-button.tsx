@@ -190,14 +190,15 @@ export function ProjectCreateButton({
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 px-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 p-4">
+          {/* Titulo y boton fijos; el formulario scrollea en el medio si la pantalla es baja. */}
           <form
             onSubmit={handleSubmit}
-            className={`w-full max-w-xl rounded-lg border p-5 shadow-xl ${
+            className={`flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-lg border shadow-xl ${
               isDark ? 'border-slate-800 bg-slate-900 text-slate-100' : 'border-slate-200 bg-white'
             }`}
           >
-            <div className="flex items-center justify-between">
+            <div className={`flex shrink-0 items-center justify-between border-b px-5 py-4 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
               <div>
                 <h2 className={`text-lg font-bold ${isDark ? 'text-white' : 'text-slate-950'}`}>Crear proyecto</h2>
                 <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Alta rapida para un sistema, modulo o integracion.</p>
@@ -214,94 +215,107 @@ export function ProjectCreateButton({
               </button>
             </div>
 
-            {error && <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
-            {similarProjects.length > 0 && (
-              <div className={`mt-4 rounded-md border px-3 py-2 text-sm ${isDark ? 'border-amber-500/30 bg-amber-500/10 text-amber-100' : 'border-amber-300 bg-amber-50 text-amber-900'}`}>
-                <p className="flex items-center gap-2 font-semibold">
-                  <TriangleAlert className="h-4 w-4 shrink-0" />
-                  Posible cruce con otro equipo
-                </p>
-                <ul className="mt-1 space-y-0.5">
-                  {similarProjects.map((similar) => (
-                    <li key={similar.project_id}>
-                      {similar.team_name} ya tiene <span className="font-semibold">{similar.project_name}</span> ({similar.project_status.toLowerCase()}) — {similar.match_reason.toLowerCase()}, {formatOverlapScore(similar.score)}
-                    </li>
-                  ))}
-                </ul>
-                <p className={`mt-1 text-xs ${isDark ? 'text-amber-200/80' : 'text-amber-700'}`}>
-                  Podes crearlo igual: el cruce queda registrado en el Radar para revisarlo entre equipos.
-                </p>
-              </div>
-            )}
-            {!authConfigured && (
-              <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                Para crear proyectos reales falta configurar Supabase en <a className="font-semibold underline" href="/supabase">/supabase</a>.
-              </div>
-            )}
-
-            <div className="mt-5 grid gap-4">
-              <input className={inputClass} placeholder="Nombre del proyecto" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-              <textarea className={textAreaClass} placeholder="Descripcion / alcance tecnico" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-              <div className="grid gap-4 md:grid-cols-2">
-                <input className={inputClass} placeholder="Area solicitante" value={form.requester_area} onChange={(e) => setForm({ ...form, requester_area: e.target.value })} />
-                <input className={inputClass} placeholder="Stack tecnico" value={form.stack} onChange={(e) => setForm({ ...form, stack: e.target.value })} />
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <input className={inputClass} placeholder="Repo 1 / Frontend" value={form.repository_url} onChange={(e) => setForm({ ...form, repository_url: e.target.value })} />
-                <input className={inputClass} placeholder="Repo 2 / Backend" value={form.repository_url_secondary} onChange={(e) => setForm({ ...form, repository_url_secondary: e.target.value })} />
-              </div>
-              <input className={inputClass} placeholder="Pagina web / Vercel (https://...)" value={form.website_url} onChange={(e) => setForm({ ...form, website_url: e.target.value })} />
-              <label className={`rounded-md border p-3 ${isDark ? 'border-slate-700 bg-slate-950' : 'border-slate-200 bg-slate-50'}`}>
-                <div className="flex items-center justify-between gap-4">
-                  <span className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Progreso</span>
-                  <span className={`text-sm font-bold ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>{form.progress}%</span>
-                </div>
-                <input
-                  className="mt-3 w-full accent-blue-500"
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="5"
-                  value={form.progress}
-                  onChange={(e) => setForm({ ...form, progress: e.target.value })}
-                />
-              </label>
-              <div className="grid gap-4 md:grid-cols-2">
-                <select className={inputClass} value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-                  <option value="Planificación">Planificación</option>
-                  <option value="En desarrollo">En desarrollo</option>
-                  <option value="MVP aprobado">MVP aprobado</option>
-                  <option value="QA">QA</option>
-                  <option value="En Producción">En Producción</option>
-                  <option value="Pausado">Pausado</option>
-                </select>
-                <select className={inputClass} value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
-                  <option>Baja</option>
-                  <option>Media</option>
-                  <option>Alta</option>
-                  <option>Critica</option>
-                </select>
-              </div>
-              <input className={inputClass} type="date" value={form.estimated_delivery} onChange={(e) => setForm({ ...form, estimated_delivery: e.target.value })} />
-              {accounts.length > 0 && (
-                <label className="grid gap-1 text-sm">
-                  <span className={`font-semibold ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>Cuenta Supabase (opcional)</span>
-                  <select className={inputClass} value={form.supabase_account_id} onChange={(e) => setForm({ ...form, supabase_account_id: e.target.value })}>
-                    <option value="">Sin asignar</option>
-                    {accounts.map((account) => (
-                      <option key={account.id} value={account.id}>
-                        +{account.alias_number}
-                        {account.label ? ` (${account.label})` : ''}
-                      </option>
+            <div data-lenis-prevent className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-5">
+              {error && <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+              {similarProjects.length > 0 && (
+                <div className={`mt-4 rounded-md border px-3 py-2 text-sm ${isDark ? 'border-amber-500/30 bg-amber-500/10 text-amber-100' : 'border-amber-300 bg-amber-50 text-amber-900'}`}>
+                  <p className="flex items-center gap-2 font-semibold">
+                    <TriangleAlert className="h-4 w-4 shrink-0" />
+                    Posible cruce con otro equipo
+                  </p>
+                  <ul className="mt-1 space-y-0.5">
+                    {similarProjects.map((similar) => (
+                      <li key={similar.project_id}>
+                        {similar.team_name} ya tiene <span className="font-semibold">{similar.project_name}</span> ({similar.project_status.toLowerCase()}) — {similar.match_reason.toLowerCase()}, {formatOverlapScore(similar.score)}
+                      </li>
                     ))}
-                  </select>
-                </label>
+                  </ul>
+                  <p className={`mt-1 text-xs ${isDark ? 'text-amber-200/80' : 'text-amber-700'}`}>
+                    Podes crearlo igual: el cruce queda registrado en el Radar para revisarlo entre equipos.
+                  </p>
+                </div>
               )}
+              {!authConfigured && (
+                <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  Para crear proyectos reales falta configurar Supabase en <a className="font-semibold underline" href="/supabase">/supabase</a>.
+                </div>
+              )}
+
+              <div className="mt-4 grid gap-3 sm:gap-4">
+                <input className={inputClass} placeholder="Nombre del proyecto" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+                <textarea className={textAreaClass} placeholder="Descripcion / alcance tecnico" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+                <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
+                  <input className={inputClass} placeholder="Area solicitante" value={form.requester_area} onChange={(e) => setForm({ ...form, requester_area: e.target.value })} />
+                  <input className={inputClass} placeholder="Stack tecnico" value={form.stack} onChange={(e) => setForm({ ...form, stack: e.target.value })} />
+                </div>
+                <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
+                  <input className={inputClass} placeholder="Repo 1 / Frontend" value={form.repository_url} onChange={(e) => setForm({ ...form, repository_url: e.target.value })} />
+                  <input className={inputClass} placeholder="Repo 2 / Backend" value={form.repository_url_secondary} onChange={(e) => setForm({ ...form, repository_url_secondary: e.target.value })} />
+                </div>
+                <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
+                  <input className={inputClass} placeholder="Pagina web / Vercel (https://...)" value={form.website_url} onChange={(e) => setForm({ ...form, website_url: e.target.value })} />
+                  <input
+                    className={inputClass}
+                    type="date"
+                    aria-label="Entrega estimada"
+                    title="Entrega estimada"
+                    value={form.estimated_delivery}
+                    onChange={(e) => setForm({ ...form, estimated_delivery: e.target.value })}
+                  />
+                </div>
+                <label className={`rounded-md border p-3 ${isDark ? 'border-slate-700 bg-slate-950' : 'border-slate-200 bg-slate-50'}`}>
+                  <div className="flex items-center justify-between gap-4">
+                    <span className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Progreso</span>
+                    <span className={`text-sm font-bold ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>{form.progress}%</span>
+                  </div>
+                  <input
+                    className="mt-3 w-full accent-blue-500"
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="5"
+                    value={form.progress}
+                    onChange={(e) => setForm({ ...form, progress: e.target.value })}
+                  />
+                </label>
+                <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
+                  <select className={inputClass} aria-label="Estado" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+                    <option value="Planificación">Planificación</option>
+                    <option value="En desarrollo">En desarrollo</option>
+                    <option value="MVP aprobado">MVP aprobado</option>
+                    <option value="QA">QA</option>
+                    <option value="En Producción">En Producción</option>
+                    <option value="Pausado">Pausado</option>
+                  </select>
+                  <select className={inputClass} aria-label="Prioridad" value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
+                    <option>Baja</option>
+                    <option>Media</option>
+                    <option>Alta</option>
+                    <option>Critica</option>
+                  </select>
+                </div>
+                {accounts.length > 0 && (
+                  <label className="grid gap-1 text-sm">
+                    <span className={`font-semibold ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>Cuenta Supabase (opcional)</span>
+                    <select className={inputClass} value={form.supabase_account_id} onChange={(e) => setForm({ ...form, supabase_account_id: e.target.value })}>
+                      <option value="">Sin asignar</option>
+                      {accounts.map((account) => (
+                        <option key={account.id} value={account.id}>
+                          +{account.alias_number}
+                          {account.label ? ` (${account.label})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </div>
             </div>
 
-            <button className="mt-5 h-10 w-full rounded-md dia-primary-bg text-sm font-semibold text-white disabled:opacity-60" disabled={loading || !authConfigured}>
-              {loading ? 'Guardando...' : 'Crear proyecto'}
-            </button>
+            <div className={`shrink-0 border-t px-5 py-4 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+              <button className="h-10 w-full rounded-md dia-primary-bg text-sm font-semibold text-white disabled:opacity-60" disabled={loading || !authConfigured}>
+                {loading ? 'Guardando...' : 'Crear proyecto'}
+              </button>
+            </div>
           </form>
         </div>
       )}

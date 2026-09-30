@@ -41,6 +41,8 @@ export type AssistantResult = {
   totalProjects: number
   sources?: string[]
   updatedAt?: string
+  // true cuando no reconocio la pregunta y respondio con el resumen general.
+  fallback?: boolean
 }
 
 export type AssistantCommit = {
@@ -119,6 +121,50 @@ export function isProjectMembersQuestion(question: string) {
     'quienes trabajan',
     'personas trabajan',
   ].some((keyword) => normalized.includes(keyword))
+}
+
+// Pedido explicito del resumen general: no cuenta como pregunta sin respuesta.
+export function isDashboardSummaryQuestion(question: string) {
+  const text = normalizeAssistantText(question)
+  return (
+    text === 'resumen' ||
+    /\bresumen (general|del dashboard|de (los )?proyectos|de todo)\b/.test(text) ||
+    /\b(panorama|estado) general\b/.test(text)
+  )
+}
+
+// Palabras que aparecen en casi cualquier descripcion: una busqueda que solo coincide por
+// ellas no entendio la pregunta, aunque devuelva proyectos.
+const GENERIC_SEARCH_TERMS = new Set([
+  'municipal',
+  'municipalidad',
+  'municipio',
+  'tucuman',
+  'miguel',
+  'ciudad',
+  'sistema',
+  'gestion',
+  'plataforma',
+  'datos',
+  'informacion',
+  'ayuda',
+  'donde',
+  'cuando',
+  'cuanto',
+  'quien',
+  'puedo',
+  'hacer',
+  'tiene',
+  'tienen',
+  'este',
+  'esto',
+  'todos',
+  'todo',
+  'general',
+])
+
+export function isWeakSearchMatch(matchedTerms: string[]) {
+  return !matchedTerms.some((term) => term.length >= 4 && !GENERIC_SEARCH_TERMS.has(term))
 }
 
 export function isCommitQuestion(question: string) {
@@ -941,8 +987,8 @@ export async function runAssistantQuery(supabase: SupabaseClient, question: stri
     .filter((term) => term.length > 2 && !stopWords.has(term))
 
   if (terms.length > 0) {
-    const matches = projects.filter((project) => {
-      const searchable = normalizeAssistantText(
+    const searchableText = (project: AssistantProject) =>
+      normalizeAssistantText(
         [
           project.name,
           project.description,
@@ -955,15 +1001,19 @@ export async function runAssistantQuery(supabase: SupabaseClient, question: stri
           .filter(Boolean)
           .join(' '),
       )
+    const matches = projects.filter((project) => {
+      const searchable = searchableText(project)
       return terms.some((term) => searchable.includes(term))
     })
 
     if (matches.length > 0) {
+      const matchedTerms = terms.filter((term) => matches.some((project) => searchableText(project).includes(term)))
       return {
         text: `Encontré ${matches.length} proyecto${matches.length === 1 ? '' : 's'} relacionado${matches.length === 1 ? '' : 's'}: ${limitedProjectNames(matches)}.`,
         intent: 'project_search',
         projects: matches.slice(0, 8),
         totalProjects,
+        fallback: isWeakSearchMatch(matchedTerms) && !isDashboardSummaryQuestion(question),
       }
     }
   }
@@ -982,5 +1032,6 @@ export async function runAssistantQuery(supabase: SupabaseClient, question: stri
     intent: 'dashboard_summary',
     projects: [],
     totalProjects,
+    fallback: !isDashboardSummaryQuestion(question),
   }
 }
