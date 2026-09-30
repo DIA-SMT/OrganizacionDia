@@ -58,6 +58,15 @@ function cut(value: string, max: number): string {
 
 const DATE = /^\d{1,2}[.-]\d{1,2}[.-]\d{2,4}$/
 const YEAR_PAIR = /^(?:19|20)\d{2}[\s-]+(?:19|20)\d{2}$/
+// Palabras tras las que un 19xx/20xx es un anio ("edicion 2025", "en 2025", "mayo 2025").
+// Tras cualquier otra es una altura de calle: "San Martin 2025", "Lavalle al 2025".
+const BEFORE_A_YEAR = /^(?:a|año|años|anio|anios|ciclo|de|del|desde|durante|edicion|edición|el|en|entre|hasta|hacia|para|participativo|periodo|período|pp|presupuesto|y)$/
+// Un mes en mayuscula puede ser una calle ("24 de Septiembre 2025"): solo cuenta en minuscula.
+const MONTH = /^(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)$/
+
+function isYear(word: string, number: string): boolean {
+  return /^(?:19|20)\d{2}$/.test(number) && (BEFORE_A_YEAR.test(word.toLowerCase()) || MONTH.test(word))
+}
 
 // Segunda barrera para las preguntas sin respuesta, venga el texto de donde venga: tapa correos,
 // numeros de 7 cifras o mas (DNI, telefonos), alturas de calle y nombres presentados ("soy ...").
@@ -75,7 +84,9 @@ export function maskPersonalData(value: string): string {
       return isAmount || DATE.test(number.trim()) || YEAR_PAIR.test(number.trim()) ? number : '[número]'
     })
     // Altura de calle ("Lavalle 1234"): una palabra seguida de 3 a 5 cifras que no son un anio.
-    .replace(/(\p{L}\.?\s+)(?!(?:19|20)\d{2}\b)\d{3,5}\b/gu, '$1[número]')
+    .replace(/(\p{L}+)(\.?\s+)(\d{3,5})\b/gu, (match: string, word: string, gap: string, number: string) =>
+      isYear(word, number) ? match : `${word}${gap}[número]`,
+    )
     .replace(/\s{2,}/g, ' ')
     .replace(/\s+([,.;:!?])/g, '$1')
     .trim()

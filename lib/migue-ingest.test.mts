@@ -108,9 +108,16 @@ test('el dashboard tapa datos personales de la pregunta sin respuesta al recibir
 
 test('el filtro deja montos, fechas, anios y barrios', async () => {
   const { maskPersonalData } = await import('./migue-ingest.ts')
-  for (const texto of ['hay $ 1.500.000 por distrito?', 'se vota el 30-09-2026?', 'la edicion 2024-2025', 'soy de Villa Urquiza, donde voto?']) {
+  for (const texto of ['hay $ 1.500.000 por distrito?', 'se vota el 30-09-2026?', 'la edicion 2024-2025', 'soy de Villa Urquiza, donde voto?', 'cuando se vota en 2025?', 'el Presupuesto Participativo 2025', 'que se voto en septiembre 2024']) {
     assert.equal(maskPersonalData(texto), texto, texto)
   }
+})
+
+test('una altura de calle que parece un anio igual se tapa', async () => {
+  const { maskPersonalData } = await import('./migue-ingest.ts')
+  assert.equal(maskPersonalData('Vivo en San Martín 2025'), 'Vivo en San Martín [número]')
+  assert.equal(maskPersonalData('vivo en lavalle al 1990'), 'vivo en lavalle al [número]')
+  assert.equal(maskPersonalData('vivo en 24 de Septiembre 2025'), 'vivo en 24 de Septiembre [número]')
 })
 
 test('en un lote repetido gana la conversacion mas reciente aunque venga antes', async () => {
