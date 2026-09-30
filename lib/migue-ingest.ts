@@ -49,6 +49,38 @@ function text(value: unknown, max: number): string | null {
   return trimmed ? trimmed.slice(0, max) : null
 }
 
+// Recorta sin dejar un emoji partido a la mitad (Postgres rechaza el pedazo suelto).
+function cut(value: string, max: number): string {
+  const sliced = value.slice(0, max)
+  const last = sliced.charCodeAt(sliced.length - 1)
+  return last >= 0xd800 && last <= 0xdbff ? sliced.slice(0, -1) : sliced
+}
+
+const DATE = /^\d{1,2}[.-]\d{1,2}[.-]\d{2,4}$/
+const YEAR_PAIR = /^(?:19|20)\d{2}[\s-]+(?:19|20)\d{2}$/
+
+// Segunda barrera para las preguntas sin respuesta, venga el texto de donde venga: tapa correos,
+// numeros de 7 cifras o mas (DNI, telefonos), alturas de calle y nombres presentados ("soy ...").
+// Deja montos, fechas y anios. No atrapa todos los nombres: cada bot sigue siendo responsable
+// de no mandar datos personales (docs/migue-conexion.md).
+export function maskPersonalData(value: string): string {
+  return value
+    .replace(/[^\s@]+@[^\s@]+\.[^\s@]+/g, '[correo]')
+    // Sin la bandera i: con ella \p{Lu} tambien acepta minusculas y "soy de Villa..." perderia el barrio.
+    .replace(/\b([Ss]oy|[Mm]e llamo|[Mm]i nombre es)\s+((?:\p{Lu}[\p{L}'-]*\s*){1,3})/gu, (_, intro: string) => `${intro} [nombre] `)
+    .replace(/\+?\d(?:[\s.-]{0,2}\d){6,}/g, (number: string, position: number, full: string) => {
+      const before = full.slice(0, position)
+      const after = full.slice(position + number.length)
+      const isAmount = /\$\s*$/.test(before) || /^\s*(?:pesos|millones|mil)\b/i.test(after)
+      return isAmount || DATE.test(number.trim()) || YEAR_PAIR.test(number.trim()) ? number : '[número]'
+    })
+    // Altura de calle ("Lavalle 1234"): una palabra seguida de 3 a 5 cifras que no son un anio.
+    .replace(/(\p{L}\.?\s+)(?!(?:19|20)\d{2}\b)\d{3,5}\b/gu, '$1[número]')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .trim()
+}
+
 function count(value: unknown, max: number): number | null | 'invalid' {
   if (value === undefined || value === null) return null
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > max) return 'invalid'
@@ -130,9 +162,16 @@ export function parseMigueConversation(input: unknown, migueSlug: string, now: n
       cost_usd: costUsd,
       topic: text(data.topic, 80),
       // La pregunta solo se guarda cuando el bot no supo responder.
-      unanswered_question: outcome === 'sin_respuesta' ? text(data.unanswered_question, 300) : null,
+      unanswered_question: outcome === 'sin_respuesta' ? unansweredQuestion(data.unanswered_question) : null,
     },
   }
+}
+
+function unansweredQuestion(value: unknown): string | null {
+  const plain = text(value, 1000)
+  if (!plain) return null
+  const masked = cut(maskPersonalData(plain), 300)
+  return masked || null
 }
 
 // Acepta { conversations: [...] }, una lista o una sola conversacion.
@@ -146,10 +185,19 @@ export function conversationsFromBody(body: unknown): unknown[] | null {
   return null
 }
 
-// Si un lote repite la misma conversacion, queda la ultima (el upsert no admite repetidos).
+// Actividad de una fila: su ultimo mensaje, o el inicio si no informo el final.
+const activity = (row: MigueConversationRow) => Date.parse(row.ended_at ?? row.started_at)
+
+// Si un lote repite la misma conversacion, queda la mas reciente con el mismo criterio que el
+// trigger de la base (mas mensajes o actividad posterior); a igualdad, la que viene despues.
+// Asi un reintento atrasado que aparece mas tarde en el lote no pisa los valores nuevos.
 export function dedupeConversations(rows: MigueConversationRow[]): MigueConversationRow[] {
   const byId = new Map<string, MigueConversationRow>()
-  for (const row of rows) byId.set(row.external_id, row)
+  for (const row of rows) {
+    const kept = byId.get(row.external_id)
+    const older = kept && (row.messages < kept.messages || activity(row) < activity(kept))
+    if (!older) byId.set(row.external_id, row)
+  }
   return [...byId.values()]
 }
 

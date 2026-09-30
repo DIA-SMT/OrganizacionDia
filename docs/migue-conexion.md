@@ -112,6 +112,10 @@ DNI, direcciones ni el texto de la charla. La única excepción es
 `unanswered_question`: si el vecino escribió datos personales en esa pregunta,
 el bot tiene que quitarlos antes de enviarla (o no mandarla).
 
+Como segunda barrera, el dashboard tapa al recibirla correos, números de
+documento o teléfono, alturas de calle y nombres presentados ("soy ..."). No
+atrapa todos los nombres, así que la responsabilidad sigue siendo del bot.
+
 ## Qué se ve en el dashboard
 
 - **Efectividad** = conversaciones `resuelta` / total.

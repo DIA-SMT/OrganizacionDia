@@ -93,3 +93,39 @@ test('el hash de la clave coincide con el del script que la genera', async () =>
   assert.equal(bearerToken('Basic abc'), null)
   assert.equal(bearerToken(null), null)
 })
+
+test('el dashboard tapa datos personales de la pregunta sin respuesta al recibirla', async () => {
+  const { parseMigueConversation } = await import('./migue-ingest.ts')
+  const parsed = parseMigueConversation(
+    { ...base, outcome: 'sin_respuesta', unanswered_question: 'Soy Juan Perez, DNI 30.123.456, vivo en Lavalle 1234 y mi mail es juan@correo.com' },
+    'turismo',
+    NOW,
+  )
+  assert.ok(parsed.ok)
+  if (!parsed.ok) return
+  assert.equal(parsed.row.unanswered_question, 'Soy [nombre], DNI [número], vivo en Lavalle [número] y mi mail es [correo]')
+})
+
+test('el filtro deja montos, fechas, anios y barrios', async () => {
+  const { maskPersonalData } = await import('./migue-ingest.ts')
+  for (const texto of ['hay $ 1.500.000 por distrito?', 'se vota el 30-09-2026?', 'la edicion 2024-2025', 'soy de Villa Urquiza, donde voto?']) {
+    assert.equal(maskPersonalData(texto), texto, texto)
+  }
+})
+
+test('en un lote repetido gana la conversacion mas reciente aunque venga antes', async () => {
+  const { dedupeConversations, parseMigueConversation } = await import('./migue-ingest.ts')
+  const row = (extra: Record<string, unknown>) => {
+    const parsed = parseMigueConversation({ ...base, ...extra }, 'turismo', NOW)
+    assert.ok(parsed.ok)
+    return parsed.ok ? parsed.row : (null as never)
+  }
+  const nueva = row({ messages: 9, ended_at: '2026-09-28T14:20:00-03:00' })
+  const vieja = row({ messages: 4, ended_at: '2026-09-28T14:05:00-03:00' })
+  assert.equal(dedupeConversations([nueva, vieja])[0].messages, 9)
+  assert.equal(dedupeConversations([vieja, nueva])[0].messages, 9)
+  // A igualdad de mensajes y actividad queda la que viene despues.
+  const igualA = row({ messages: 5, feedback: 'positiva' })
+  const igualB = row({ messages: 5, feedback: 'negativa' })
+  assert.equal(dedupeConversations([igualA, igualB])[0].feedback, 'negativa')
+})
