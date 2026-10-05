@@ -2,8 +2,10 @@
 // pantalla. El formato con el que reporta cada bot esta en lib/migue-ingest.ts.
 // Sin imports con alias: lo usan los tests de node.
 
-export type MigueChannel = 'WhatsApp' | 'Web' | 'App' | 'Pantallas'
-export type MigueStatus = 'En produccion' | 'Piloto' | 'En desarrollo'
+export const MIGUE_CHANNELS = ['WhatsApp', 'Telegram', 'Web', 'App', 'Pantallas'] as const
+export const MIGUE_STATUSES = ['En produccion', 'Piloto', 'En desarrollo'] as const
+export type MigueChannel = (typeof MIGUE_CHANNELS)[number]
+export type MigueStatus = (typeof MIGUE_STATUSES)[number]
 
 export type MigueProfile = {
   slug: string
@@ -23,7 +25,8 @@ export type MigueProfile = {
   internal?: boolean
   // Modelo 3D (GLB optimizado). Si esta, la ficha lo usa en lugar de las vistas. Para sumar otro:
   // npx @gltf-transform/cli optimize <modelo>.glb public/migue/<slug>/model.glb --compress meshopt
-  //   --texture-compress webp --texture-size 2048 --simplify-ratio 0.15 --simplify-error 0.0005
+  //   --texture-compress webp --texture-size 2048 --simplify-ratio <r> --simplify-error 0.0005
+  // con <r> tal que queden ~150.000 triangulos (0.15 para un original de 1M, 0.3 para uno de 500k).
   model?: string
 }
 
@@ -108,6 +111,7 @@ export const MIGUES: MigueProfile[] = [
     status: 'En produccion',
     accent: '#f3d9a4',
     frames: frames('turismo'),
+    model: '/migue/turismo/model.glb',
   },
   {
     slug: 'institucional',
@@ -134,6 +138,7 @@ export const MIGUES: MigueProfile[] = [
     status: 'En produccion',
     accent: '#d9d4cc',
     frames: frames('san-miguelino'),
+    model: '/migue/san-miguelino/model.glb',
   },
   {
     slug: 'bot-ambiente',
@@ -160,6 +165,7 @@ export const MIGUES: MigueProfile[] = [
     status: 'En produccion',
     accent: '#d6ecb5',
     frames: frames('migue-recolector'),
+    model: '/migue/migue-recolector/model.glb',
   },
   {
     slug: 'presupuesto-participativo',
@@ -186,6 +192,7 @@ export const MIGUES: MigueProfile[] = [
     status: 'Piloto',
     accent: '#c6dcc4',
     frames: frames('applaza'),
+    model: '/migue/applaza/model.glb',
   },
   {
     slug: 'carteleria',
@@ -213,6 +220,7 @@ export const MIGUES: MigueProfile[] = [
     status: 'En produccion',
     accent: '#d7dcef',
     frames: frames('dashboard-dia'),
+    model: '/migue/dashboard-dia/model.glb',
   },
 ]
 

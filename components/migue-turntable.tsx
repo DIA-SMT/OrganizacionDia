@@ -57,6 +57,8 @@ export function MigueTurntable({
 }: MigueTurntableProps) {
   const reduceMotion = useReducedMotion()
   const count = frames.length
+  // Con una sola imagen (un Migue agregado desde el dashboard sin vistas) no hay giro: queda quieto.
+  const single = count < 2
   const [angle, setAngle] = useState(0)
   const angleRef = useRef(0)
   const animation = useRef<number | null>(null)
@@ -104,7 +106,7 @@ export function MigueTurntable({
 
   // Con foco de teclado no gira solo: el lector de pantalla no anuncia cambios sin parar.
   const spinning =
-    !reduceMotion && !paused && !dragging && !focused && (autoRotate === 'always' || (autoRotate === 'hover' && hoverActive))
+    !single && !reduceMotion && !paused && !dragging && !focused && (autoRotate === 'always' || (autoRotate === 'hover' && hoverActive))
 
   // Giro automatico: se queda un momento en cada vista y gira 90° hacia la siguiente.
   useEffect(() => {
@@ -188,12 +190,14 @@ export function MigueTurntable({
 
   const viewLabel = MIGUE_VIEW_LABELS[view] ?? `Vista ${view + 1}`
 
+  const rotatable = interactive && !single
+
   const stage = (
     <div
-      className={`relative select-none ${interactive ? `touch-pan-y outline-offset-4 ${dragging ? 'cursor-grabbing' : 'cursor-grab'}` : ''} ${stageClassName}`}
+      className={`relative select-none ${rotatable ? `touch-pan-y outline-offset-4 ${dragging ? 'cursor-grabbing' : 'cursor-grab'}` : ''} ${stageClassName}`}
       onPointerEnter={() => setHovering(true)}
       onPointerLeave={() => setHovering(false)}
-      {...(interactive
+      {...(rotatable
         ? {
             role: 'slider',
             tabIndex: 0,
@@ -218,7 +222,7 @@ export function MigueTurntable({
         className="pointer-events-none absolute bottom-[1.5%] left-1/2 h-[6%] w-[56%] -translate-x-1/2 rounded-[50%] bg-[radial-gradient(closest-side,rgb(11_22_53/0.3),transparent)] dark:bg-[radial-gradient(closest-side,rgb(0_0_0/0.6),transparent)]"
       />
       {frames.map((src, index) => {
-        const { opacity, scale, zIndex } = frameStyle(index, angle, count)
+        const { opacity, scale, zIndex } = single ? { opacity: 1, scale: 1, zIndex: 1 } : frameStyle(index, angle, count)
         return (
           <Image
             key={src}
@@ -234,7 +238,7 @@ export function MigueTurntable({
           />
         )
       })}
-      {interactive && !touched && (
+      {rotatable && !touched && (
         <span
           aria-hidden
           className="pointer-events-none absolute left-1/2 top-0 z-10 flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-slate-950/70 px-3 py-1 text-xs font-semibold text-white shadow-lg backdrop-blur"
@@ -251,6 +255,7 @@ export function MigueTurntable({
   return (
     <div className="flex flex-col items-center gap-3">
       {stage}
+      {rotatable && (
       <div className="flex flex-wrap items-center justify-center gap-1.5">
         {frames.map((src, index) => (
           <button
@@ -279,6 +284,7 @@ export function MigueTurntable({
           </button>
         )}
       </div>
+      )}
     </div>
   )
 }

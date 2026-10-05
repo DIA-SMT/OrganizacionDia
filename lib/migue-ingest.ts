@@ -212,6 +212,13 @@ export function dedupeConversations(rows: MigueConversationRow[]): MigueConversa
   return [...byId.values()]
 }
 
+// La clave con la que un bot reporta: migue_ + 32 bytes al azar en base64url. Solo se guarda su hash.
+export function generateIngestToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32))
+  const base64 = btoa(String.fromCharCode(...bytes))
+  return `migue_${base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`
+}
+
 export async function hashIngestToken(token: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token))
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('')

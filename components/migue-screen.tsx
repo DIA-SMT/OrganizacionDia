@@ -2,8 +2,11 @@
 
 import { AppShell } from '@/components/app-shell'
 import { DailyUsageChart, OutcomeBar, Sparkline, TopicBars } from '@/components/migue-charts'
+import { MigueKeyPanel } from '@/components/migue-key-panel'
 import { MigueModelViewer } from '@/components/migue-model-viewer'
+import { MigueProfileForm } from '@/components/migue-profile-form'
 import { MigueTurntable } from '@/components/migue-turntable'
+import { useAuth } from '@/context/AuthContext'
 import {
   MIGUES,
   achievementsFor,
@@ -23,6 +26,8 @@ import {
   type MigueTopic,
   type MigueUnanswered,
 } from '@/lib/migue'
+import { assetsPrefixFor, mergeMigueCatalog, type MigueProfileRow } from '@/lib/migue-profiles'
+import { lockPageScroll } from '@/lib/scroll-lock'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
 import { useReducedMotion } from 'framer-motion'
 import {
@@ -42,7 +47,9 @@ import {
   Lock,
   MessageCircleQuestion,
   Minus,
+  Pencil,
   Plug,
+  Plus,
   Radio,
   Timer,
   TriangleAlert,
@@ -305,6 +312,18 @@ export function MigueScreen() {
   const [keys, setKeys] = useState<Map<string, string | null>>(() => new Map())
   const [loadState, setLoadState] = useState<LoadState>('loading')
   const [loadError, setLoadError] = useState<string | null>(null)
+  // Migues agregados o editados desde el dashboard (supabase/add_migue_profiles.sql).
+  const [profileRows, setProfileRows] = useState<MigueProfileRow[]>([])
+  const [profilesReady, setProfilesReady] = useState(false)
+  // Si las claves se pudieron leer: sin saberlo, reemplazar una pide confirmacion igual.
+  const [keysKnown, setKeysKnown] = useState(false)
+  // Despues de la primera carga, una recarga que falla deja los datos que ya habia.
+  const loadedOnce = useRef(false)
+  // Sube despues de guardar un Migue o generar una clave: vuelve a leer todo.
+  const [reloadKey, setReloadKey] = useState(0)
+  const [form, setForm] = useState<{ slug: string | null } | null>(null)
+  const { teamSlug } = useAuth()
+  const isDia = teamSlug === 'dia'
 
   // Datos reales: las vistas diarias que arma supabase/add_migue.sql y las claves de cada bot.
   useEffect(() => {
@@ -317,33 +336,52 @@ export function MigueScreen() {
         return
       }
       const from = addDays(today, -(HISTORY_DAYS - 1))
-      const [stats, keyRows] = await Promise.all([
+      const [stats, keyRows, profiles] = await Promise.all([
         fetchAllRows<MigueDailyStat>((start, end) =>
           supabase.from('migue_daily_stats').select('*').gte('day', from).lte('day', today).order('day').order('migue_slug').range(start, end),
         ),
         supabase.from('migue_ingest_keys').select('migue_slug, active, last_used_at'),
+        // Todas las columnas: si falta una nueva (SQL a medio actualizar) la consulta no falla.
+        supabase.from('migue_profiles').select('*'),
       ])
       if (cancelled) return
+      // Sin la tabla de fichas (migracion pendiente) se ve el catalogo del codigo, como antes.
+      // Otro error (la red, un corte) no borra lo que ya estaba cargado.
+      if (!profiles.error) {
+        setProfileRows((profiles.data ?? []) as MigueProfileRow[])
+        setProfilesReady(true)
+      } else if (isMissingRelation(profiles.error)) {
+        setProfileRows([])
+        setProfilesReady(false)
+      }
+      if (!keyRows.error) {
+        const activeKeys = ((keyRows.data ?? []) as { migue_slug: string; active: boolean; last_used_at: string | null }[]).filter((key) => key.active)
+        setKeys(new Map(activeKeys.map((key) => [key.migue_slug, key.last_used_at ? tucumanDay(key.last_used_at) : null])))
+        setKeysKnown(true)
+      }
       const error = stats.error ?? keyRows.error
       if (error) {
+        if (loadedOnce.current) return
         setLoadError(error.message)
         setLoadState(isMissingRelation(error) ? 'sin_migrar' : 'error')
         return
       }
       setDailyRows(stats.rows)
-      const activeKeys = ((keyRows.data ?? []) as { migue_slug: string; active: boolean; last_used_at: string | null }[]).filter((key) => key.active)
-      setKeys(new Map(activeKeys.map((key) => [key.migue_slug, key.last_used_at ? tucumanDay(key.last_used_at) : null])))
+      loadedOnce.current = true
       setLoadState('ready')
     }
     void load()
     return () => {
       cancelled = true
     }
-  }, [today])
+  }, [today, reloadKey])
+
+  const catalog = useMemo(() => mergeMigueCatalog(MIGUES, profileRows, assetsPrefixFor(process.env.NEXT_PUBLIC_SUPABASE_URL)), [profileRows])
+  const reload = () => setReloadKey((current) => current + 1)
 
   const history = useMemo(
-    () => MIGUES.map((migue) => ({ migue, stats: dailyRows.filter((row) => row.migue_slug === migue.slug) })),
-    [dailyRows],
+    () => catalog.map((migue) => ({ migue, stats: dailyRows.filter((row) => row.migue_slug === migue.slug) })),
+    [catalog, dailyRows],
   )
 
   // El puesto se calcula sobre todos los Migues; la busqueda solo filtra lo que se muestra.
@@ -437,7 +475,21 @@ export function MigueScreen() {
             </button>
           ))}
         </div>
-        <ConnectionNotice state={loadState} error={loadError} reporting={ranked.filter((entry) => entry.lastDay !== null).length} total={ranked.length} />
+        <div className="flex flex-wrap items-center gap-2">
+          <ConnectionNotice state={loadState} error={loadError} reporting={ranked.filter((entry) => entry.lastDay !== null).length} total={ranked.length} />
+          {isDia && (
+            <button
+              type="button"
+              className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md dia-primary-bg px-3 text-sm font-semibold text-white shadow-sm disabled:opacity-60"
+              disabled={!profilesReady}
+              title={profilesReady ? undefined : 'Falta ejecutar supabase/add_migue_profiles.sql en Supabase'}
+              onClick={() => setForm({ slug: null })}
+            >
+              <Plus className="h-4 w-4" aria-hidden />
+              Agregar Migue
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -562,7 +614,34 @@ export function MigueScreen() {
         </div>
       </section>
 
-      {selected && <MigueDetail entry={selected} period={period} today={today} onClose={() => setSelectedSlug(null)} />}
+      {selected && (
+        <MigueDetail
+          entry={selected}
+          period={period}
+          today={today}
+          canEdit={isDia && profilesReady}
+          canManageKey={isDia}
+          hasKey={!keysKnown || keys.has(selected.migue.slug)}
+          onEdit={() => setForm({ slug: selected.migue.slug })}
+          onKeyCreated={reload}
+          onClose={() => setSelectedSlug(null)}
+        />
+      )}
+      {form && (
+        <MigueProfileForm
+          editing={form.slug ? (catalog.find((migue) => migue.slug === form.slug) ?? null) : null}
+          row={form.slug ? (profileRows.find((row) => row.slug === form.slug) ?? null) : null}
+          catalog={catalog}
+          takenSlugs={[...MIGUES.map((migue) => migue.slug), ...profileRows.map((row) => row.slug)]}
+          hasKeyFor={(slug) => !keysKnown || keys.has(slug)}
+          onClose={() => setForm(null)}
+          onSaved={(slug, visible) => {
+            reload()
+            // Ficha y formulario se cierran juntos: el bloqueo de scroll compartido lo soporta.
+            if (!visible && selectedSlug === slug) setSelectedSlug(null)
+          }}
+        />
+      )}
     </AppShell>
   )
 }
@@ -718,7 +797,27 @@ function SortHeader({ label, active, onClick, align = 'left' }: { label: string;
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
-function MigueDetail({ entry, period, today, onClose }: { entry: MigueEntry; period: Period; today: string; onClose: () => void }) {
+function MigueDetail({
+  entry,
+  period,
+  today,
+  canEdit,
+  canManageKey,
+  hasKey,
+  onEdit,
+  onKeyCreated,
+  onClose,
+}: {
+  entry: MigueEntry
+  period: Period
+  today: string
+  canEdit: boolean
+  canManageKey: boolean
+  hasKey: boolean
+  onEdit: () => void
+  onKeyCreated: () => void
+  onClose: () => void
+}) {
   const { migue, summary } = entry
   const dialogRef = useRef<HTMLElement>(null)
   const closeRef = useRef(onClose)
@@ -762,14 +861,10 @@ function MigueDetail({ entry, period, today, onClose }: { entry: MigueEntry; per
   // Solo al abrir y cerrar: bloquea el scroll de atras, lleva el foco al dialogo y lo devuelve.
   useEffect(() => {
     const previousFocus = document.activeElement as HTMLElement | null
-    const previousOverflow = document.body.style.overflow
-    const previousHtmlOverflow = document.documentElement.style.overflow
-    document.body.style.overflow = 'hidden'
-    document.documentElement.style.overflow = 'hidden'
+    const release = lockPageScroll()
     dialogRef.current?.focus()
     return () => {
-      document.body.style.overflow = previousOverflow
-      document.documentElement.style.overflow = previousHtmlOverflow
+      release()
       previousFocus?.focus()
     }
   }, [])
@@ -831,14 +926,26 @@ function MigueDetail({ entry, period, today, onClose }: { entry: MigueEntry; per
               {migue.project_name} · {migue.area}
             </p>
           </div>
-          <button
-            type="button"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-            aria-label="Cerrar ficha"
-            onClick={() => closeRef.current()}
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {canEdit && (
+              <button
+                type="button"
+                className="inline-flex h-9 items-center gap-1.5 rounded-md border border-slate-200 px-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                onClick={onEdit}
+              >
+                <Pencil className="h-3.5 w-3.5" aria-hidden />
+                Editar
+              </button>
+            )}
+            <button
+              type="button"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              aria-label="Cerrar ficha"
+              onClick={() => closeRef.current()}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         <div className="grid gap-5 p-4 sm:p-5 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,5fr)_minmax(0,8fr)] lg:grid-rows-[minmax(0,1fr)] lg:gap-6">
@@ -886,7 +993,7 @@ function MigueDetail({ entry, period, today, onClose }: { entry: MigueEntry; per
             {entry.health === 'cargando' || entry.health === 'desconocido' ? (
               <p className={`text-sm ${MUTED}`}>{entry.health === 'cargando' ? 'Cargando datos...' : 'No se pudieron cargar los datos de este Migue.'}</p>
             ) : !hasData ? (
-              <ConnectSteps entry={entry} />
+              <ConnectSteps entry={entry} canManageKey={canManageKey} hasKey={hasKey} onKeyCreated={onKeyCreated} />
             ) : (
               <div className="min-w-0 space-y-5">
                 <div className="grid gap-3 sm:grid-cols-3">
@@ -991,7 +1098,7 @@ function MigueDetail({ entry, period, today, onClose }: { entry: MigueEntry; per
 }
 
 // Ficha de un Migue que todavia no reporta: los pasos para conectarlo.
-function ConnectSteps({ entry }: { entry: MigueEntry }) {
+function ConnectSteps({ entry, canManageKey, hasKey, onKeyCreated }: { entry: MigueEntry; canManageKey: boolean; hasKey: boolean; onKeyCreated: () => void }) {
   const { migue } = entry
   const code = 'rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-800 dark:bg-slate-800 dark:text-slate-200'
   return (
@@ -1004,9 +1111,21 @@ function ConnectSteps({ entry }: { entry: MigueEntry }) {
           </p>
         ) : (
           <ol className="list-decimal space-y-3 pl-5 text-sm text-slate-600 dark:text-slate-300">
-            <li className={entry.health === 'esperando' ? 'text-slate-400 line-through dark:text-slate-500' : ''}>
-              Generar su clave: <code className={code}>npm run migue:token -- {migue.slug}</code> y ejecutar en Supabase el SQL que imprime.
-              {entry.health === 'esperando' && <span className="sr-only"> (hecho)</span>}
+            <li>
+              <span className={hasKey ? 'text-slate-400 line-through dark:text-slate-500' : ''}>Generar su clave.</span>
+              {hasKey && <span className="sr-only"> (hecho)</span>}
+              {canManageKey ? (
+                <div className="mt-2">
+                  <MigueKeyPanel slug={migue.slug} projectName={migue.project_name} hasKey={hasKey} onCreated={onKeyCreated} />
+                </div>
+              ) : (
+                !hasKey && (
+                  <span>
+                    {' '}
+                    Desde esta ficha, con una cuenta del equipo DIA, o con <code className={code}>npm run migue:token -- {migue.slug}</code>.
+                  </span>
+                )
+              )}
             </li>
             <li>
               Pasarle la clave y la guia <code className={code}>docs/migue-conexion.md</code> al equipo de {migue.project_name}: el bot envia cada conversacion a{' '}
