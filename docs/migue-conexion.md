@@ -8,17 +8,38 @@ dashboard con un pedido HTTP. Esta guía es para el equipo que mantiene el bot.
 Migue DIA (el chat del dashboard) ya reporta solo, desde este repo. Su chat es de
 preguntas sueltas, así que cuenta **cada pregunta** como una conversación.
 
+## 0. Sumar el Migue al dashboard
+
+Si el Migue todavía no tiene ficha, alguien del equipo DIA la crea en la sección
+**Migue > Agregar Migue**: nombre, identificador (el slug, por ejemplo
+`migue-transito`), proyecto, canales, una imagen de portada (de cuerpo entero, de
+frente y con fondo transparente) y, si hay, el modelo 3D.
+
+El modelo 3D se sube ya optimizado, de hasta 6 MB. Los `.glb` que salen del
+generador pesan entre 25 y 40 MB; este comando los deja en unos 2 MB:
+
+```bash
+npm run migue:glb -- MigueTransito.glb
+```
+
+Desde la misma ficha se editan los datos y se oculta un Migue que ya no se usa (sus
+estadísticas quedan guardadas). Los Migues de `lib/migue.ts` también se pueden
+editar desde ahí. Requiere haber ejecutado `supabase/add_migue_profiles.sql`.
+
 ## 1. Pedir la clave
 
-Cada Migue tiene su propia clave. La genera alguien de DIA con acceso al repo:
+Cada Migue tiene su propia clave. La genera alguien de DIA desde la ficha del Migue
+en el dashboard, con el botón **Generar la clave**: se muestra una sola vez, lista
+para copiar, y en la base queda solo su hash. Generarla de nuevo reemplaza la
+anterior, que deja de funcionar en el momento.
+
+También se puede generar desde el repo:
 
 ```bash
 npm run migue:token -- turismo
 ```
 
-El comando imprime la clave (se muestra una sola vez) y un SQL para ejecutar en
-Supabase > SQL Editor, que guarda solo su hash. El nombre (`turismo`) es el slug
-del Migue en `lib/migue.ts`. Correrlo de nuevo reemplaza la clave anterior.
+El comando imprime la clave y un SQL para ejecutar en Supabase > SQL Editor.
 
 La clave va en el servidor del bot, por ejemplo como `MIGUE_API_KEY`. Nunca en
 el frontend ni en el repo.

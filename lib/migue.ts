@@ -2,8 +2,10 @@
 // pantalla. El formato con el que reporta cada bot esta en lib/migue-ingest.ts.
 // Sin imports con alias: lo usan los tests de node.
 
-export type MigueChannel = 'WhatsApp' | 'Web' | 'App' | 'Pantallas'
-export type MigueStatus = 'En produccion' | 'Piloto' | 'En desarrollo'
+export const MIGUE_CHANNELS = ['WhatsApp', 'Telegram', 'Web', 'App', 'Pantallas'] as const
+export const MIGUE_STATUSES = ['En produccion', 'Piloto', 'En desarrollo'] as const
+export type MigueChannel = (typeof MIGUE_CHANNELS)[number]
+export type MigueStatus = (typeof MIGUE_STATUSES)[number]
 
 export type MigueProfile = {
   slug: string
