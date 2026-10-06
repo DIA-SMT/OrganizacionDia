@@ -2,11 +2,12 @@
 
 import { useAuth } from '@/context/AuthContext'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
-import { filterNavItemsForTeam, isTeamRestricted } from '@/lib/team-access'
+import { canAccessRoute, filterNavItemsForTeam, isTeamRestricted } from '@/lib/team-access'
 import {
   Bot,
   Code2,
   Database,
+  FileDown,
   FileText,
   GitPullRequest,
   History,
@@ -127,6 +128,23 @@ export function Sidebar({ isDark }: { isDark: boolean }) {
           )
         })}
       </nav>
+
+      {/* El informe se abre en otra pestania y dispara solo el dialogo para guardar el PDF. */}
+      {canAccessRoute(teamSlug, '/informe') && (
+        <div className={`mt-4 border-t pt-4 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+          <a
+            href="/informe?descargar=1"
+            target="_blank"
+            rel="noopener"
+            className={`flex w-full items-center rounded-lg py-2 text-sm font-medium transition ${collapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${isDark ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-100' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}
+            title={collapsed ? 'Descargar informe' : undefined}
+            aria-label="Descargar informe"
+          >
+            <FileDown className="h-4 w-4 shrink-0" />
+            {!collapsed && <span className="truncate">Descargar informe</span>}
+          </a>
+        </div>
+      )}
     </aside>
   )
 }
