@@ -95,6 +95,15 @@ supabase/seed.sql
 supabase/import_dia_projects.sql
 ```
 
+   Para que cada repo nuevo de la organizacion de GitHub aparezca solo como proyecto,
+   ejecutar `supabase/add_project_github_sync.sql` y configurar en Vercel `GITHUB_TOKEN`,
+   `SUPABASE_SERVICE_ROLE_KEY` y `PROJECTS_SYNC_SECRET` (este ultimo tambien como secret
+   del repo en GitHub Actions). La sincronizacion corre cada hora
+   (`.github/workflows/github-projects-sync.yml`) y cada vez que alguien de DIA abre el
+   tablero o la lista de proyectos. Los proyectos nuevos entran al equipo DIA como
+   "En desarrollo"; si un repo no es un proyecto, borrarlo del dashboard alcanza para
+   que no vuelva a crearse.
+
 7. Iniciar desarrollo:
 
 ```powershell

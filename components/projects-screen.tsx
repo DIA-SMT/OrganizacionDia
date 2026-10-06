@@ -3,6 +3,8 @@
 import { AppShell } from '@/components/app-shell'
 import { MemberMultiSelect } from '@/components/member-multi-select'
 import { ProjectCreateButton } from '@/components/project-create-button'
+import { useAuth } from '@/context/AuthContext'
+import { requestGithubProjectSync } from '@/lib/github-sync'
 import { filterAndSortProjects, type ProjectFilter } from '@/lib/project-filters'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
 import { Check, ChevronDown, ExternalLink, FileText, Funnel, GitCommitHorizontal, Globe2, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
@@ -302,6 +304,8 @@ export function ProjectsScreen({
   const [projectMembersAvailable, setProjectMembersAvailable] = useState(false)
   const [savingProjectMembersId, setSavingProjectMembersId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [githubSyncTick, setGithubSyncTick] = useState(0)
+  const { teamSlug } = useAuth()
   const theme = useStoredTheme()
   const isDark = theme === 'dark'
 
@@ -363,7 +367,21 @@ export function ProjectsScreen({
     }
 
     fetchProjects()
-  }, [])
+  }, [githubSyncTick])
+
+  // Los repos nuevos de GitHub se dan de alta solos; si aparecio alguno, se recarga la lista.
+  useEffect(() => {
+    if (teamSlug !== 'dia') return
+
+    let cancelled = false
+    void requestGithubProjectSync().then((created) => {
+      if (!cancelled && created > 0) setGithubSyncTick((tick) => tick + 1)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [teamSlug])
 
   useEffect(() => {
     async function fetchMembers() {

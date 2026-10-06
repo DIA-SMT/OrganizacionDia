@@ -15,7 +15,9 @@ export async function updateSession(request: NextRequest) {
     url.pathname.startsWith('/api/drive') ||
     url.pathname === '/api/alexa' ||
     // Los bots se autentican con su propia clave, no con sesion.
-    url.pathname === '/api/migue/conversaciones'
+    url.pathname === '/api/migue/conversaciones' ||
+    // El cron entra con PROJECTS_SYNC_SECRET; la ruta valida sesion o secreto por su cuenta.
+    url.pathname === '/api/github/sync-projects'
 
   if (!supabaseUrl || !supabaseAnonKey) {
     if (publicPath) return NextResponse.next({ request })

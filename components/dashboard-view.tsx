@@ -7,6 +7,7 @@ import { TaskCreateButton } from '@/components/task-create-button'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
 import { type DashboardProject } from '@/lib/dashboard-data'
 import { expedientePriorityWeight, formatExpedienteDate } from '@/lib/expedientes'
+import { requestGithubProjectSync } from '@/lib/github-sync'
 import { animate, motion, useMotionValue, useTransform } from 'framer-motion'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -156,9 +157,10 @@ function projectPriorityWeight(priority: string | null | undefined) {
 
 
 export function DashboardView() {
-  const { user, loading, authConfigured, signOut } = useAuth()
+  const { user, loading, authConfigured, signOut, teamSlug } = useAuth()
   const router = useRouter()
   const [projects, setProjects] = useState<DashboardProject[]>([])
+  const [githubSyncTick, setGithubSyncTick] = useState(0)
   const [searchQuery, setSearchQuery] = useState('')
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
   const [pendingTasks, setPendingTasks] = useState<PendingTask[]>([])
@@ -302,7 +304,21 @@ export function DashboardView() {
     fetchDashboard().catch((error) => {
       console.error('Error loading dashboard:', error)
     })
-  }, [authConfigured, loading, user])
+  }, [authConfigured, loading, user, githubSyncTick])
+
+  // Los repos nuevos de GitHub se dan de alta solos; si aparecio alguno, se recarga el tablero.
+  useEffect(() => {
+    if (teamSlug !== 'dia') return
+
+    let cancelled = false
+    void requestGithubProjectSync().then((created) => {
+      if (!cancelled && created > 0) setGithubSyncTick((tick) => tick + 1)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [teamSlug])
 
   const projectCommitSources = useMemo(
     () =>
