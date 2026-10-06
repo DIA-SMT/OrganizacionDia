@@ -28,6 +28,28 @@ async function isAuthorized(request: Request) {
   return team === 'dia'
 }
 
+async function githubJson<T>(path: string, headers: HeadersInit) {
+  const response = await fetch(`https://api.github.com${path}`, { headers, cache: 'no-store' })
+  if (!response.ok) return null
+  return (await response.json()) as T
+}
+
+// GITHUB_ORG puede ser una organizacion o una cuenta de usuario (DIA-SMT es un usuario), y
+// cada caso tiene su propio endpoint. Si el token es de esa misma cuenta se usa /user/repos,
+// el unico que incluye los repos privados de un usuario.
+async function reposPath(owner: string, headers: HeadersInit, token: string | undefined) {
+  const account = await githubJson<{ type: string }>(`/users/${encodeURIComponent(owner)}`, headers)
+  if (!account) throw new Error(`GitHub no encontro la cuenta ${owner}.`)
+  if (account.type === 'Organization') return `/orgs/${encodeURIComponent(owner)}/repos?type=all`
+
+  if (token) {
+    const viewer = await githubJson<{ login: string }>('/user', headers)
+    if (viewer?.login.toLowerCase() === owner.toLowerCase()) return '/user/repos?affiliation=owner&visibility=all'
+  }
+
+  return `/users/${encodeURIComponent(owner)}/repos?type=owner`
+}
+
 async function fetchOrgRepos(org: string, token: string | undefined) {
   const headers: HeadersInit = {
     Accept: 'application/vnd.github+json',
@@ -36,9 +58,10 @@ async function fetchOrgRepos(org: string, token: string | undefined) {
   }
   if (token) headers.Authorization = `Bearer ${token}`
 
+  const path = await reposPath(org, headers, token)
   const repos: GithubOrgRepo[] = []
   for (let page = 1; page <= MAX_PAGES; page += 1) {
-    const response = await fetch(`https://api.github.com/orgs/${encodeURIComponent(org)}/repos?per_page=100&type=all&sort=created&page=${page}`, {
+    const response = await fetch(`https://api.github.com${path}&per_page=100&sort=created&page=${page}`, {
       headers,
       cache: 'no-store',
     })
