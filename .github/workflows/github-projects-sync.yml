@@ -1,0 +1,45 @@
+name: Sincronizar proyectos de GitHub
+
+# Da de alta en el dashboard los repos nuevos de la organizacion (app/api/github/sync-projects).
+# Ademas corre cada vez que alguien del equipo DIA abre el tablero o la lista de proyectos.
+
+on:
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-projects-sync
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    name: Traer repos nuevos
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      DASHBOARD_URL: ${{ vars.DASHBOARD_URL || 'https://organizacion-dia.vercel.app' }}
+      PROJECTS_SYNC_SECRET: ${{ secrets.PROJECTS_SYNC_SECRET }}
+
+    steps:
+      - name: Verificar configuracion
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$PROJECTS_SYNC_SECRET"
+
+      - name: Sincronizar
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail-with-body --silent --show-error \
+            --retry 3 \
+            --retry-all-errors \
+            --connect-timeout 10 \
+            --max-time 60 \
+            --request POST \
+            "${DASHBOARD_URL%/}/api/github/sync-projects" \
+            --header "x-sync-secret: $PROJECTS_SYNC_SECRET"
