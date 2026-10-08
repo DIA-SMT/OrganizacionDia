@@ -603,3 +603,14 @@ test('un repo renombrado no se da de alta de nuevo: se vincula al proyecto que t
   assert.deepEqual(plan.inserts.map((insert) => insert.name), ['nuevo'])
   assert.deepEqual(plan.links, [{ projectId: 'hubia', githubRepoId: 1170811544, repositoryUrl: 'https://github.com/DIA-SMT/educacivil-HubIA' }])
 })
+
+test('no intenta vincular un nombre viejo a un repo que ya tiene proyecto', async () => {
+  const { planGithubProjectSync } = await import('./github-sync.ts')
+  const repos = [repo(1280312240, 'juegos-quiz')]
+  const existing = [
+    project('juegos-quiz', { repository_url: 'https://github.com/DIA-SMT/juegos-quiz', github_repo_id: 1280312240 }),
+    project('juegos-adiccion-en-papelera', { active: false, repository_url: 'https://github.com/DIA-SMT/juegos-adiccion' }),
+  ]
+  const plan = planGithubProjectSync(repos, existing, new Set(), new Map([['dia-smt/juegos-adiccion', 1280312240]]))
+  assert.deepEqual(plan, { inserts: [], links: [] })
+})
