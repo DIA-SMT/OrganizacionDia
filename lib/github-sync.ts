@@ -38,8 +38,9 @@ export type GithubProjectInsert = {
 export type GithubSyncPlan = {
   inserts: GithubProjectInsert[]
   // Proyectos cargados a mano que coinciden por URL: se les guarda el id del repo para
-  // seguirlos aunque el repo cambie de nombre.
-  links: Array<{ projectId: string; githubRepoId: number }>
+  // seguirlos aunque el repo cambie de nombre. repositoryUrl viene cuando el proyecto apuntaba
+  // al nombre viejo de un repo renombrado: se actualiza al nombre actual.
+  links: Array<{ projectId: string; githubRepoId: number; repositoryUrl?: string }>
 }
 
 // Normaliza a "owner/repo" en minusculas; GitHub no distingue mayusculas en los nombres.
@@ -68,11 +69,30 @@ export function parseIgnoredRepos(value: string | null | undefined) {
   )
 }
 
-export function planGithubProjectSync(repos: GithubOrgRepo[], existing: ExistingProjectRepo[], ignored: Set<string> = new Set()): GithubSyncPlan {
+// URLs de proyectos sin repo vinculado que no aparecen en el listado de la cuenta: suelen ser
+// repos renombrados (el proyecto quedo con el nombre viejo). Hay que preguntarle a GitHub por
+// ellas, que redirige al nombre nuevo, antes de dar de alta nada.
+export function staleRepoKeys(repos: GithubOrgRepo[], existing: ExistingProjectRepo[], owner: string) {
+  const listed = new Set(repos.map((repo) => githubRepoKey(repo.html_url)).filter(Boolean))
+  const prefix = `${owner.toLowerCase()}/`
+  const keys = new Set<string>()
+  for (const project of existing) {
+    if (project.github_repo_id !== null) continue
+    for (const key of [githubRepoKey(project.repository_url), githubRepoKey(project.repository_url_secondary)]) {
+      if (key && key.startsWith(prefix) && !listed.has(key)) keys.add(key)
+    }
+  }
+  return [...keys]
+}
+
+// aliases: nombre viejo ("owner/repo" en minusculas) -> id del repo renombrado, resuelto con
+// staleRepoKeys y GitHub. Un repo renombrado se reconoce como ya cargado en vez de duplicarse.
+export function planGithubProjectSync(repos: GithubOrgRepo[], existing: ExistingProjectRepo[], ignored: Set<string> = new Set(), aliases: Map<string, number> = new Map()): GithubSyncPlan {
   // Se cuentan tambien los proyectos dados de baja (active = false): borrar un proyecto
   // creado por la sincronizacion es la forma de decirle que ese repo no va.
   const knownRepoIds = new Set(existing.map((project) => project.github_repo_id).filter((id): id is number => id !== null))
   const projectByPrimaryKey = new Map<string, ExistingProjectRepo>()
+  const projectByRenamedRepo = new Map<number, ExistingProjectRepo>()
   const knownKeys = new Set<string>()
 
   for (const project of existing) {
@@ -81,8 +101,17 @@ export function planGithubProjectSync(repos: GithubOrgRepo[], existing: Existing
     if (primary) {
       knownKeys.add(primary)
       if (!projectByPrimaryKey.has(primary)) projectByPrimaryKey.set(primary, project)
+      const renamed = aliases.get(primary)
+      if (renamed !== undefined) {
+        knownRepoIds.add(renamed)
+        if (!projectByRenamedRepo.has(renamed)) projectByRenamedRepo.set(renamed, project)
+      }
     }
-    if (secondary) knownKeys.add(secondary)
+    if (secondary) {
+      knownKeys.add(secondary)
+      const renamed = aliases.get(secondary)
+      if (renamed !== undefined) knownRepoIds.add(renamed)
+    }
   }
 
   const plan: GithubSyncPlan = { inserts: [], links: [] }
@@ -90,6 +119,12 @@ export function planGithubProjectSync(repos: GithubOrgRepo[], existing: Existing
 
   for (const repo of repos) {
     if (repo.archived || repo.name.startsWith('.') || ignored.has(repo.name.toLowerCase())) continue
+    // Proyecto que apuntaba al nombre viejo: se vincula y se pasa al nombre actual.
+    const renamedProject = projectByRenamedRepo.get(repo.id)
+    if (renamedProject && renamedProject.github_repo_id === null && !linkedProjectIds.has(renamedProject.id)) {
+      plan.links.push({ projectId: renamedProject.id, githubRepoId: repo.id, repositoryUrl: repo.html_url })
+      linkedProjectIds.add(renamedProject.id)
+    }
     if (knownRepoIds.has(repo.id)) continue
 
     const key = githubRepoKey(repo.html_url)
@@ -229,6 +264,20 @@ export function readmePatch(project: Pick<ProjectGithubFields, 'description' | '
     if (stack && stack !== project.stack) patch.stack = stack
   }
   return patch
+}
+
+export type RefreshFields = Pick<ProjectGithubFields, 'description' | 'stack' | 'website_url' | 'start_date'>
+
+// Lo que propone GitHub para un proyecto cuando alguien pide actualizarlo a mano: a diferencia
+// del completado automatico, propone aunque el campo ya tenga algo (la persona elige que
+// aplicar). null en un campo es "nada para proponer".
+export function refreshProposal(repo: RepoFields, languages: Record<string, number> | null, summary: string | null): RefreshFields {
+  return {
+    description: summary ?? (repo.description?.trim() || null),
+    stack: stackFromLanguages(languages, repo.language ?? null),
+    website_url: cleanHomepage(repo.homepage),
+    start_date: repoStartDate(repo.created_at),
+  }
 }
 
 // Cupo de GitHub agotado: 429, o 403 con el cupo en cero, pidiendo esperar o avisando en el

@@ -1,4 +1,4 @@
-import { fetchRepoDetails, summariesConfigured, summarizeReadme } from '@/lib/github-enrich'
+import { fetchRepoDetails, fetchRepoInfo, githubHeaders, summariesConfigured, summarizeReadme } from '@/lib/github-enrich'
 import {
   githubRepoKey,
   listingPatch,
@@ -6,6 +6,7 @@ import {
   planGithubProjectSync,
   readmeCandidates,
   readmePatch,
+  staleRepoKeys,
   type ExistingProjectRepo,
   type GithubOrgRepo,
   type ProjectGithubFields,
@@ -29,6 +30,8 @@ const README_CONCURRENCY = 3
 const RUN_BUDGET_MS = 52_000
 const MIN_TIME_FOR_BATCH_MS = 20_000
 const UPDATE_CONCURRENCY = 10
+// URLs viejas (posibles repos renombrados) que se consultan por corrida.
+const MAX_RENAME_LOOKUPS = 20
 // Un GitHub colgado no puede llevarse la corrida entera (y el reintento del cron).
 const GITHUB_TIMEOUT_MS = 10_000
 
@@ -78,16 +81,6 @@ async function reposPath(owner: string, headers: HeadersInit, token: string | un
   return `/users/${encodeURIComponent(owner)}/repos?type=owner`
 }
 
-function githubHeaders(token: string | undefined) {
-  const headers: Record<string, string> = {
-    Accept: 'application/vnd.github+json',
-    'User-Agent': 'Organizacion-DIA',
-    'X-GitHub-Api-Version': '2022-11-28',
-  }
-  if (token) headers.Authorization = `Bearer ${token}`
-  return headers
-}
-
 async function fetchOrgRepos(org: string, token: string | undefined) {
   const headers = githubHeaders(token)
   const path = await reposPath(org, headers, token)
@@ -134,15 +127,31 @@ export async function POST(request: Request) {
     return reply({ error: 'No se pudieron leer los proyectos. Falta ejecutar supabase/add_project_github_sync.sql?' }, 500)
   }
 
-  const plan = planGithubProjectSync(repos, (existing ?? []) as ExistingProjectRepo[], parseIgnoredRepos(process.env.GITHUB_SYNC_IGNORE))
+  const existingProjects = (existing ?? []) as ExistingProjectRepo[]
+  const repoById = new Map(repos.map((repo) => [repo.id, repo]))
+
+  // Repos renombrados: un proyecto cargado con el nombre viejo no aparece en el listado y su
+  // repo se daria de alta otra vez. GitHub redirige el nombre viejo al repo actual.
+  const aliases = new Map<string, number>()
+  let renamesPending = false
+  for (const staleKey of staleRepoKeys(repos, existingProjects, org).slice(0, MAX_RENAME_LOOKUPS)) {
+    const info = await fetchRepoInfo(staleKey, githubHeaders(token))
+    if (info.outcome === 'ok' && repoById.has(info.repo.id)) aliases.set(staleKey, info.repo.id)
+    else if (info.outcome === 'retry' || info.outcome === 'rate-limited') renamesPending = true
+  }
+
+  const plan = planGithubProjectSync(repos, existingProjects, parseIgnoredRepos(process.env.GITHUB_SYNC_IGNORE), aliases)
 
   for (const link of plan.links) {
     // Si otro proyecto ya tiene ese id, la restriccion unica lo rechaza y se deja como esta.
-    await admin.from('projects').update({ github_repo_id: link.githubRepoId }).eq('id', link.projectId).is('github_repo_id', null)
+    const update = link.repositoryUrl ? { github_repo_id: link.githubRepoId, repository_url: link.repositoryUrl } : { github_repo_id: link.githubRepoId }
+    await admin.from('projects').update(update).eq('id', link.projectId).is('github_repo_id', null)
   }
 
+  // Si no se pudo averiguar si alguna URL vieja es un repo renombrado, las altas esperan a la
+  // proxima corrida: mejor tarde que duplicado.
   let created: Array<{ id: string; name: string; repository_url: string }> = []
-  if (plan.inserts.length > 0) {
+  if (plan.inserts.length > 0 && !renamesPending) {
     const { data: team, error: teamError } = await admin.from('teams').select('id').eq('slug', 'dia').maybeSingle()
     if (teamError || !team) return reply({ error: 'No existe el equipo DIA en la tabla teams.' }, 500)
 
@@ -157,7 +166,6 @@ export async function POST(request: Request) {
     created = data ?? []
   }
 
-  const repoById = new Map(repos.map((repo) => [repo.id, repo]))
   const { data: linkedRows, error: linkedError } = await admin
     .from('projects')
     .select('id, description, stack, start_date, website_url, github_repo_id, github_filled_at, github_enriched_at, github_readme_failed_at, created_at')
