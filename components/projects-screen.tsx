@@ -23,6 +23,7 @@ type ProjectRow = {
   status: string
   priority: string
   progress: number
+  start_date: string | null
   estimated_delivery: string | null
   note: string | null
 }
@@ -341,7 +342,7 @@ export function ProjectsScreen({
 
       const { data, error: projectsError } = await supabase
         .from('projects')
-        .select('id, name, description, requester_area, stack, repository_url, repository_url_secondary, website_url, status, priority, progress, estimated_delivery, note')
+        .select('id, name, description, requester_area, stack, repository_url, repository_url_secondary, website_url, status, priority, progress, start_date, estimated_delivery, note')
         .eq('active', true)
         .order('created_at', { ascending: false })
 
@@ -357,7 +358,7 @@ export function ProjectsScreen({
           setProjects([])
         } else {
           setError('Falta actualizar Supabase con columnas nuevas. Ejecuta las migraciones de nota, Repo 2 y website_url.')
-          setProjects(((fallbackData ?? []) as Omit<ProjectRow, 'note' | 'repository_url_secondary' | 'website_url'>[]).map((project) => ({ ...project, note: null, repository_url_secondary: null, website_url: null })))
+          setProjects(((fallbackData ?? []) as Omit<ProjectRow, 'note' | 'repository_url_secondary' | 'website_url' | 'start_date'>[]).map((project) => ({ ...project, note: null, repository_url_secondary: null, website_url: null, start_date: null })))
         }
       } else {
         setProjects((data ?? []) as ProjectRow[])
@@ -581,7 +582,7 @@ export function ProjectsScreen({
     [members],
   )
 
-  async function updateProject<K extends keyof Pick<ProjectRow, 'name' | 'status' | 'priority' | 'estimated_delivery' | 'note' | 'repository_url' | 'repository_url_secondary' | 'website_url'>>(projectId: string, field: K, value: ProjectRow[K]) {
+  async function updateProject<K extends keyof Pick<ProjectRow, 'name' | 'description' | 'status' | 'priority' | 'start_date' | 'estimated_delivery' | 'note' | 'repository_url' | 'repository_url_secondary' | 'website_url'>>(projectId: string, field: K, value: ProjectRow[K]) {
     setError(null)
     setProjects((current) => current.map((project) => (project.id === projectId ? { ...project, [field]: value } : project)))
 
@@ -593,7 +594,7 @@ export function ProjectsScreen({
 
     const key = `${projectId}-${String(field)}`
     setSavingField(key)
-    const nullableFields: Array<keyof ProjectRow> = ['estimated_delivery', 'note', 'repository_url', 'repository_url_secondary', 'website_url']
+    const nullableFields: Array<keyof ProjectRow> = ['description', 'start_date', 'estimated_delivery', 'note', 'repository_url', 'repository_url_secondary', 'website_url']
     const persistedValue = nullableFields.includes(field) ? value || null : value
     const { error: updateError } = await supabase.from('projects').update({ [field]: persistedValue }).eq('id', projectId)
     setSavingField(null)
@@ -1054,8 +1055,23 @@ export function ProjectsScreen({
                 </div>
 
                 <div className={`rounded-lg border p-4 ${panelClass}`}>
-                  <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Descripcion</p>
-                  <p className={`mt-3 text-sm leading-7 ${bodyClass}`}>{selectedProject.description || 'Sin descripcion cargada.'}</p>
+                  <div className="flex items-center justify-between gap-4">
+                    <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Descripcion</p>
+                    {savingField === `${selectedProject.id}-description` && <span className={`text-xs font-semibold ${isDark ? 'text-blue-300' : 'dia-primary-text'}`}>Guardando...</span>}
+                  </div>
+                  {selectedProjectEditing ? (
+                    <textarea
+                      className={`mt-3 min-h-28 w-full resize-y rounded-md border px-3 py-2 text-sm leading-6 outline-none ${inputClass}`}
+                      placeholder="Que es el proyecto, para que area y que problema resuelve..."
+                      value={selectedProject.description ?? ''}
+                      onChange={(event) => setProjects((current) => current.map((item) => (item.id === selectedProject.id ? { ...item, description: event.target.value } : item)))}
+                      onBlur={(event) => updateProject(selectedProject.id, 'description', event.target.value.trim() || null)}
+                    />
+                  ) : (
+                    <p className={`mt-3 text-sm leading-7 ${selectedProject.description ? bodyClass : mutedClass}`}>
+                      {selectedProject.description || 'Sin descripcion cargada.'}
+                    </p>
+                  )}
                 </div>
 
                 <div className={`block rounded-lg border p-4 ${panelClass}`}>
@@ -1321,6 +1337,20 @@ export function ProjectsScreen({
                       </select>
                     ) : (
                       <p className={`mt-1 text-sm font-semibold ${titleClass}`}>{selectedProject.priority}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <p className={`text-xs font-semibold ${labelClass}`}>Inicio</p>
+                    {selectedProjectEditing ? (
+                      <input
+                        className={`mt-1 h-10 w-full rounded-md border px-2 font-semibold outline-none ${inputClass}`}
+                        type="date"
+                        value={selectedProject.start_date ?? ''}
+                        onChange={(event) => updateProject(selectedProject.id, 'start_date', event.target.value || null)}
+                      />
+                    ) : (
+                      <p className={`mt-1 text-sm font-semibold ${titleClass}`}>{selectedProject.start_date || 'Sin fecha'}</p>
                     )}
                   </div>
 

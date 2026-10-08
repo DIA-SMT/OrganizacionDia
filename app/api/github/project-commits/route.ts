@@ -78,6 +78,31 @@ function parseGithubRepo(url: string | null | undefined) {
   }
 }
 
+// Respuestas de GitHub por URL con su ETag. Al repetir la consulta con If-None-Match, GitHub
+// contesta 304 si no hubo cambios y esa respuesta no descuenta del cupo de 5000 por hora.
+// Sin esto, el tablero (que consulta todos los repos cada minuto) agota el cupo de la cuenta.
+const ETAG_CACHE_LIMIT = 1000
+const etagCache = new Map<string, { etag: string; commits: GithubCommit[] }>()
+
+async function fetchCommitPage(url: string, headers: HeadersInit) {
+  const cached = etagCache.get(url)
+  const response = await fetch(url, {
+    headers: cached ? { ...headers, 'If-None-Match': cached.etag } : headers,
+    cache: 'no-store',
+  })
+
+  if (response.status === 304 && cached) return cached.commits
+  if (!response.ok) return null
+
+  const commits = (await response.json()) as GithubCommit[]
+  const etag = response.headers.get('etag')
+  if (etag) {
+    if (etagCache.size >= ETAG_CACHE_LIMIT) etagCache.clear()
+    etagCache.set(url, { etag, commits })
+  }
+  return commits
+}
+
 function firstCommitLine(message: string) {
   return message.split('\n')[0]?.trim() || 'Commit sin descripcion'
 }
@@ -93,31 +118,33 @@ async function fetchRepoCommits(repoUrl: string | null | undefined, repoLabel: s
         return date
       })()
     : null
-  const sinceParam = since ? `&since=${encodeURIComponent(since.toISOString())}` : ''
+  // La consulta pide desde el inicio de ese dia para que la URL sea la misma durante todo el
+  // dia (y el ETag sirva); el corte exacto se aplica despues.
+  const sinceDay = since ? new Date(Date.UTC(since.getUTCFullYear(), since.getUTCMonth(), since.getUTCDate())) : null
+  const sinceParam = sinceDay ? `&since=${encodeURIComponent(sinceDay.toISOString())}` : ''
 
   const commits: GithubCommit[] = []
   let page = 1
   const perPage = Math.min(100, Math.max(20, limitPerRepo))
 
   while (commits.length < limitPerRepo) {
-    const response = await fetch(
-      `https://api.github.com/repos/${repo.owner}/${repo.repo}/commits?per_page=${perPage}&page=${page}${sinceParam}&_=${Date.now()}`,
-      {
-        headers,
-        cache: 'no-store',
-      },
-    )
+    const pageCommits = await fetchCommitPage(`https://api.github.com/repos/${repo.owner}/${repo.repo}/commits?per_page=${perPage}&page=${page}${sinceParam}`, headers)
+    if (!pageCommits) break
 
-    if (!response.ok) break
-
-    const pageCommits = (await response.json()) as GithubCommit[]
     commits.push(...pageCommits)
 
     if (pageCommits.length < perPage || days) break
     page += 1
   }
 
-  return commits.slice(0, limitPerRepo).map((commit) => ({
+  const inWindow = since
+    ? commits.filter((commit) => {
+        const date = commit.commit.author?.date ?? commit.commit.committer?.date
+        return !date || new Date(date) >= since
+      })
+    : commits
+
+  return inWindow.slice(0, limitPerRepo).map((commit) => ({
     sha: commit.sha,
     message: firstCommitLine(commit.commit.message),
     author: commit.author?.login ?? commit.commit.author?.name ?? 'Sin autor',
