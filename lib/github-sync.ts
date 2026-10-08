@@ -91,6 +91,8 @@ export function planGithubProjectSync(repos: GithubOrgRepo[], existing: Existing
   // Se cuentan tambien los proyectos dados de baja (active = false): borrar un proyecto
   // creado por la sincronizacion es la forma de decirle que ese repo no va.
   const knownRepoIds = new Set(existing.map((project) => project.github_repo_id).filter((id): id is number => id !== null))
+  // Repos que ya tienen un proyecto vinculado: no se le vinculan a otro (la base lo rechaza).
+  const linkedRepoIds = new Set(knownRepoIds)
   const projectByPrimaryKey = new Map<string, ExistingProjectRepo>()
   const projectByRenamedRepo = new Map<number, ExistingProjectRepo>()
   const knownKeys = new Set<string>()
@@ -121,7 +123,7 @@ export function planGithubProjectSync(repos: GithubOrgRepo[], existing: Existing
     if (repo.archived || repo.name.startsWith('.') || ignored.has(repo.name.toLowerCase())) continue
     // Proyecto que apuntaba al nombre viejo: se vincula y se pasa al nombre actual.
     const renamedProject = projectByRenamedRepo.get(repo.id)
-    if (renamedProject && renamedProject.github_repo_id === null && !linkedProjectIds.has(renamedProject.id)) {
+    if (renamedProject && renamedProject.github_repo_id === null && !linkedProjectIds.has(renamedProject.id) && !linkedRepoIds.has(repo.id)) {
       plan.links.push({ projectId: renamedProject.id, githubRepoId: repo.id, repositoryUrl: repo.html_url })
       linkedProjectIds.add(renamedProject.id)
     }
