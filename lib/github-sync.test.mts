@@ -563,3 +563,43 @@ test('los que ya fallaron van despues en la cola', async () => {
   const order = readmeCandidates([project('fallo-nuevo', true, '2026-10-07'), project('sano-viejo', false, '2026-01-01')], repos, now).map((candidate) => candidate.id)
   assert.deepEqual(order, ['sano-viejo', 'fallo-nuevo'])
 })
+
+test('la actualizacion a pedido propone todo lo que da GitHub, aunque haya datos cargados', async () => {
+  const { refreshProposal } = await import('./github-sync.ts')
+  const repo = { description: 'Plataforma del CIMT', language: 'TypeScript', homepage: 'cimt-connect.vercel.app', created_at: '2026-04-27T15:00:00Z', pushed_at: null }
+
+  assert.deepEqual(refreshProposal(repo, { TypeScript: 90, CSS: 10 }, 'Plataforma web del CIMT con un asistente que responde consultas.'), {
+    description: 'Plataforma web del CIMT con un asistente que responde consultas.',
+    stack: 'TypeScript, CSS',
+    website_url: 'https://cimt-connect.vercel.app',
+    start_date: '2026-04-27',
+  })
+  // Sin resumen se propone la descripcion de GitHub; sin nada, null.
+  assert.equal(refreshProposal(repo, null, null).description, 'Plataforma del CIMT')
+  assert.deepEqual(refreshProposal({ description: null, language: null, homepage: null, created_at: null, pushed_at: null }, null, null), {
+    description: null,
+    stack: null,
+    website_url: null,
+    start_date: null,
+  })
+})
+
+test('un repo renombrado no se da de alta de nuevo: se vincula al proyecto que tenia el nombre viejo', async () => {
+  const { planGithubProjectSync, staleRepoKeys } = await import('./github-sync.ts')
+  const repos = [repo(1170811544, 'educacivil-HubIA'), repo(7, 'nuevo')]
+  const existing = [
+    project('hubia', { repository_url: 'https://github.com/DIA-SMT/educacivil' }),
+    project('otro', { repository_url: 'https://github.com/DIA-SMT/ya-vinculado', github_repo_id: 99 }),
+    project('ajeno', { repository_url: 'https://github.com/OtraCuenta/algo' }),
+  ]
+
+  // Solo las URLs de la cuenta que no estan en el listado y sin repo vinculado.
+  assert.deepEqual(staleRepoKeys(repos, existing, 'DIA-SMT'), ['dia-smt/educacivil'])
+
+  // Sin resolver el nombre viejo, el repo se duplicaria (el defecto que habia).
+  assert.deepEqual(planGithubProjectSync(repos, existing).inserts.map((insert) => insert.name), ['educacivil-HubIA', 'nuevo'])
+
+  const plan = planGithubProjectSync(repos, existing, new Set(), new Map([['dia-smt/educacivil', 1170811544]]))
+  assert.deepEqual(plan.inserts.map((insert) => insert.name), ['nuevo'])
+  assert.deepEqual(plan.links, [{ projectId: 'hubia', githubRepoId: 1170811544, repositoryUrl: 'https://github.com/DIA-SMT/educacivil-HubIA' }])
+})

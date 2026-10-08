@@ -2,7 +2,17 @@
 // modelo un resumen breve. Las decisiones (que se completa y que no) estan en
 // lib/github-sync.ts. Lo usa app/api/github/sync-projects/route.ts.
 
-import { isRateLimited, parseModelSummary, usefulReadme } from '@/lib/github-sync'
+import { isRateLimited, parseModelSummary, usefulReadme, type GithubOrgRepo } from '@/lib/github-sync'
+
+export function githubHeaders(token: string | undefined) {
+  const headers: Record<string, string> = {
+    Accept: 'application/vnd.github+json',
+    'User-Agent': 'Organizacion-DIA',
+    'X-GitHub-Api-Version': '2022-11-28',
+  }
+  if (token) headers.Authorization = `Bearer ${token}`
+  return headers
+}
 
 type OpenRouterChoice = { message?: { content?: string | null }; finish_reason?: string | null; error?: unknown }
 type OpenRouterResponse = { choices?: OpenRouterChoice[]; error?: unknown }
@@ -58,6 +68,21 @@ export async function fetchRepoDetails(repoKey: string, headers: HeadersInit): P
   // 404 (sin README) y 409 (repo vacio) son respuestas validas; sin respuesta o 5xx, no.
   const failed = [languages, readme].some((result) => result.status === null || result.status >= 500)
   return { outcome: failed ? 'retry' : 'ok', languages: parsedLanguages, readme: readme.text }
+}
+
+// Datos de un repo puntual (para actualizar un proyecto a pedido, fuera del listado).
+export async function fetchRepoInfo(repoKey: string, headers: HeadersInit): Promise<{ outcome: 'ok'; repo: GithubOrgRepo } | { outcome: 'not-found' | 'retry' | 'rate-limited' | 'unauthorized' }> {
+  const result = await githubGet(`/repos/${repoKey}`, headers)
+  if (result.rateLimited) return { outcome: 'rate-limited' }
+  // Token vencido o invalido: es configuracion, no se arregla reintentando.
+  if (result.status === 401) return { outcome: 'unauthorized' }
+  if (result.status === 404 || result.status === 403) return { outcome: 'not-found' }
+  if (!result.text) return { outcome: 'retry' }
+  try {
+    return { outcome: 'ok', repo: JSON.parse(result.text) as GithubOrgRepo }
+  } catch {
+    return { outcome: 'retry' }
+  }
 }
 
 export function summariesConfigured() {

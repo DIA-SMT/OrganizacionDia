@@ -4,10 +4,10 @@ import { AppShell } from '@/components/app-shell'
 import { MemberMultiSelect } from '@/components/member-multi-select'
 import { ProjectCreateButton } from '@/components/project-create-button'
 import { useAuth } from '@/context/AuthContext'
-import { watchGithubProjectSync } from '@/lib/github-sync'
+import { githubRepoKey, watchGithubProjectSync } from '@/lib/github-sync'
 import { filterAndSortProjects, type ProjectFilter } from '@/lib/project-filters'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
-import { Check, ChevronDown, ExternalLink, FileText, Funnel, GitCommitHorizontal, Globe2, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
+import { Check, ChevronDown, ExternalLink, FileText, Funnel, GitCommitHorizontal, Globe2, Loader2, Pencil, Plus, RefreshCw, Trash2, Upload, X } from 'lucide-react'
 import { motion, type Variants } from 'framer-motion'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
@@ -88,6 +88,58 @@ const textNotSavedMessage = 'Tu texto no se guardo: la sesion expiro, no tenes p
 
 // El error de un guardado lleva su proyecto para no aparecer en el modal de otro; null es un error general
 type ScreenError = { message: string; projectId: string | null }
+
+// Campos que propone POST /api/github/refresh-project, con su etiqueta en el panel
+type GithubField = 'description' | 'stack' | 'website_url' | 'start_date'
+type GithubFields = Record<GithubField, string | null>
+const githubFields: Array<[GithubField, string]> = [
+  ['description', 'Descripcion'],
+  ['stack', 'Tecnologias'],
+  ['website_url', 'Pagina web'],
+  ['start_date', 'Inicio'],
+]
+
+// Panel "Datos de GitHub" del proyecto abierto. token identifica el pedido: una respuesta que llega con el modal cerrado,
+// con otro proyecto o despues de otro pedido se descarta. expected es el valor de la base al llegar la propuesta y
+// Aplicar se condiciona a el
+type GithubRefresh =
+  | { projectId: string; token: number; status: 'reading' }
+  | {
+      projectId: string
+      token: number
+      status: 'ready' | 'applying'
+      repository: string
+      readme: 'summary' | 'no-info' | 'no-readme' | 'failed'
+      proposal: GithubFields
+      expected: GithubFields
+      unchecked: GithubField[]
+    }
+type GithubRefreshReady = Exclude<GithubRefresh, { status: 'reading' }>
+type GithubRow = { field: GithubField; label: string; shown: string | null; proposed: string; checked: boolean }
+
+const githubChangedMessage = 'El proyecto cambio mientras tanto. Volve a tocar Actualizar desde GitHub.'
+
+// Un campo ausente o vacio cuenta como "nada": una respuesta con otra forma no debe romper el modal
+function githubFieldsOf(value: unknown): GithubFields {
+  const record = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
+  return Object.fromEntries(githubFields.map(([field]) => [field, typeof record[field] === 'string' && record[field] ? record[field] : null])) as GithubFields
+}
+
+function githubErrorMessage(status: number) {
+  if (status === 401 || status === 403) return 'No tenes permiso para actualizar este proyecto desde GitHub.'
+  if (status === 404) return 'No se encontro el proyecto o no tiene un repositorio de GitHub.'
+  if (status === 429) return 'Se agoto el cupo de consultas a GitHub. Proba de nuevo mas tarde.'
+  return 'No se pudo leer GitHub. Proba de nuevo en unos minutos.'
+}
+
+// Filas del panel: lo que GitHub propone y es distinto de lo que se ve. Se arman con el proyecto en pantalla en cada render
+function githubRows(project: ProjectRow, refresh: GithubRefreshReady): GithubRow[] {
+  return githubFields.flatMap(([field, label]) => {
+    const proposed = refresh.proposal[field]
+    const shown = project[field] || null
+    return proposed !== null && proposed !== shown ? [{ field, label, shown, proposed, checked: !refresh.unchecked.includes(field) }] : []
+  })
+}
 
 function confirmedKey(projectId: string, field: string) {
   return `${projectId}:${field}`
@@ -356,6 +408,9 @@ export function ProjectsScreen({
   const textConflictsRef = useRef<Record<string, TextConflict>>({})
   // Ultima tarea de cada texto condicionado: la siguiente la espera y se condiciona a lo que esa confirmo
   const textSaveChains = useRef(new Map<string, Promise<void>>())
+  const [githubRefresh, setGithubRefresh] = useState<GithubRefresh | null>(null)
+  // Ultimo pedido a GitHub: abrir otro proyecto o cerrar el modal lo invalida
+  const githubRefreshToken = useRef(0)
   const { teamSlug } = useAuth()
   const theme = useStoredTheme()
   const isDark = theme === 'dark'
@@ -715,12 +770,12 @@ export function ProjectsScreen({
   }
 
   // Las tareas de un mismo texto van en fila: dos guardados seguidos con el primero en vuelo se condicionarian al mismo
-  // valor y el segundo daria un conflicto falso
-  function enqueueTextTask(key: string, task: () => Promise<void>) {
-    const next = (textSaveChains.current.get(key) ?? Promise.resolve()).then(task, task)
-    textSaveChains.current.set(key, next)
+  // valor y el segundo daria un conflicto falso. Aplicar GitHub toca varios textos y entra en la fila de cada uno
+  function enqueueTextTask(keys: string[], task: () => Promise<void>) {
+    const next = Promise.allSettled(keys.map((key) => textSaveChains.current.get(key))).then(task)
+    for (const key of keys) textSaveChains.current.set(key, next)
     const release = () => {
-      if (textSaveChains.current.get(key) === next) textSaveChains.current.delete(key)
+      for (const key of keys) if (textSaveChains.current.get(key) === next) textSaveChains.current.delete(key)
     }
     void next.then(release, release)
     return next
@@ -744,7 +799,7 @@ export function ProjectsScreen({
     setPendingSaves((count) => count + 1)
 
     try {
-      await enqueueTextTask(key, async () => {
+      await enqueueTextTask([key], async () => {
         const conflict = textConflictsRef.current[key]
         let draft: string | null
         if (save.kind === 'blur') {
@@ -809,13 +864,142 @@ export function ProjectsScreen({
   // Descartar mi texto: el campo vuelve al valor de la base. Va en la fila del campo para quedar despues de un blur previo
   function discardTextDraft(projectId: string, field: GuardedTextField) {
     const key = confirmedKey(projectId, field)
-    void enqueueTextTask(key, async () => {
+    void enqueueTextTask([key], async () => {
       const conflict = textConflictsRef.current[key]
       if (!conflict) return
       const serverValue = confirmedValues.current.has(key) ? (confirmedValues.current.get(key) as string | null) : conflict.server ?? null
       setProjects((current) => current.map((project) => (project.id === projectId ? { ...project, [field]: serverValue } : project)))
       changeTextConflicts((current) => withoutKey(current, key))
     })
+  }
+
+  // Pide la propuesta de GitHub sin escribir nada: el panel muestra las diferencias y la persona elige que aplicar
+  async function readGithubRefresh(projectId: string) {
+    githubRefreshToken.current += 1
+    const token = githubRefreshToken.current
+    setError(null)
+    setGithubRefresh({ projectId, token, status: 'reading' })
+
+    let payload: Record<string, unknown> | null = null
+    let message = 'No se pudo consultar GitHub: fallo la conexion.'
+    try {
+      const response = await fetch('/api/github/refresh-project', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId }),
+      })
+      // Un 502 del proxy puede no traer JSON
+      const body: unknown = await response.json().catch(() => null)
+      const record = body && typeof body === 'object' ? (body as Record<string, unknown>) : null
+      if (response.ok && record?.proposal && typeof record.proposal === 'object') payload = record
+      else message = typeof record?.error === 'string' && record.error ? record.error : response.ok ? 'GitHub devolvio una respuesta inesperada.' : githubErrorMessage(response.status)
+    } catch {
+      // Sin conexion queda el mensaje por defecto
+    }
+
+    // Se cerro el modal, se abrio otro proyecto o se volvio a pedir
+    if (githubRefreshToken.current !== token) return
+
+    if (!payload) {
+      setGithubRefresh(null)
+      setError({ message, projectId })
+      return
+    }
+
+    // Aplicar se condiciona a lo ultimo que confirmo la base en esta pantalla, como los textos condicionados: un cambio
+    // que la pantalla todavia no muestra no se pisa. Lo que leyo el endpoint queda para un campo sin valor confirmado
+    const current = githubFieldsOf(payload.current)
+    const expected = Object.fromEntries(
+      githubFields.map(([field]) => {
+        const key = confirmedKey(projectId, field)
+        return [field, confirmedValues.current.has(key) ? (confirmedValues.current.get(key) as string | null) : current[field]]
+      }),
+    ) as GithubFields
+    setGithubRefresh({
+      projectId,
+      token,
+      status: 'ready',
+      repository: typeof payload.repository === 'string' ? payload.repository : '',
+      readme: payload.readme === 'no-info' || payload.readme === 'no-readme' || payload.readme === 'failed' ? payload.readme : 'summary',
+      proposal: githubFieldsOf(payload.proposal),
+      expected,
+      unchecked: [],
+    })
+  }
+
+  function toggleGithubField(token: number, field: GithubField) {
+    setGithubRefresh((current) =>
+      current && current.token === token && current.status === 'ready'
+        ? { ...current, unchecked: current.unchecked.includes(field) ? current.unchecked.filter((item) => item !== field) : [...current.unchecked, field] }
+        : current,
+    )
+  }
+
+  // Un solo UPDATE con los campos marcados, condicionado a que la base siga con los valores que se mostraron: si los cambio
+  // la sincronizacion, otra sesion o un guardado de esta pantalla, no se pisa nada
+  async function applyGithubRefresh(project: ProjectRow, refresh: GithubRefreshReady) {
+    const projectId = project.id
+    const rows = githubRows(project, refresh).filter((row) => row.checked)
+    if (rows.length === 0) return
+
+    setError(null)
+    const supabase = getSupabaseBrowserClient()
+    if (!supabase) {
+      setError({ message: 'Supabase no esta configurado.', projectId })
+      return
+    }
+
+    // Solo toca el panel de este pedido: si se cerro o se pidio otro, el resultado no lo reabre
+    const updatePanel = (next: (current: GithubRefreshReady) => GithubRefresh | null) =>
+      setGithubRefresh((current) => (current && current.token === refresh.token && current.status !== 'reading' ? next(current) : current))
+    updatePanel((current) => ({ ...current, status: 'applying' }))
+    // Se cuenta antes de esperar el turno de los textos para que la recarga espere tambien
+    setPendingSaves((count) => count + 1)
+    // Descripcion y web van en la fila de sus textos: un blur o un Guardar mi version en vuelo termina antes
+    const textKeys = rows.filter((row) => row.field === 'description' || row.field === 'website_url').map((row) => confirmedKey(projectId, row.field))
+
+    try {
+      await enqueueTextTask(textKeys, async () => {
+        const patch = Object.fromEntries(rows.map((row) => [row.field, row.proposed]))
+        let update = supabase.from('projects').update({ ...patch, github_enriched_at: new Date().toISOString() }).eq('id', projectId)
+        for (const row of rows) {
+          const expected = refresh.expected[row.field]
+          // Igual que en los textos condicionados: uno largo no se compara porque la condicion viaja en la URL
+          if (expected === null) update = update.is(row.field, null)
+          else if (expected.length <= GUARDED_TEXT_MAX) update = update.eq(row.field, expected)
+        }
+        const { data: updatedRows, error: updateError } = await update.select('id')
+
+        if (updateError) {
+          updatePanel((current) => ({ ...current, status: 'ready' }))
+          setError({ message: updateError.message, projectId })
+          return
+        }
+
+        if (!updatedRows?.length) {
+          // No se escribe nada; la recarga trae lo que hay en la base para que el proximo pedido se compare con eso
+          updatePanel(() => null)
+          setError({ message: githubChangedMessage, projectId })
+          setGithubSyncTick((tick) => tick + 1)
+          return
+        }
+
+        for (const row of rows) confirmedValues.current.set(confirmedKey(projectId, row.field), row.proposed)
+        // Si se volvio a escribir en el campo mientras se aplicaba queda lo escrito: su guardado se condiciona al valor nuevo
+        setProjects((current) =>
+          current.map((item) => (item.id === projectId ? rows.reduce<ProjectRow>((next, row) => ((next[row.field] || null) === row.shown ? { ...next, [row.field]: row.proposed } : next), item) : item)),
+        )
+        // El borrador de un texto en conflicto lo reemplaza el valor de GitHub que se eligio
+        const appliedKeys = rows.map((row) => confirmedKey(projectId, row.field))
+        if (appliedKeys.some((key) => textConflictsRef.current[key])) changeTextConflicts((current) => appliedKeys.reduce((next, key) => withoutKey(next, key), current))
+        updatePanel(() => null)
+      })
+    } catch (applyError) {
+      updatePanel((current) => ({ ...current, status: 'ready' }))
+      setError({ message: applyError instanceof Error ? applyError.message : 'No se pudieron aplicar los datos de GitHub.', projectId })
+    } finally {
+      setPendingSaves((count) => count - 1)
+    }
   }
 
   async function updateProjectMembers(projectId: string, nextMemberIds: string[]) {
@@ -980,11 +1164,18 @@ export function ProjectsScreen({
     setProjects((current) => current.map((project) => (project.id === projectId ? { ...project, [field]: valueOnFocus } : project)))
   }
 
+  // Abre un proyecto o cierra el modal (null). El panel de GitHub y su lectura en curso eran del proyecto anterior
+  function showProject(projectId: string | null) {
+    githubRefreshToken.current += 1
+    setGithubRefresh(null)
+    setSelectedProjectEditing(false)
+    setSelectedProjectId(projectId)
+  }
+
   function openProjectCard(event: React.MouseEvent<HTMLElement>, projectId: string) {
     const target = event.target as HTMLElement
     if (target.closest('input, textarea, select, button, a, [data-no-project-open]')) return
-    setSelectedProjectEditing(false)
-    setSelectedProjectId(projectId)
+    showProject(projectId)
   }
 
   const filtered = useMemo(() => {
@@ -999,6 +1190,8 @@ export function ProjectsScreen({
   const selectedProjectDocuments = selectedProject ? projectDocuments[selectedProject.id] ?? [] : []
   // El modal muestra los errores de su proyecto y los generales (el fondo tapa el aviso de arriba), no los de otro proyecto
   const selectedProjectError = selectedProject && error && (error.projectId === null || error.projectId === selectedProject.id) ? error.message : null
+  // Mientras se lee GitHub o se aplica, el boton del encabezado no lanza otro pedido
+  const selectedGithubStatus = selectedProject && githubRefresh?.projectId === selectedProject.id ? githubRefresh.status : null
   // La tarjeta marca los proyectos con un texto sin guardar para que el borrador no quede olvidado al cerrar el modal
   const projectIdsWithTextConflict = useMemo(() => new Set(Object.values(textConflicts).map((conflict) => conflict.projectId)), [textConflicts])
 
@@ -1026,6 +1219,89 @@ export function ProjectsScreen({
           </button>
           <button type="button" className={actionClass} disabled={saving} onClick={() => discardTextDraft(projectId, field)}>
             Descartar mi texto
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Panel "Datos de GitHub": una fila por campo que cambiaria, marcada por defecto, y Aplicar o Cancelar
+  function githubRefreshPanel(project: ProjectRow) {
+    const refresh = githubRefresh
+    if (!refresh || refresh.projectId !== project.id || refresh.status === 'reading') return null
+    const rows = githubRows(project, refresh)
+    const applying = refresh.status === 'applying'
+    const readmeNote =
+      refresh.readme === 'summary'
+        ? null
+        : refresh.readme === 'failed'
+          ? 'No se pudo generar la descripcion (el modelo no respondio): el resto se puede aplicar igual. Proba de nuevo en unos minutos para la descripcion.'
+          : `${refresh.readme === 'no-readme' ? 'El repositorio no tiene README' : 'El README no describe el proyecto'}${
+              refresh.proposal.description === null ? ', por eso no hay descripcion propuesta.' : ': la descripcion propuesta es la del repositorio en GitHub.'
+            }`
+
+    return (
+      <div data-github-refresh className={`rounded-lg border p-4 lg:col-span-2 ${panelClass}`}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <RefreshCw className={`h-4 w-4 ${isDark ? 'text-blue-300' : 'dia-primary-text'}`} />
+            <p className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Datos de GitHub</p>
+          </div>
+          {refresh.repository && <span className={`break-all text-xs ${mutedClass}`}>{refresh.repository}</span>}
+        </div>
+        {readmeNote && <p className={`mt-2 text-xs ${mutedClass}`}>{readmeNote}</p>}
+        {rows.length === 0 ? (
+          <p className={`mt-3 text-sm ${bodyClass}`}>Ya esta al dia con GitHub.</p>
+        ) : (
+          <div className="mt-3 grid gap-2">
+            {rows.map((row) => (
+              <label
+                key={row.field}
+                className={`flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2 ${isDark ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white/80'}`}
+              >
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-blue-600"
+                  checked={row.checked}
+                  disabled={applying}
+                  onChange={() => toggleGithubField(refresh.token, row.field)}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className={`block text-xs font-semibold ${labelClass}`}>{row.label}</span>
+                  <span className={`mt-1 line-clamp-3 whitespace-pre-wrap break-words text-sm ${mutedClass}`}>
+                    <span className="font-semibold">Actual: </span>
+                    {row.shown ?? 'vacio'}
+                  </span>
+                  <span className={`mt-1 block whitespace-pre-wrap break-words text-sm ${titleClass}`}>
+                    <span className="font-semibold">Propuesto: </span>
+                    {row.proposed}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+        )}
+        <div className="mt-3 flex flex-wrap gap-2">
+          {rows.length > 0 && (
+            <button
+              type="button"
+              className="inline-flex h-9 items-center gap-2 rounded-md dia-primary-bg px-3 text-sm font-semibold text-white shadow-sm transition hover:brightness-110 disabled:opacity-60"
+              disabled={applying || rows.every((row) => !row.checked)}
+              onClick={() => void applyGithubRefresh(project, refresh)}
+            >
+              {applying && <Loader2 className="h-4 w-4 animate-spin" />}
+              {applying ? 'Aplicando...' : 'Aplicar'}
+            </button>
+          )}
+          <button
+            type="button"
+            className={`inline-flex h-9 items-center rounded-md border px-3 text-sm font-semibold transition disabled:opacity-60 ${
+              isDark ? 'border-slate-700 text-slate-300 hover:bg-slate-900' : 'border-slate-200 text-slate-600 hover:bg-white'
+            }`}
+            disabled={applying}
+            onClick={() => setGithubRefresh(null)}
+          >
+            Cancelar
           </button>
         </div>
       </div>
@@ -1139,8 +1415,7 @@ export function ProjectsScreen({
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault()
-                  setSelectedProjectEditing(false)
-                  setSelectedProjectId(project.id)
+                  showProject(project.id)
                 }
               }}
             >
@@ -1211,10 +1486,7 @@ export function ProjectsScreen({
       {selectedProject && (
         <div
           className="prezi-backdrop-in fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
-          onClick={() => {
-            setSelectedProjectEditing(false)
-            setSelectedProjectId(null)
-          }}
+          onClick={() => showProject(null)}
         >
           <section
             data-lenis-prevent
@@ -1274,6 +1546,30 @@ export function ProjectsScreen({
                     Ir a web
                   </a>
                 )}
+                {teamSlug === 'dia' && githubRepoKey(selectedProject.repository_url) && (
+                  <button
+                    type="button"
+                    className={`flex h-10 items-center gap-2 rounded-md border px-3 text-sm font-semibold transition disabled:opacity-60 ${
+                      isDark ? 'border-slate-700 text-slate-300 hover:bg-slate-900' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                    onClick={() => void readGithubRefresh(selectedProject.id)}
+                    disabled={selectedGithubStatus === 'reading' || selectedGithubStatus === 'applying'}
+                    aria-busy={selectedGithubStatus === 'reading'}
+                    title="Actualizar desde GitHub"
+                  >
+                    {selectedGithubStatus === 'reading' ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span className="hidden sm:inline">Leyendo GitHub...</span>
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="h-4 w-4" />
+                        <span className="hidden sm:inline">Actualizar desde GitHub</span>
+                      </>
+                    )}
+                  </button>
+                )}
                 <button
                   type="button"
                   className={`flex h-10 items-center gap-2 rounded-md border px-3 text-sm font-semibold transition ${
@@ -1294,10 +1590,7 @@ export function ProjectsScreen({
                 <button
                   type="button"
                   className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md border ${isDark ? 'border-slate-700 text-slate-300 hover:bg-slate-900' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}
-                  onClick={() => {
-                    setSelectedProjectEditing(false)
-                    setSelectedProjectId(null)
-                  }}
+                  onClick={() => showProject(null)}
                   title="Cerrar detalle"
                 >
                   <X className="h-4 w-4" />
@@ -1306,6 +1599,7 @@ export function ProjectsScreen({
             </div>
 
             <div className="grid gap-5 p-5 lg:grid-cols-[1.2fr_0.8fr]">
+              {githubRefreshPanel(selectedProject)}
               <div className="space-y-5">
                 <div className={`rounded-lg border p-4 ${panelClass}`}>
                   <div className="flex items-center justify-between gap-3">
