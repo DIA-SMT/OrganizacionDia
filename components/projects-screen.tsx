@@ -4,12 +4,12 @@ import { AppShell } from '@/components/app-shell'
 import { MemberMultiSelect } from '@/components/member-multi-select'
 import { ProjectCreateButton } from '@/components/project-create-button'
 import { useAuth } from '@/context/AuthContext'
-import { requestGithubProjectSync } from '@/lib/github-sync'
+import { watchGithubProjectSync } from '@/lib/github-sync'
 import { filterAndSortProjects, type ProjectFilter } from '@/lib/project-filters'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
 import { Check, ChevronDown, ExternalLink, FileText, Funnel, GitCommitHorizontal, Globe2, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
 import { motion, type Variants } from 'framer-motion'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 type ProjectRow = {
   id: string
@@ -68,6 +68,9 @@ type ProjectParticipant = {
 }
 
 const priorities = ['Baja', 'Media', 'Alta', 'Critica']
+
+// Un UPDATE que no afecta filas no da error: pasa con la sesion vencida o si la RLS lo filtra
+const projectNotSavedMessage = 'No se pudo guardar: la sesion expiro o no tenes permiso para editar este proyecto.'
 
 const projectFilterGroups: Array<{
   label: string
@@ -306,6 +309,12 @@ export function ProjectsScreen({
   const [savingProjectMembersId, setSavingProjectMembersId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [githubSyncTick, setGithubSyncTick] = useState(0)
+  // Guardados en vuelo (campos, progreso y responsables): savingField guarda uno solo y no alcanza para esperar a todos
+  const [pendingSaves, setPendingSaves] = useState(0)
+  // Recarga ya aplicada: si difiere de githubSyncTick hay una pendiente
+  const loadedSyncTick = useRef<number | null>(null)
+  // Valor del campo de texto al tomar el foco: se compara en el blur y se restaura si falla el guardado
+  const fieldValueOnFocus = useRef<string | null>(null)
   const { teamSlug } = useAuth()
   const theme = useStoredTheme()
   const isDark = theme === 'dark'
@@ -332,7 +341,15 @@ export function ProjectsScreen({
   const labelClass = isDark ? 'text-slate-500' : 'text-slate-400'
   const inputClass = isDark ? 'border-slate-700 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-900'
 
+  // Sin proyecto abierto no hay nada en edicion aunque el flag haya quedado prendido (por ejemplo al eliminar)
+  const editingOpenProject = selectedProjectEditing && selectedProjectId !== null
+
+  // Reemplazar la lista mientras se edita (o con guardados en vuelo) borraria lo escrito o mostraria valores viejos: la recarga espera
   useEffect(() => {
+    if (editingOpenProject || pendingSaves > 0 || loadedSyncTick.current === githubSyncTick) return
+
+    let cancelled = false
+
     async function fetchProjects() {
       const supabase = getSupabaseBrowserClient()
       if (!supabase) {
@@ -345,6 +362,7 @@ export function ProjectsScreen({
         .select('id, name, description, requester_area, stack, repository_url, repository_url_secondary, website_url, status, priority, progress, start_date, estimated_delivery, note')
         .eq('active', true)
         .order('created_at', { ascending: false })
+      if (cancelled) return
 
       if (projectsError) {
         const { data: fallbackData, error: fallbackError } = await supabase
@@ -352,6 +370,7 @@ export function ProjectsScreen({
           .select('id, name, description, requester_area, stack, repository_url, status, priority, progress, estimated_delivery')
           .eq('active', true)
           .order('created_at', { ascending: false })
+        if (cancelled) return
 
         if (fallbackError) {
           setError(fallbackError.message)
@@ -364,24 +383,22 @@ export function ProjectsScreen({
         setProjects((data ?? []) as ProjectRow[])
       }
 
+      loadedSyncTick.current = githubSyncTick
       setLoading(false)
     }
 
     fetchProjects()
-  }, [githubSyncTick])
 
-  // Los repos nuevos de GitHub se dan de alta solos; si aparecio alguno, se recarga la lista.
-  useEffect(() => {
-    if (teamSlug !== 'dia') return
-
-    let cancelled = false
-    void requestGithubProjectSync().then((created) => {
-      if (!cancelled && created > 0) setGithubSyncTick((tick) => tick + 1)
-    })
-
+    // Si se entra en edicion o empieza un guardado con la carga en curso se descarta y queda pendiente
     return () => {
       cancelled = true
     }
+  }, [githubSyncTick, editingOpenProject, pendingSaves])
+
+  // Los repos nuevos de GitHub se dan de alta y se completan solos; si cambio algo, se recarga la lista.
+  useEffect(() => {
+    if (teamSlug !== 'dia') return
+    return watchGithubProjectSync(() => setGithubSyncTick((tick) => tick + 1))
   }, [teamSlug])
 
   useEffect(() => {
@@ -582,24 +599,43 @@ export function ProjectsScreen({
     [members],
   )
 
-  async function updateProject<K extends keyof Pick<ProjectRow, 'name' | 'description' | 'status' | 'priority' | 'start_date' | 'estimated_delivery' | 'note' | 'repository_url' | 'repository_url_secondary' | 'website_url'>>(projectId: string, field: K, value: ProjectRow[K]) {
+  async function updateProject<K extends keyof Pick<ProjectRow, 'name' | 'description' | 'status' | 'priority' | 'start_date' | 'estimated_delivery' | 'note' | 'repository_url' | 'repository_url_secondary' | 'website_url'>>(projectId: string, field: K, value: ProjectRow[K], previousValue?: ProjectRow[K]) {
+    // Los campos de texto cambian la lista en cada tecla, por eso pasan el valor que tenian al tomar el foco
+    const restoredValue = previousValue === undefined ? projects.find((project) => project.id === projectId)?.[field] : previousValue
+    // Si el campo se volvio a editar mientras se guardaba, no se pisa lo nuevo
+    const restore = () => {
+      if (restoredValue === undefined) return
+      setProjects((current) => current.map((project) => (project.id === projectId && project[field] === value ? { ...project, [field]: restoredValue } : project)))
+    }
+
     setError(null)
     setProjects((current) => current.map((project) => (project.id === projectId ? { ...project, [field]: value } : project)))
 
     const supabase = getSupabaseBrowserClient()
     if (!supabase) {
+      restore()
       setError('Supabase no esta configurado.')
       return
     }
 
     const key = `${projectId}-${String(field)}`
     setSavingField(key)
+    setPendingSaves((count) => count + 1)
     const nullableFields: Array<keyof ProjectRow> = ['description', 'start_date', 'estimated_delivery', 'note', 'repository_url', 'repository_url_secondary', 'website_url']
     const persistedValue = nullableFields.includes(field) ? value || null : value
-    const { error: updateError } = await supabase.from('projects').update({ [field]: persistedValue }).eq('id', projectId)
-    setSavingField(null)
 
-    if (updateError) setError(updateError.message)
+    try {
+      // Se piden las filas tocadas para detectar el UPDATE que no guardo nada
+      const { data: updatedRows, error: updateError } = await supabase.from('projects').update({ [field]: persistedValue }).eq('id', projectId).select('id')
+
+      if (updateError || !updatedRows?.length) {
+        restore()
+        setError(updateError?.message ?? projectNotSavedMessage)
+      }
+    } finally {
+      setSavingField(null)
+      setPendingSaves((count) => count - 1)
+    }
   }
 
   async function updateProjectMembers(projectId: string, nextMemberIds: string[]) {
@@ -620,26 +656,32 @@ export function ProjectsScreen({
     }
 
     setSavingProjectMembersId(projectId)
+    setPendingSaves((count) => count + 1)
     const removedIds = previousMemberIds.filter((memberId) => !nextMemberIds.includes(memberId))
     const addedIds = nextMemberIds.filter((memberId) => !previousMemberIds.includes(memberId))
 
-    const removeResult = removedIds.length > 0
-      ? await supabase.from('project_members').delete().eq('project_id', projectId).in('member_id', removedIds)
-      : { error: null }
-    const addResult = !removeResult.error && addedIds.length > 0
-      ? await supabase.from('project_members').insert(addedIds.map((memberId) => ({ project_id: projectId, member_id: memberId })))
-      : { error: null }
+    try {
+      const removeResult = removedIds.length > 0
+        ? await supabase.from('project_members').delete().eq('project_id', projectId).in('member_id', removedIds)
+        : { error: null }
+      const addResult = !removeResult.error && addedIds.length > 0
+        ? await supabase.from('project_members').insert(addedIds.map((memberId) => ({ project_id: projectId, member_id: memberId })))
+        : { error: null }
 
-    setSavingProjectMembersId(null)
-    const persistenceError = removeResult.error || addResult.error
-    if (persistenceError) {
-      setProjectMemberIds((current) => ({ ...current, [projectId]: previousMemberIds }))
-      setError(`${persistenceError.message}. Si falta la tabla, ejecuta supabase/add_project_members.sql.`)
+      const persistenceError = removeResult.error || addResult.error
+      if (persistenceError) {
+        setProjectMemberIds((current) => ({ ...current, [projectId]: previousMemberIds }))
+        setError(`${persistenceError.message}. Si falta la tabla, ejecuta supabase/add_project_members.sql.`)
+      }
+    } finally {
+      setSavingProjectMembersId(null)
+      setPendingSaves((count) => count - 1)
     }
   }
 
   async function updateProgress(projectId: string, progress: number) {
     setError(null)
+    const previousProgress = projects.find((project) => project.id === projectId)?.progress
     setProjects((current) => current.map((project) => (project.id === projectId ? { ...project, progress } : project)))
 
     const supabase = getSupabaseBrowserClient()
@@ -649,10 +691,21 @@ export function ProjectsScreen({
     }
 
     setSavingProgressId(projectId)
-    const { error: updateError } = await supabase.from('projects').update({ progress }).eq('id', projectId)
-    setSavingProgressId(null)
+    setPendingSaves((count) => count + 1)
 
-    if (updateError) setError(updateError.message)
+    try {
+      const { data: updatedRows, error: updateError } = await supabase.from('projects').update({ progress }).eq('id', projectId).select('id')
+      if (updateError || !updatedRows?.length) {
+        setError(updateError?.message ?? projectNotSavedMessage)
+        // Vuelve al valor guardado, salvo que el usuario ya haya movido la barra de nuevo.
+        if (previousProgress !== undefined) {
+          setProjects((current) => current.map((project) => (project.id === projectId && project.progress === progress ? { ...project, progress: previousProgress } : project)))
+        }
+      }
+    } finally {
+      setSavingProgressId(null)
+      setPendingSaves((count) => count - 1)
+    }
   }
 
   async function deleteProject(project: ProjectRow) {
@@ -953,7 +1006,10 @@ export function ProjectsScreen({
                     className={`w-full rounded-md border border-transparent bg-transparent text-2xl font-bold outline-none transition focus:border-blue-300 focus:px-2 ${titleClass}`}
                     value={selectedProject.name}
                     onChange={(event) => setProjects((current) => current.map((item) => (item.id === selectedProject.id ? { ...item, name: event.target.value } : item)))}
-                    onBlur={(event) => updateProject(selectedProject.id, 'name', event.target.value.trim() || selectedProject.name)}
+                    onFocus={() => {
+                      fieldValueOnFocus.current = selectedProject.name
+                    }}
+                    onBlur={(event) => updateProject(selectedProject.id, 'name', event.target.value.trim() || selectedProject.name, fieldValueOnFocus.current ?? undefined)}
                   />
                 ) : (
                   <h2 className={`text-2xl font-bold ${titleClass}`}>{selectedProject.name}</h2>
@@ -970,6 +1026,11 @@ export function ProjectsScreen({
                       Responsables del proyecto
                     </span>
                   </div>
+                )}
+                {error && (
+                  <p role="alert" className={`mt-3 rounded-md border px-3 py-2 text-xs font-semibold ${isDark ? 'border-red-900/60 bg-red-950/30 text-red-300' : 'border-red-200 bg-red-50 text-red-700'}`}>
+                    {error}
+                  </p>
                 )}
               </div>
               <div className="flex shrink-0 items-center gap-2">
@@ -1065,7 +1126,14 @@ export function ProjectsScreen({
                       placeholder="Que es el proyecto, para que area y que problema resuelve..."
                       value={selectedProject.description ?? ''}
                       onChange={(event) => setProjects((current) => current.map((item) => (item.id === selectedProject.id ? { ...item, description: event.target.value } : item)))}
-                      onBlur={(event) => updateProject(selectedProject.id, 'description', event.target.value.trim() || null)}
+                      onFocus={() => {
+                        fieldValueOnFocus.current = selectedProject.description
+                      }}
+                      onBlur={(event) => {
+                        // Sin cambios no se guarda: la lista puede estar vieja y pisaria el resumen que escribio la sincronizacion
+                        const description = event.target.value.trim() || null
+                        if (description !== (fieldValueOnFocus.current?.trim() || null)) void updateProject(selectedProject.id, 'description', description, fieldValueOnFocus.current)
+                      }}
                     />
                   ) : (
                     <p className={`mt-3 text-sm leading-7 ${selectedProject.description ? bodyClass : mutedClass}`}>
@@ -1085,7 +1153,13 @@ export function ProjectsScreen({
                       placeholder="Estado corto, mantenimiento pendiente, observaciones del equipo..."
                       value={selectedProject.note ?? ''}
                       onChange={(event) => setProjects((current) => current.map((item) => (item.id === selectedProject.id ? { ...item, note: event.target.value } : item)))}
-                      onBlur={(event) => updateProject(selectedProject.id, 'note', event.target.value.trim() || null)}
+                      onFocus={() => {
+                        fieldValueOnFocus.current = selectedProject.note
+                      }}
+                      onBlur={(event) => {
+                        const note = event.target.value.trim() || null
+                        if (note !== (fieldValueOnFocus.current?.trim() || null)) void updateProject(selectedProject.id, 'note', note, fieldValueOnFocus.current)
+                      }}
                     />
                   ) : (
                     <p className={`mt-3 text-sm leading-7 ${selectedProject.note ? bodyClass : mutedClass}`}>
@@ -1106,7 +1180,14 @@ export function ProjectsScreen({
                         placeholder="https://proyecto.vercel.app"
                         value={selectedProject.website_url ?? ''}
                         onChange={(event) => setProjects((current) => current.map((item) => (item.id === selectedProject.id ? { ...item, website_url: event.target.value } : item)))}
-                        onBlur={(event) => updateProject(selectedProject.id, 'website_url', normalizeWebsiteUrl(event.target.value))}
+                        onFocus={() => {
+                          fieldValueOnFocus.current = selectedProject.website_url
+                        }}
+                        onBlur={(event) => {
+                          // La sincronizacion tambien completa el sitio: sin cambios no se guarda
+                          const websiteUrl = normalizeWebsiteUrl(event.target.value)
+                          if (websiteUrl !== normalizeWebsiteUrl(fieldValueOnFocus.current ?? '')) void updateProject(selectedProject.id, 'website_url', websiteUrl, fieldValueOnFocus.current)
+                        }}
                       />
                       {selectedProject.website_url && (
                         <a
@@ -1171,7 +1252,10 @@ export function ProjectsScreen({
                                 placeholder={`${label} - link`}
                                 value={value}
                                 onChange={(event) => setProjects((current) => current.map((item) => (item.id === selectedProject.id ? { ...item, [field]: event.target.value } : item)))}
-                                onBlur={(event) => updateProject(selectedProject.id, repoField, event.target.value.trim() || null)}
+                                onFocus={() => {
+                                  fieldValueOnFocus.current = selectedProject[repoField]
+                                }}
+                                onBlur={(event) => updateProject(selectedProject.id, repoField, event.target.value.trim() || null, fieldValueOnFocus.current)}
                               />
                               {value && (
                                 <a

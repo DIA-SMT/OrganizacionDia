@@ -1,27 +1,40 @@
-import { fetchRepoDetails, summarizeReadme } from '@/lib/github-enrich'
+import { fetchRepoDetails, summariesConfigured, summarizeReadme } from '@/lib/github-enrich'
 import {
-  enrichmentPatch,
   githubRepoKey,
+  listingPatch,
   parseIgnoredRepos,
   planGithubProjectSync,
-  type EnrichableProject,
+  readmeCandidates,
+  readmePatch,
+  wantsReadmeSummary,
   type ExistingProjectRepo,
   type GithubOrgRepo,
+  type ProjectGithubFields,
 } from '@/lib/github-sync'
 import { getSupabaseAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { after } from 'next/server'
 
 export const runtime = 'nodejs'
-// El analisis de READMEs con IA puede tardar unos segundos por proyecto.
+// El analisis de READMEs corre despues de responder (after), dentro de este mismo limite.
 export const maxDuration = 60
 
 const NO_STORE = { 'Cache-Control': 'no-store' }
 const MAX_PAGES = 10
-// Proyectos que se completan con datos de GitHub por corrida; el resto queda para la
-// siguiente (cron de cada hora o la proxima vez que alguien abre el tablero).
-const ENRICH_PER_RUN = 8
-const ENRICH_CONCURRENCY = 4
+// READMEs que se analizan por corrida; el resto queda para la siguiente (la proxima vez que
+// alguien abre el tablero, o el cron diario).
+const README_PER_RUN = 6
+const README_CONCURRENCY = 3
+// Margen para terminar antes de maxDuration, y tiempo minimo para arrancar otra tanda.
+const RUN_BUDGET_MS = 52_000
+const MIN_TIME_FOR_BATCH_MS = 20_000
+const UPDATE_CONCURRENCY = 10
+// Un GitHub colgado no puede llevarse la corrida entera (y el reintento del cron).
+const GITHUB_TIMEOUT_MS = 10_000
+
+// Evita dos analisis simultaneos en la misma instancia (cron y tablero a la vez).
+let readmeAnalysisRunning = false
 
 const reply = (body: Record<string, unknown>, status = 200) => Response.json(body, { status, headers: NO_STORE })
 
@@ -45,7 +58,7 @@ async function isAuthorized(request: Request) {
 }
 
 async function githubJson<T>(path: string, headers: HeadersInit) {
-  const response = await fetch(`https://api.github.com${path}`, { headers, cache: 'no-store' })
+  const response = await fetch(`https://api.github.com${path}`, { headers, cache: 'no-store', signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS) })
   if (!response.ok) return null
   return (await response.json()) as T
 }
@@ -84,6 +97,7 @@ async function fetchOrgRepos(org: string, token: string | undefined) {
     const response = await fetch(`https://api.github.com${path}&per_page=100&sort=created&page=${page}`, {
       headers,
       cache: 'no-store',
+      signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
     })
     if (!response.ok) throw new Error(`GitHub respondio ${response.status} al listar los repos de ${org}.`)
 
@@ -96,6 +110,7 @@ async function fetchOrgRepos(org: string, token: string | undefined) {
 }
 
 export async function POST(request: Request) {
+  const deadline = Date.now() + RUN_BUDGET_MS
   if (!(await isAuthorized(request))) return reply({ error: 'No autorizado.' }, 401)
 
   const admin = getSupabaseAdminClient()
@@ -143,55 +158,156 @@ export async function POST(request: Request) {
     created = data ?? []
   }
 
-  const enrichment = await enrichProjects(admin, repos, githubHeaders(token))
-
-  return reply({ created: created.length, projects: created, ...enrichment, configured: Boolean(token) })
-}
-
-type EnrichCandidate = EnrichableProject & { id: string; github_repo_id: number }
-
-// Completa con datos de GitHub los proyectos que todavia no se analizaron: fecha de inicio,
-// sitio, tecnologias y un resumen del README. Solo llena lo vacio (ver enrichmentPatch).
-async function enrichProjects(admin: SupabaseClient, repos: GithubOrgRepo[], headers: Record<string, string>) {
-  const { data, error } = await admin
+  const repoById = new Map(repos.map((repo) => [repo.id, repo]))
+  const { data: linkedRows, error: linkedError } = await admin
     .from('projects')
-    .select('id, description, stack, start_date, website_url, github_repo_id')
+    .select('id, description, stack, start_date, website_url, github_repo_id, github_enriched_at, created_at')
     .eq('active', true)
     .not('github_repo_id', 'is', null)
-    .is('github_enriched_at', null)
-    .order('created_at', { ascending: false })
-  // Sin la columna (falta supabase/add_project_github_enrichment.sql) se sigue sin completar.
-  if (error) return { enriched: 0, pendingEnrichment: null }
+  // Sin la columna github_enriched_at (falta supabase/add_project_github_enrichment.sql) se
+  // siguen dando de alta los repos, pero no se completa nada.
+  const linked = linkedError ? [] : ((linkedRows ?? []) as ProjectGithubFields[])
 
-  const repoById = new Map(repos.map((repo) => [repo.id, repo]))
-  // Un repo que el token no ve (privado sin acceso) queda esperando, sin ocupar lugar.
-  const candidates = ((data ?? []) as EnrichCandidate[]).filter((project) => repoById.has(project.github_repo_id))
-  const batch = candidates.slice(0, ENRICH_PER_RUN)
-  let enriched = 0
+  const { filled, stale } = await fillFromListing(admin, linked, repoById)
 
-  for (let start = 0; start < batch.length; start += ENRICH_CONCURRENCY) {
-    const results = await Promise.all(
-      batch.slice(start, start + ENRICH_CONCURRENCY).map(async (project) => {
-        const repo = repoById.get(project.github_repo_id)!
-        const repoKey = githubRepoKey(repo.html_url)
-        if (!repoKey) return false
-
-        const details = await fetchRepoDetails(repoKey, headers)
-        const currentDescription = project.description?.trim() || null
-        const wantsSummary = !currentDescription || currentDescription === (repo.description?.trim() || null)
-        const summary = wantsSummary ? await summarizeReadme(repo.name, repo.description, details.readme) : null
-        const patch = enrichmentPatch(project, repo, details.languages, summary)
-
-        // Si GitHub no respondio, se guarda lo que haya y se reintenta en la proxima corrida.
-        const finished = !details.failed
-        const update = { ...patch, ...(finished ? { github_enriched_at: new Date().toISOString() } : {}) }
-        if (Object.keys(update).length === 0) return false
-        const { error: updateError } = await admin.from('projects').update(update).eq('id', project.id)
-        return !updateError && finished
-      }),
-    )
-    enriched += results.filter(Boolean).length
+  // El README se analiza despues de responder: el tablero recibe enseguida lo creado y lo
+  // completado, y vuelve a cargar un rato despues para mostrar los resumenes. Se saltean los
+  // proyectos cuya foto quedo vieja y los que hicieron fallar al modelo hace poco.
+  const candidates = readmeCandidates(linked, repoById).filter((project) => !stale.has(project.id) && !recentlyFailed(project.id))
+  const willAnalyze = candidates.length > 0 && summariesConfigured() && !readmeAnalysisRunning
+  if (willAnalyze) {
+    readmeAnalysisRunning = true
+    after(async () => {
+      try {
+        const result = await analyzeReadmes(admin, candidates.slice(0, README_PER_RUN), repoById, githubHeaders(token), deadline)
+        console.info('[sync-projects] README', { ...result, pendientes: candidates.length - result.analyzed })
+      } finally {
+        readmeAnalysisRunning = false
+      }
+    })
   }
 
-  return { enriched, pendingEnrichment: candidates.length - enriched }
+  return reply({
+    created: created.length,
+    projects: created,
+    linked: plan.links.length,
+    filled,
+    readmePending: candidates.length,
+    readmeAnalysis: willAnalyze ? Math.min(candidates.length, README_PER_RUN) : 0,
+    configured: Boolean(token),
+  })
+}
+
+// Fallas del modelo por proyecto, en memoria de esta instancia: un README que siempre lo
+// hace fallar no encabeza la cola en cada corrida.
+const MODEL_FAILURE_COOLDOWN_MS = 60 * 60 * 1000
+const modelFailures = new Map<string, number>()
+
+function recentlyFailed(projectId: string) {
+  const failedAt = modelFailures.get(projectId)
+  if (failedAt === undefined) return false
+  if (Date.now() - failedAt < MODEL_FAILURE_COOLDOWN_MS) return true
+  modelFailures.delete(projectId)
+  return false
+}
+
+// Inicio, sitio, lenguaje y descripcion corta salen del listado que ya se trajo: no gastan
+// consultas a GitHub. Se completan una sola vez por proyecto (mientras no esta marcado con
+// github_enriched_at): si despues alguien vacia un campo a proposito, no vuelve a llenarse.
+// Los proyectos que no necesitan resumen del README se marcan en el mismo paso. Cada update
+// exige que los campos sigan en null, para no pisar lo cargado a mano mientras tanto.
+async function fillFromListing(admin: SupabaseClient, projects: ProjectGithubFields[], repoById: Map<number, GithubOrgRepo>) {
+  const markedAt = new Date().toISOString()
+  const updates = projects.flatMap((project) => {
+    const repo = repoById.get(project.github_repo_id)
+    if (!repo || project.github_enriched_at) return []
+    const patch = listingPatch(project, repo)
+    const done = !wantsReadmeSummary({ ...project, ...patch }, repo)
+    if (Object.keys(patch).length === 0 && !done) return []
+    return [{ project, patch, done }]
+  })
+
+  let filled = 0
+  // Proyectos cuyo update no encontro la fila como se leyo (otra corrida o una edicion la
+  // cambio): su foto quedo vieja y no se analizan en esta corrida.
+  const stale = new Set<string>()
+  for (let start = 0; start < updates.length; start += UPDATE_CONCURRENCY) {
+    await Promise.all(
+      updates.slice(start, start + UPDATE_CONCURRENCY).map(async ({ project, patch, done }) => {
+        let query = admin
+          .from('projects')
+          .update({ ...patch, ...(done ? { github_enriched_at: markedAt } : {}) })
+          .eq('id', project.id)
+          .is('github_enriched_at', null)
+        for (const field of Object.keys(patch)) query = query.is(field, null)
+        const { data, error } = await query.select('id')
+        if (error || (data?.length ?? 0) === 0) {
+          stale.add(project.id)
+          return
+        }
+        // El analisis del README parte de esta misma foto: tiene que ver lo recien escrito.
+        Object.assign(project, patch, done ? { github_enriched_at: markedAt } : {})
+        if (Object.keys(patch).length > 0) filled += 1
+      }),
+    )
+  }
+  return { filled, stale }
+}
+
+type ReadmeOutcome = 'done' | 'retry' | 'rate-limited' | 'model-failed'
+
+// Analiza de a pocos el README de los candidatos. Corta la corrida si se agota el cupo de
+// GitHub, si el modelo falla con todos los de una tanda (proveedor caido) o si no queda
+// tiempo. Lo que no se termina no se marca y se vuelve a intentar en otra corrida.
+async function analyzeReadmes(admin: SupabaseClient, batch: ProjectGithubFields[], repoById: Map<number, GithubOrgRepo>, headers: Record<string, string>, deadline: number) {
+  let analyzed = 0
+  let stoppedBy: string | null = null
+
+  for (let start = 0; start < batch.length; start += README_CONCURRENCY) {
+    if (deadline - Date.now() < MIN_TIME_FOR_BATCH_MS) {
+      stoppedBy = 'tiempo'
+      break
+    }
+    const group = batch.slice(start, start + README_CONCURRENCY)
+    const outcomes = await Promise.all(group.map((project) => analyzeReadme(admin, project, repoById.get(project.github_repo_id)!, headers, deadline)))
+
+    analyzed += outcomes.filter((outcome) => outcome === 'done').length
+    outcomes.forEach((outcome, index) => {
+      if (outcome === 'model-failed') modelFailures.set(group[index].id, Date.now())
+    })
+    if (outcomes.includes('rate-limited')) stoppedBy = 'cupo de GitHub'
+    else if (outcomes.every((outcome) => outcome === 'model-failed')) stoppedBy = 'modelo'
+    if (stoppedBy) break
+  }
+
+  return { analyzed, stoppedBy }
+}
+
+async function analyzeReadme(admin: SupabaseClient, project: ProjectGithubFields, repo: GithubOrgRepo, headers: Record<string, string>, deadline: number): Promise<ReadmeOutcome> {
+  const repoKey = githubRepoKey(repo.html_url)
+  if (!repoKey) return 'retry'
+
+  // Antes de leer: un push durante el analisis tiene que quedar despues de esta marca para
+  // que el proyecto se vuelva a analizar.
+  const analyzedAt = new Date().toISOString()
+  const details = await fetchRepoDetails(repoKey, headers)
+  if (details.outcome !== 'ok') return details.outcome
+
+  const summary = await summarizeReadme(repo.name, repo.description, details.readme, deadline)
+  if (summary.outcome === 'failed') return 'model-failed'
+
+  const patch = readmePatch(project, repo, details.languages, summary.outcome === 'summary' ? summary.text : null)
+
+  // Solo si la descripcion y el stack siguen como se leyeron: si alguien los edito durante el
+  // analisis, se respeta lo suyo y el proyecto queda igual marcado como analizado.
+  let query = admin.from('projects').update({ ...patch, github_enriched_at: analyzedAt }).eq('id', project.id)
+  query = project.description === null ? query.is('description', null) : query.eq('description', project.description)
+  query = project.stack === null ? query.is('stack', null) : query.eq('stack', project.stack)
+  const { data, error } = await query.select('id')
+  if (error) return 'retry'
+  if ((data?.length ?? 0) === 0) {
+    const { error: markError } = await admin.from('projects').update({ github_enriched_at: analyzedAt }).eq('id', project.id)
+    if (markError) return 'retry'
+  }
+  return 'done'
 }

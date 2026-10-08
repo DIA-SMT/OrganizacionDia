@@ -1,11 +1,14 @@
 name: Sincronizar proyectos de GitHub
 
 # Da de alta en el dashboard los repos nuevos de la organizacion (app/api/github/sync-projects).
-# Ademas corre cada vez que alguien del equipo DIA abre el tablero o la lista de proyectos.
+# Lo que mantiene el tablero al dia es la sincronizacion que corre cada vez que alguien de DIA
+# abre el tablero o la lista de proyectos; esto es la red para los dias sin visitas.
+# Una vez por dia, 10:17 UTC = 07:17 en Argentina, antes de que llegue el equipo. El minuto
+# no redondo es a proposito: GitHub demora mas los crons programados en horas en punto.
 
 on:
   schedule:
-    - cron: '23 * * * *'
+    - cron: '17 10 * * *'
   workflow_dispatch:
 
 permissions:
