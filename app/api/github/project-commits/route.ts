@@ -99,8 +99,17 @@ function parseGithubRepo(url: string | null | undefined) {
   }
 }
 
+// GitHub no limita el largo del primer renglon: se recorta para que el cache no crezca con el.
+const COMMIT_LINE_MAX = 200
+// El tablero manda ~70 proyectos; el tope evita que un pedido arme cientos de consultas.
+const MAX_PROJECTS = 200
+
 function firstCommitLine(message: string) {
-  return message.split('\n')[0]?.trim() || 'Commit sin descripcion'
+  const line = message.split('\n')[0]?.trim() || 'Commit sin descripcion'
+  // Por caracteres completos: cortar por unidades UTF-16 puede partir un emoji y dejar un
+  // texto invalido que hace fallar el guardado de todos los commits en la base.
+  const chars = Array.from(line)
+  return chars.length > COMMIT_LINE_MAX ? `${chars.slice(0, COMMIT_LINE_MAX - 1).join('')}…` : line
 }
 
 // En V8, split/trim/slice pueden devolver vistas (SlicedString) que mantienen vivo el texto
@@ -341,7 +350,7 @@ async function loadCachedCommits(projectIds: string[], days: number | null, limi
 
 export async function POST(request: Request) {
   const body = (await request.json()) as ProjectCommitRequest
-  const projects = body.projects ?? []
+  const projects = (body.projects ?? []).slice(0, MAX_PROJECTS)
   const days = body.allTime ? null : typeof body.days === 'number' ? body.days : 3
   const limitPerRepo = Math.min(300, Math.max(10, body.limitPerRepo ?? (body.allTime ? 300 : 30)))
   const token = process.env.GITHUB_TOKEN
@@ -366,6 +375,8 @@ export async function POST(request: Request) {
         ])
       )
         .flat()
+        // Un fork como Repo 2 comparte commits con Repo 1: el mismo sha va una sola vez.
+        .filter((commit, index, all) => all.findIndex((other) => other.sha === commit.sha) === index)
         .sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime())
         .slice(0, limitPerRepo * 2)
 
@@ -375,7 +386,10 @@ export async function POST(request: Request) {
 
   const liveByProject = Object.fromEntries(entries) as Record<string, ProjectCommitActivity[]>
   const supabase = getSupabaseAdminClient()
-  const rowsToCache = entries.flatMap(([projectId, commits]) => commits.map((commit) => ({
+  // Un mismo proyecto repetido en el pedido tambien repetiria filas, y Postgres rechaza el
+  // upsert entero si una clave aparece dos veces: se guarda cada (proyecto, sha) una vez.
+  const uniqueEntries = entries.filter(([projectId], index) => entries.findIndex(([otherId]) => otherId === projectId) === index)
+  const rowsToCache = uniqueEntries.flatMap(([projectId, commits]) => commits.map((commit) => ({
     project_id: projectId,
     sha: commit.sha,
     message: commit.message,
@@ -390,7 +404,10 @@ export async function POST(request: Request) {
   })))
 
   if (supabase && rowsToCache.length > 0) {
-    await supabase.from('project_commits').upsert(rowsToCache, { onConflict: 'project_id,sha' })
+    // Si falla, la respuesta en vivo sigue sirviendo, pero queda registrado: si no, el
+    // historial de la base deja de actualizarse sin que nadie se entere.
+    const { error: cacheError } = await supabase.from('project_commits').upsert(rowsToCache, { onConflict: 'project_id,sha' })
+    if (cacheError) console.warn('[project-commits] no se pudieron guardar los commits', cacheError.message)
   }
 
   const cachedByProject = await loadCachedCommits(projects.map((project) => project.id), days, limitPerRepo)

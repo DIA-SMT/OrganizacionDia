@@ -262,65 +262,60 @@ const LOVABLE_TEMPLATE = [
 
 const INTRO = 'Tablero de Riesgo Hidrico para Defensa Civil: muestra en un mapa los barrios con mas lluvia acumulada y avisa cuando se superan los umbrales de alerta definidos por la Municipalidad.'
 
-test('descarta READMEs vacios, cortos o de plantilla pelada', async () => {
+test('prepara el README: sin codigo, imagenes ni comentarios; null si no queda texto', async () => {
   const { usefulReadme } = await import('./github-sync.ts')
 
   assert.equal(usefulReadme(null), null)
   assert.equal(usefulReadme('# Proyecto\n\nCorto.'), null)
+  assert.equal(usefulReadme('# Solo titulos\n\n## Otro titulo\n\n```bash\nnpm install && npm run dev && echo listo para usar\n```'), null)
+
+  // Las plantillas llegan al modelo, que decide si describen el proyecto; sin sus bloques de codigo.
   for (const [name, template] of Object.entries({ NEXT_TEMPLATE, CRA_TEMPLATE, VITE_TEMPLATE, LOVABLE_TEMPLATE })) {
-    assert.equal(usefulReadme(template), null, name)
+    const text = usefulReadme(template)
+    assert.ok(text, name)
+    assert.ok(!text.includes('```') && !text.includes('git clone <YOUR_GIT_URL>') && !text.includes('tseslint.config'), name)
   }
-  // La plantilla de Vite con el titulo cambiado sigue siendo solo plantilla.
-  assert.equal(usefulReadme(`# Turnos Registro Civil\n\n${VITE_BODY}`), null)
-})
-
-test('conserva lo propio del proyecto aunque venga con la plantilla', async () => {
-  const { usefulReadme } = await import('./github-sync.ts')
-
-  const withNext = usefulReadme(`# Tablero de Riesgo Hidrico\n\n${INTRO}\n\n${NEXT_TEMPLATE}`)
-  assert.ok(withNext?.includes('Defensa Civil'))
-  assert.ok(!withNext?.includes('Getting Started') && !withNext?.includes('npm run dev') && !withNext?.includes('Vercel'))
-
-  // Un parrafo propio pegado al final, sin titulo, dentro de la ultima seccion de la plantilla.
-  const appended = usefulReadme(`${NEXT_TEMPLATE}\n\n${INTRO}`)
-  assert.ok(appended?.includes('Defensa Civil') && !appended.includes('Vercel'))
-
-  // Un titulo principal de plantilla no se lleva lo que sigue.
-  const withVite = usefulReadme(`${VITE_TEMPLATE}\n\n## Sobre el proyecto\n\n${INTRO}`)
-  assert.ok(withVite?.includes('## Sobre el proyecto') && withVite.includes('Defensa Civil'))
-  assert.ok(!withVite?.includes('tseslint') && !withVite?.includes('vitejs'))
-
-  const withLovable = usefulReadme(`${LOVABLE_TEMPLATE}\n\n## Que hace\n\n${INTRO}`)
-  assert.ok(withLovable?.includes('Defensa Civil') && !withLovable.includes('lovable.dev') && !withLovable.includes('Netlify'))
 
   const cleaned = usefulReadme(`# LluvIA\n\n<!-- comentario -->![logo](logo.png)\n${INTRO}`)
-  assert.ok(cleaned?.startsWith('# LluvIA') && !cleaned.includes('comentario') && !cleaned.includes('logo.png'))
+  assert.ok(cleaned?.startsWith('# LluvIA') && cleaned.includes('Defensa Civil') && !cleaned.includes('comentario') && !cleaned.includes('logo.png'))
 })
 
-test('sin huella de plantilla no descarta secciones con titulos genericos', async () => {
+test('no pierde contenido propio en ningun formato', async () => {
   const { usefulReadme } = await import('./github-sync.ts')
 
   const cases = [
-    `# React + Vite\n\nSistema de turnos online para el Registro Civil: el vecino elige el tramite, la sede y el horario, y recibe la confirmacion por correo.\n\n## Expanding the ESLint configuration\n\nReglas de lint.`,
+    `# Tablero de Riesgo Hidrico\n\n${INTRO}\n\n${NEXT_TEMPLATE}`,
+    `${NEXT_TEMPLATE}\n\n${INTRO}`,
+    `${NEXT_TEMPLATE}\n\nAplicacion en Next.js desplegada en Vercel: ${INTRO}`,
+    `${VITE_TEMPLATE}\n\n## Sobre el proyecto\n\n${INTRO}`,
+    `# React + TypeScript + Vite\n\nAplicacion React de turnos online para el Registro Civil.\n\n- Reserva de turnos\n- Recordatorios por correo\n\n${VITE_BODY}`,
+    `${LOVABLE_TEMPLATE}\n\n## Que hace\n\n${INTRO}`,
     '# Portal de Transparencia\n\n## Getting started\n\nEl Portal de Transparencia publica los sueldos y las contrataciones del municipio para que cualquier vecino los consulte.',
-    '# Mapa de Obras\n\n## Project info\n\nMapa publico de las obras municipales en curso, con avance, presupuesto y empresa a cargo.',
     '# Padron de Comercios\n\nConsulta del padron de comercios habilitados por la Municipalidad, con busqueda por rubro.',
   ]
-  for (const readme of cases) assert.ok(usefulReadme(readme), readme.slice(0, 30))
+  for (const readme of cases) {
+    const text = usefulReadme(readme)
+    assert.ok(text, readme.slice(0, 40))
+  }
+  assert.ok(usefulReadme(`${VITE_TEMPLATE}\n\n## Sobre el proyecto\n\n${INTRO}`)?.includes('Defensa Civil'))
+  assert.ok(usefulReadme(`# React + TypeScript + Vite\n\nAplicacion React de turnos online para el Registro Civil.\n\n- Reserva de turnos\n\n${VITE_BODY}`)?.includes('- Reserva de turnos'))
 })
 
 test('solo saca bloques de codigo bien formados', async () => {
   const { usefulReadme } = await import('./github-sync.ts')
 
-  // Tres comillas invertidas en medio de una oracion no son un bloque.
+  // Tres comillas invertidas en medio de una oracion, o al principio de una linea con mas
+  // comillas en la misma linea, no abren un bloque.
   const inline = usefulReadme(`# Asistente de codigo\n\nPara citar codigo en las respuestas, el asistente usa bloques con \`\`\` como en Markdown.\n\n## Que hace\n\n${INTRO}`)
   assert.ok(inline?.includes('Defensa Civil'))
+  const lineStart = usefulReadme(`# Asistente\n\n\`\`\`usa\`\`\` para marcar codigo en una respuesta del asistente.\n\n${INTRO}`)
+  assert.ok(lineStart?.includes('Defensa Civil'))
 
   const tilde = usefulReadme(`# LluvIA\n\n${INTRO}\n\n~~~bash\n# esto no es un titulo\nnpm install\n~~~\n\nFin del texto propio del proyecto.`)
   assert.ok(tilde && !tilde.includes('npm install') && !tilde.includes('esto no es un titulo') && tilde.includes('Fin del texto'))
 })
 
-test('limpia el resumen del modelo sin romper comillas ni nombres', async () => {
+test('limpia el resumen sin romper comillas ni nombres', async () => {
   const { cleanSummary } = await import('./github-sync.ts')
 
   assert.equal(cleanSummary('  "LluvIA es un tablero."  '), 'LluvIA es un tablero.')
@@ -341,27 +336,23 @@ test('limpia el resumen del modelo sin romper comillas ni nombres', async () => 
   assert.ok(cut && cut.length <= 700 && cut.endsWith('.'))
 })
 
-test('reconoce cuando el modelo dice que no hay informacion', async () => {
-  const { cleanSummary } = await import('./github-sync.ts')
+test('interpreta la respuesta del modelo', async () => {
+  const { parseModelSummary } = await import('./github-sync.ts')
 
-  const notSummaries = [
-    'SIN_INFO',
-    'SIN INFO',
-    'sin-info',
-    'SIN\\_INFO',
-    '**SIN_INFO**',
-    'Sin información.',
-    'N/A',
-    'Información insuficiente.',
-    'No hay suficiente información para describir el proyecto.',
-    'El README solo contiene instrucciones de instalación y no describe el proyecto.',
-    'El archivo README no describe el proyecto.',
-    'El repositorio solo trae instrucciones de instalación; no describe de qué se trata el proyecto.',
-    'La documentación disponible no explica el propósito del sistema.',
-    '',
-    null,
-  ]
-  for (const answer of notSummaries) assert.equal(cleanSummary(answer), null, String(answer))
+  assert.deepEqual(parseModelSummary('{"describe": true, "resumen": "LluvIA es un tablero para Defensa Civil."}'), {
+    outcome: 'summary',
+    text: 'LluvIA es un tablero para Defensa Civil.',
+  })
+  assert.deepEqual(parseModelSummary('```json\n{"describe": true, "resumen": "**LluvIA** avisa por lluvia."}\n```'), { outcome: 'summary', text: 'LluvIA avisa por lluvia.' })
+  assert.deepEqual(parseModelSummary('{"describe": false, "resumen": ""}'), { outcome: 'no-info' })
+  assert.deepEqual(parseModelSummary('{"describe": false, "resumen": "El README es la plantilla de Next.js."}'), { outcome: 'no-info' })
+  assert.deepEqual(parseModelSummary('{"describe": true, "resumen": ""}'), { outcome: 'no-info' })
+
+  // Si el modelo igual responde texto libre.
+  assert.deepEqual(parseModelSummary('LluvIA es un tablero para Defensa Civil.'), { outcome: 'summary', text: 'LluvIA es un tablero para Defensa Civil.' })
+  for (const answer of ['SIN_INFO', 'SIN INFO', 'sin-info', 'SIN\\_INFO', '**SIN_INFO**', 'SIN_INFO. El README solo tiene instrucciones de instalacion.', 'SIN_INFO\n\nEl README es la plantilla de Next.js.', 'Respuesta: SIN_INFO', 'Sin información.', 'Sin información suficiente', 'N/A', 'Información insuficiente.']) {
+    assert.deepEqual(parseModelSummary(answer), { outcome: 'no-info' }, answer)
+  }
 })
 
 test('no descarta resumenes que mencionan "sin informacion" o "el README"', async () => {
@@ -371,6 +362,9 @@ test('no descarta resumenes que mencionan "sin informacion" o "el README"', asyn
     'LluvIA es un tablero que evita que los barrios queden sin información sobre la lluvia acumulada.',
     'Sistema de gestión sin información personal de los vecinos, que respeta la privacidad.',
     'Herramienta que genera el README de cada repositorio del equipo a partir de su código.',
+    'El README describe a LluvIA, un tablero que avisa cuando no se puede circular por lluvia.',
+    'El proyecto no tiene costo para los vecinos: permite reservar canchas municipales.',
+    'No hay información centralizada sobre las obras, por eso este mapa las reúne en un solo lugar.',
   ]
   for (const summary of summaries) assert.equal(cleanSummary(summary), summary)
 })
@@ -411,7 +405,9 @@ test('elige que READMEs analizar: los pendientes primero y reanaliza solo si hub
     start_date: null,
     website_url: null,
     github_repo_id: repoId,
+    github_filled_at: null,
     github_enriched_at: null,
+    github_readme_failed_at: null,
     created_at: '2026-01-01T00:00:00Z',
     ...extra,
   })
@@ -455,4 +451,115 @@ test('el analisis del README solo mejora lo que vino de GitHub', async () => {
   })
   assert.deepEqual(readmePatch({ description: null, stack: null }, githubRepo, null, null), {})
   assert.deepEqual(readmePatch({ description: 'Escrita por el equipo', stack: 'Next.js' }, githubRepo, languages, 'Asistente para turistas.'), {})
+})
+
+test('despues de un fallo espera unas horas antes de reintentar el README', async () => {
+  const { readmeCandidates, README_FAILURE_COOLDOWN_MS } = await import('./github-sync.ts')
+  const now = Date.parse('2026-10-08T12:00:00Z')
+  const project = (id: string, failedMsAgo: number | null) => ({
+    id,
+    description: null,
+    stack: null,
+    start_date: null,
+    website_url: null,
+    github_repo_id: 1,
+    github_filled_at: null,
+    github_enriched_at: null,
+    github_readme_failed_at: failedMsAgo === null ? null : new Date(now - failedMsAgo).toISOString(),
+    created_at: null,
+  })
+  const repos = new Map([[1, { description: null, language: null, homepage: null, created_at: null, pushed_at: null }]])
+
+  const candidates = readmeCandidates([project('nunca', null), project('reciente', 60_000), project('viejo', README_FAILURE_COOLDOWN_MS + 1)], repos, now)
+  assert.deepEqual(candidates.map((candidate) => candidate.id).sort(), ['nunca', 'viejo'])
+})
+
+test('una valla de codigo con lineas en blanco adentro se saca entera', async () => {
+  const { usefulReadme } = await import('./github-sync.ts')
+
+  const readme = '# Turnos\n\n## Instalacion\n\n```bash\nnpm install\n\nnpm run dev\n```\n## Que es\nEste sistema permite a los vecinos sacar turnos para tramites municipales sin hacer fila.'
+  const text = usefulReadme(readme)
+  assert.ok(text?.includes('sacar turnos'))
+  assert.ok(!text?.includes('npm install') && !text?.includes('npm run dev'))
+
+  const js = usefulReadme('# Calculadora\n\n```js\nconst a = 1\n\nconst b = 2\n```\nMas texto propio que explica que la calculadora estima tasas municipales para comercios.')
+  assert.ok(js?.includes('estima tasas') && !js.includes('const b'))
+})
+
+test('nunca guarda como resumen un JSON crudo o mal formado', async () => {
+  const { parseModelSummary } = await import('./github-sync.ts')
+
+  // Lo que sigue al objeto se ignora.
+  assert.deepEqual(parseModelSummary('{"describe": false, "resumen": ""} (el README es la plantilla {create-next-app})'), { outcome: 'no-info' })
+  assert.deepEqual(parseModelSummary('{"describe": true, "resumen": "LluvIA avisa por lluvia."}\nNota: resumen breve.'), { outcome: 'summary', text: 'LluvIA avisa por lluvia.' })
+  // Saltos de linea crudos dentro del texto.
+  assert.deepEqual(parseModelSummary('{"describe": true, "resumen": "Sistema de turnos.\nPermite reservar."}'), { outcome: 'summary', text: 'Sistema de turnos. Permite reservar.' })
+  // Ilegible o sin "describe": falla, para reintentar mas adelante.
+  for (const answer of ['{"describe": true, "resumen": "Sistema de "turnos" para vecinos."}', '{"describe": false, "resumen": "El README es la plantilla."', '{"resumen": "Algo."}', '```json\n{"describe": tru']) {
+    assert.deepEqual(parseModelSummary(answer), { outcome: 'failed' }, answer)
+  }
+})
+
+test('en texto libre descarta las explicaciones de que no hay informacion', async () => {
+  const { parseModelSummary } = await import('./github-sync.ts')
+
+  assert.deepEqual(parseModelSummary('El README no explica de qué se trata el proyecto.'), { outcome: 'no-info' })
+  assert.deepEqual(parseModelSummary('Este README solo tiene instrucciones de instalación.'), { outcome: 'no-info' })
+  assert.deepEqual(parseModelSummary('El README describe a LluvIA, un tablero que avisa cuando no se puede circular.'), {
+    outcome: 'summary',
+    text: 'El README describe a LluvIA, un tablero que avisa cuando no se puede circular.',
+  })
+})
+
+test('interpreta respuestas del modelo fuera de lo comun', async () => {
+  const { parseModelSummary } = await import('./github-sync.ts')
+
+  // Oraciones como lista.
+  assert.deepEqual(parseModelSummary('{"describe": true, "resumen": ["LluvIA es un tablero.", "Avisa por lluvia."]}'), { outcome: 'summary', text: 'LluvIA es un tablero. Avisa por lluvia.' })
+  // describe true sin un texto legible: falla, no "sin informacion" definitivo.
+  for (const answer of ['{"describe": true, "resumen": {"a": 1}}', '{"describe": true}', '{"describe": "true", "resumen": "X."}']) {
+    assert.deepEqual(parseModelSummary(answer), { outcome: 'failed' }, answer)
+  }
+  // El modelo se contradice: describe true con una explicacion de que no hay informacion.
+  for (const resumen of ['El README no explica de qué se trata el proyecto.', 'Este README solo contiene instrucciones técnicas de instalación.', 'No hay información suficiente en el README para describir el proyecto.']) {
+    assert.deepEqual(parseModelSummary(JSON.stringify({ describe: true, resumen })), { outcome: 'no-info' }, resumen)
+  }
+  // Otras comillas o YAML: falla en lugar de guardar el texto crudo.
+  for (const answer of ['describe: false\nresumen:', 'Respuesta: {“describe”: true, “resumen”: “LluvIA es un tablero.”}', "Resultado: {'describe': True, 'resumen': 'LluvIA.'}"]) {
+    assert.deepEqual(parseModelSummary(answer), { outcome: 'failed' }, answer)
+  }
+  for (const answer of ['true', 'false']) assert.deepEqual(parseModelSummary(answer), { outcome: 'no-info' }, answer)
+  // Un preambulo con llaves no tapa el objeto, y llaves sueltas en texto libre no lo rompen.
+  assert.deepEqual(parseModelSummary('<think>analizo el {readme}</think>{"describe": true, "resumen": "LluvIA es un tablero."}'), { outcome: 'summary', text: 'LluvIA es un tablero.' })
+  assert.deepEqual(parseModelSummary('LluvIA {} es un tablero para Defensa Civil.'), { outcome: 'summary', text: 'LluvIA {} es un tablero para Defensa Civil.' })
+  // Un resumen real que empieza con "No hay informacion..." no se descarta.
+  assert.deepEqual(parseModelSummary(JSON.stringify({ describe: true, resumen: 'No hay información centralizada sobre las obras, por eso este mapa las reúne.' })), {
+    outcome: 'summary',
+    text: 'No hay información centralizada sobre las obras, por eso este mapa las reúne.',
+  })
+})
+
+test('un "##" suelto no le resta prosa al README', async () => {
+  const { usefulReadme } = await import('./github-sync.ts')
+  assert.ok(usefulReadme('# T\n\n##\nEste sistema permite a los vecinos sacar turnos para tramites municipales sin hacer fila.'))
+})
+
+test('los que ya fallaron van despues en la cola', async () => {
+  const { readmeCandidates, README_FAILURE_COOLDOWN_MS } = await import('./github-sync.ts')
+  const now = Date.parse('2026-10-08T12:00:00Z')
+  const project = (id: string, failed: boolean, created: string) => ({
+    id,
+    description: null,
+    stack: null,
+    start_date: null,
+    website_url: null,
+    github_repo_id: 1,
+    github_filled_at: null,
+    github_enriched_at: null,
+    github_readme_failed_at: failed ? new Date(now - README_FAILURE_COOLDOWN_MS - 1).toISOString() : null,
+    created_at: created,
+  })
+  const repos = new Map([[1, { description: null, language: null, homepage: null, created_at: null, pushed_at: null }]])
+  const order = readmeCandidates([project('fallo-nuevo', true, '2026-10-07'), project('sano-viejo', false, '2026-01-01')], repos, now).map((candidate) => candidate.id)
+  assert.deepEqual(order, ['sano-viejo', 'fallo-nuevo'])
 })

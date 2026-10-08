@@ -124,8 +124,8 @@ export function planGithubProjectSync(repos: GithubOrgRepo[], existing: Existing
 
 // ── Datos que aporta GitHub ──────────────────────────────────────────────────────────
 // Se completan en dos pasos. Lo que ya viene en el listado de repos (inicio, sitio, lenguaje
-// y descripcion corta) se llena en cada sincronizacion sin consultas extra. El analisis del
-// README (resumen con IA y los tres lenguajes principales) es aparte, de a pocos proyectos.
+// y descripcion corta) se llena una sola vez por proyecto, sin consultas extra. El analisis
+// del README (resumen con IA y los tres lenguajes principales) es aparte, de a pocos.
 
 export type ProjectGithubFields = {
   id: string
@@ -134,7 +134,9 @@ export type ProjectGithubFields = {
   start_date: string | null
   website_url: string | null
   github_repo_id: number
+  github_filled_at: string | null
   github_enriched_at: string | null
+  github_readme_failed_at: string | null
   created_at: string | null
 }
 
@@ -182,26 +184,37 @@ export function wantsReadmeSummary(project: Pick<ProjectGithubFields, 'descripti
 }
 
 const REANALYSIS_COOLDOWN_MS = 24 * 60 * 60 * 1000
+export const README_FAILURE_COOLDOWN_MS = 6 * 60 * 60 * 1000
+
+function olderThan(iso: string | null, ms: number, now: number) {
+  if (!iso) return true
+  const time = Date.parse(iso)
+  return Number.isNaN(time) || now - time >= ms
+}
 
 // Proyectos a los que conviene analizarles el README: los que necesitan resumen y nunca se
 // analizaron, o que recibieron cambios despues del ultimo analisis (un repo recien creado
-// suele estar vacio). Como mucho un reanalisis por dia. Primero los nunca analizados y,
-// entre ellos, los mas nuevos.
-export function readmeCandidates<T extends ProjectGithubFields>(projects: T[], repoById: Map<number, RepoFields>) {
+// suele estar vacio), como mucho una vez por dia. Si el ultimo intento fallo, se espera unas
+// horas para no trabar la cola. Primero los nunca analizados, despues los que no fallaron y,
+// a igualdad, los mas nuevos.
+export function readmeCandidates<T extends ProjectGithubFields>(projects: T[], repoById: Map<number, RepoFields>, now = Date.now()) {
   return projects
     .filter((project) => {
       const repo = repoById.get(project.github_repo_id)
       if (!repo || !wantsReadmeSummary(project, repo)) return false
+      if (!olderThan(project.github_readme_failed_at, README_FAILURE_COOLDOWN_MS, now)) return false
       if (!project.github_enriched_at) return true
 
       const analyzedAt = Date.parse(project.github_enriched_at)
       const pushedAt = Date.parse(repo.pushed_at ?? '')
       if (Number.isNaN(analyzedAt) || Number.isNaN(pushedAt)) return false
-      return pushedAt > analyzedAt && Date.now() - analyzedAt >= REANALYSIS_COOLDOWN_MS
+      return pushedAt > analyzedAt && now - analyzedAt >= REANALYSIS_COOLDOWN_MS
     })
     .sort(
       (a, b) =>
         Number(Boolean(a.github_enriched_at)) - Number(Boolean(b.github_enriched_at)) ||
+        // Los que ya fallaron, despues: si fallan siempre no le ganan el lugar a los demas.
+        Number(Boolean(a.github_readme_failed_at)) - Number(Boolean(b.github_readme_failed_at)) ||
         (b.created_at ?? '').localeCompare(a.created_at ?? ''),
     )
 }
@@ -229,109 +242,38 @@ export function isRateLimited(status: number, header: (name: string) => string |
 const README_MAX_CHARS = 12000
 const README_MIN_CHARS = 60
 
-// Huellas de los README que generan create-next-app, create-react-app, Vite y Lovable.
-const TEMPLATE_FINGERPRINT = [
-  /bootstrapped with \W*create[- ]next[- ]app/i,
-  /bootstrapped with \W*create react app/i,
-  /this template provides a minimal setup to get react working in vite/i,
-  /welcome to your lovable project/i,
-  /lovable\.dev\/projects/i,
-]
-// Frases de esas plantillas que se descartan aunque esten bajo un titulo propio.
-const TEMPLATE_STOCK = [...TEMPLATE_FINGERPRINT, /two official plugins are available/i, /@vitejs\/plugin-react/i]
-// Titulos de seccion de esas plantillas.
-const TEMPLATE_HEADING =
-  /^(getting started( with create react app)?|learn more|deploy on vercel|available scripts|expanding the eslint configuration|react compiler|react \+ (typescript \+ )?vite|welcome to your lovable project|project info|how can i edit this code\??|what technologies are used for this project\??|how can i deploy this project\??|(can i connect|i want to use) a custom domain.*|code splitting|analyzing the bundle size|making a progressive web app|advanced configuration|deployment|`?npm (start|test|run build|run eject)`?( fails to minify)?)$/i
-// Dentro de una seccion de plantilla, un parrafo que habla de estas herramientas es de la
-// plantilla (y las tecnologias tampoco van en el resumen).
-const TEMPLATE_TOPIC =
-  /next\.?js|vercel|create[- ]react[- ]app|create-next-app|\bvite\b|vitejs|lovable|\bnpm\b|\byarn\b|\bpnpm\b|\bbun\b|localhost|eslint|\blint\b|\bhmr\b|babel|\bswc\b|typescript|tailwind|shadcn|\beject\b|webpack|fast refresh|codespaces?\b|\bide\b|development server|you can run|\breact\b|\bdeploy|github|node\.js|\bnvm\b|git clone|\bdomains?\b|`[^`]+`/i
-// En una seccion de plantilla solo sobrevive prosa propia de cierto largo: los "Follow
-// these steps:" y las listas de pasos son de la plantilla.
-const TEMPLATE_SECTION_MIN_OWN = 80
-
-type ReadmeUnit = { heading: { level: number; text: string } | null; text: string; isList: boolean }
-
-function readmeUnits(markdown: string) {
-  const units: ReadmeUnit[] = []
-  let paragraph: string[] = []
-  const flush = () => {
-    if (paragraph.length === 0) return
-    units.push({ heading: null, text: paragraph.join('\n'), isList: paragraph.every((line) => /^\s*([-*+]|\d+[.)])\s/.test(line)) })
-    paragraph = []
-  }
-
-  for (const line of markdown.split('\n')) {
-    const heading = /^ {0,3}(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line)
-    if (heading) {
-      flush()
-      units.push({ heading: { level: heading[1].length, text: heading[2].replace(/[*_]/g, '').trim() }, text: line.trim(), isList: false })
-    } else if (!line.trim()) {
-      flush()
-    } else {
-      paragraph.push(line.trimEnd())
-    }
-  }
-  flush()
-  return units
-}
-
-// Devuelve el README listo para mandar al modelo, sin comentarios, imagenes ni bloques de
-// codigo. Si viene de una plantilla, ademas sin lo que trae la plantilla, conservando lo
-// propio. null si lo que queda no alcanza para entender el proyecto.
+// Devuelve el README listo para mandar al modelo: sin comentarios, imagenes ni bloques de
+// codigo. Si es solo una plantilla (create-next-app, Vite, Lovable) lo decide el modelo, que
+// distingue mejor que cualquier regla lo propio de lo generico. null si no queda texto.
 export function usefulReadme(readme: string | null | undefined) {
   if (!readme) return null
-  const markdown = readme
+  const text = readme
     .replace(/\r\n?/g, '\n')
     .replace(/<!--[\s\S]*?-->/g, ' ')
-    // Solo vallas de codigo al inicio de linea, cerradas con la misma secuencia.
-    .replace(/^ {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?^ {0,3}\1[`~]*[^\S\n]*$/gm, ' ')
+    // Vallas de codigo al inicio de linea, cerradas con la misma secuencia. Las de comillas
+    // invertidas no llevan comillas invertidas en la info: asi "```usa esto```" no es valla.
+    // Un solo grupo: en JavaScript una referencia a un grupo que no participo coincide con
+    // vacio, y la valla se cerraria en la primera linea en blanco.
+    .replace(/^ {0,3}(`{3,}(?=[^`\n]*$)|~{3,})[^\n]*\n[\s\S]*?^ {0,3}\1[`~]*[^\S\n]*$/gm, ' ')
     .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
     .replace(/<img[^>]*>/gi, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n\s*\n(\s*\n)+/g, '\n\n')
+    .trim()
 
-  const fromTemplate = TEMPLATE_FINGERPRINT.some((pattern) => pattern.test(markdown))
-  const kept: string[] = []
-  // Nivel de la seccion de plantilla en curso; sus subtitulos siguen siendo de la plantilla.
-  // Un titulo principal (#) de plantilla no se lleva los subtitulos propios que le siguen.
-  let templateLevel: number | null = null
-
-  for (const unit of readmeUnits(markdown)) {
-    if (unit.heading) {
-      if (fromTemplate && TEMPLATE_HEADING.test(unit.heading.text)) {
-        templateLevel = unit.heading.level
-        continue
-      }
-      if (templateLevel !== null && templateLevel > 1 && unit.heading.level > templateLevel) continue
-      templateLevel = null
-      kept.push(unit.text)
-      continue
-    }
-
-    if (fromTemplate && TEMPLATE_STOCK.some((pattern) => pattern.test(unit.text))) continue
-    if (templateLevel !== null && (unit.isList || unit.text.length < TEMPLATE_SECTION_MIN_OWN || TEMPLATE_TOPIC.test(unit.text))) continue
-    kept.push(unit.text)
-  }
-
-  const text = kept.join('\n\n').replace(/[ \t]+/g, ' ').trim()
   // Lo que cuenta es la prosa: los titulos solos no describen nada.
-  const prose = kept.filter((part) => !/^#{1,6}\s/.test(part)).join(' ').replace(/\s+/g, ' ').trim()
+  // [ \t] y no \s: un "##" suelto no tiene que llevarse la linea siguiente.
+  const prose = text.replace(/^ {0,3}#{1,6}(?:[ \t].*)?$/gm, '').replace(/\s+/g, ' ').trim()
   if (prose.length < README_MIN_CHARS) return null
   return text.slice(0, README_MAX_CHARS)
 }
 
-export const NO_SUMMARY = 'SIN_INFO'
-// La respuesta es solo el centinela, con cualquier separador o markdown alrededor.
-const SENTINEL = [/^\W*sin[\s\\_-]*info\W*$/i, /^\W*sin informaci[oó]n\W*$/i, /^\W*(n\/a|ninguno|ninguna)\W*$/i]
-// Explicaciones del modelo en lugar de un resumen. Van ancladas al principio (o son frases
-// inequivocas) para no descartar un resumen que menciona "sin informacion" o "el README".
-const META_ANSWER = [
-  /^(el|este|del)?\s*(archivo\s+)?readme\b.*\b(no|s[oó]lo|solamente|[uú]nicamente)\b/i,
-  /^(no hay|no se (encontr|dispone)\w*|falta)\s+(suficiente\s+)?informaci[oó]n/i,
-  /^informaci[oó]n insuficiente/i,
-  /^(el|este) (repositorio|proyecto) (no|s[oó]lo|solamente|[uú]nicamente) (incluye|contiene|trae|tiene|describe|explica)/i,
-  /^la documentaci[oó]n (disponible )?no\b/i,
-  /\bno (describe|explica|detalla|aclara) (de qu[eé] se trata|el prop[oó]sito|el objetivo|qu[eé] hace)/i,
-]
+const SUMMARY_MAX_CHARS = 700
+// El centinela del pedido en texto libre, con cualquier separador. Con guion bajo no aparece
+// en un resumen real; tampoco "sin info" suelto.
+const NO_SUMMARY_TOKEN = /\bsin[\s\\_-]*info\b/i
+// Respuestas que, enteras, dicen que no hay resumen.
+const NO_SUMMARY_ANSWER = /^\W*(sin informaci[oó]n( suficiente)?|informaci[oó]n insuficiente|n\/a|ninguno|ninguna|true|false)\W*$/i
 const QUOTE_PAIRS: Array<[string, string]> = [
   ['"', '"'],
   ['“', '”'],
@@ -362,10 +304,9 @@ function unwrapQuotes(text: string) {
   return text
 }
 
-// Limpia la respuesta del modelo: sin prefijos, sin markdown y con un tope de largo. null si
-// no es un resumen (el centinela o una explicacion de que el README no alcanza).
+// Limpia el resumen: sin markdown, prefijos ni comillas envolventes, con un tope de largo.
 export function cleanSummary(text: string | null | undefined) {
-  if (!text) return null
+  if (!text || NO_SUMMARY_TOKEN.test(text)) return null
   let cleaned = text
     .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
     .replace(/\*\*|__|`/g, '')
@@ -378,53 +319,179 @@ export function cleanSummary(text: string | null | undefined) {
   if (withoutPrefix !== cleaned) cleaned = withoutPrefix.charAt(0).toUpperCase() + withoutPrefix.slice(1)
   cleaned = unwrapQuotes(cleaned)
 
-  if (!cleaned || SENTINEL.some((pattern) => pattern.test(cleaned)) || META_ANSWER.some((pattern) => pattern.test(cleaned))) return null
-  if (cleaned.length <= 700) return cleaned
+  if (!cleaned || NO_SUMMARY_ANSWER.test(cleaned)) return null
+  if (cleaned.length <= SUMMARY_MAX_CHARS) return cleaned
   // Se corta en el ultimo punto; si no hay uno razonable, en la ultima palabra.
-  const cut = cleaned.slice(0, 700)
+  const cut = cleaned.slice(0, SUMMARY_MAX_CHARS)
   const lastStop = cut.lastIndexOf('. ')
   if (lastStop > 300) return cut.slice(0, lastStop + 1)
   return `${cut.slice(0, cut.lastIndexOf(' '))}…`
 }
 
-const SYNC_THROTTLE_KEY = 'github-projects-sync-at'
+// Explicaciones del modelo en lugar de un resumen. Solo frases inequivocas, para no descartar
+// un resumen real; se aplican tanto al JSON (si el modelo se contradice) como al texto libre.
+const META_ANSWER = [
+  /^(el|este)\s+(archivo\s+)?readme\s+(no|s[oó]lo|solamente|[uú]nicamente)\b/i,
+  /\bno (describe|explica|detalla|aclara) (de qu[eé] se trata|el prop[oó]sito|el objetivo|qu[eé] hace)/i,
+  /^no hay (suficiente )?informaci[oó]n (suficiente )?(en el readme|para (describir|resumir|explicar))/i,
+]
+// Una respuesta con las claves del formato pedido, aunque venga con otras comillas o como
+// YAML: si no se puede leer, es una falla y no un resumen.
+const LOOKS_STRUCTURED = /^\s*(```(json)?\s*)?\{|["'“”]?\bdescribe\b["'“”]?\s*:|["'“”]\bresumen\b["'“”]\s*:/i
+
+// Objeto JSON que empieza en start, cortado donde se cierra la llave que lo abre. Los saltos
+// de linea crudos dentro de un texto se escapan: algunos modelos los mandan asi y JSON.parse
+// los rechaza.
+function jsonObjectAt(content: string, start: number) {
+  let depth = 0
+  let inString = false
+  let escaped = false
+  let json = ''
+  for (const char of content.slice(start)) {
+    if (inString) {
+      if (escaped) escaped = false
+      else if (char === '\\') escaped = true
+      else if (char === '"') inString = false
+      json += char === '\n' ? '\\n' : char === '\r' ? '' : char
+      continue
+    }
+    json += char
+    if (char === '"') inString = true
+    else if (char === '{') depth += 1
+    else if (char === '}') {
+      depth -= 1
+      if (depth === 0) return json
+    }
+  }
+  return null
+}
+
+// El primer objeto del texto que se puede leer y trae "describe" (un preambulo con llaves,
+// como el razonamiento de algunos modelos, no lo tapa).
+function findSummaryObject(content: string) {
+  for (let start = content.indexOf('{'); start !== -1; start = content.indexOf('{', start + 1)) {
+    const json = jsonObjectAt(content, start)
+    if (!json) continue
+    try {
+      const parsed = JSON.parse(json) as Record<string, unknown>
+      if (parsed && typeof parsed === 'object' && 'describe' in parsed) return parsed
+    } catch {
+      // Se prueba con la llave siguiente.
+    }
+  }
+  return null
+}
+
+export type ModelSummary = { outcome: 'summary'; text: string } | { outcome: 'no-info' } | { outcome: 'failed' }
+
+function summaryOrNoInfo(text: string | null): ModelSummary {
+  const summary = text ? cleanSummary(text) : null
+  if (!summary || META_ANSWER.some((pattern) => pattern.test(summary))) return { outcome: 'no-info' }
+  return { outcome: 'summary', text: summary }
+}
+
+// Interpreta la respuesta del modelo, que se pide como JSON {"describe": bool, "resumen":
+// string}: asi "no hay informacion" es un campo y no una frase que haya que adivinar. Si
+// parece estructurada pero no se puede leer, es una falla (se reintenta mas adelante): nunca
+// se guarda el JSON crudo como descripcion. Si el modelo responde texto libre, se toma como
+// resumen salvo que traiga el centinela o sea una explicacion de que no hay informacion.
+export function parseModelSummary(content: string): ModelSummary {
+  const parsed = findSummaryObject(content)
+  if (parsed) {
+    if (parsed.describe === false) return { outcome: 'no-info' }
+    if (parsed.describe !== true) return { outcome: 'failed' }
+    // Algunos modelos mandan las oraciones como lista.
+    const resumen = Array.isArray(parsed.resumen) && parsed.resumen.every((part) => typeof part === 'string') ? parsed.resumen.join(' ') : parsed.resumen
+    if (typeof resumen !== 'string') return { outcome: 'failed' }
+    return summaryOrNoInfo(resumen)
+  }
+  if (LOOKS_STRUCTURED.test(content)) return { outcome: 'failed' }
+  return summaryOrNoInfo(content)
+}
+
+// Marcas en sessionStorage, compartidas por las pantallas de la pestania: cuando empezo y
+// cuando respondio la ultima sincronizacion, si trajo cambios y cuando conviene recargar
+// para ver los resumenes del analisis de README.
+const SYNC_AT_KEY = 'github-projects-sync-at'
+const DONE_AT_KEY = 'github-projects-sync-done-at'
+const CHANGED_AT_KEY = 'github-projects-changed-at'
+const RELOAD_AT_KEY = 'github-projects-reload-at'
 const SYNC_THROTTLE_MS = 5 * 60 * 1000
-// El analisis de README corre en el servidor despues de responder; se le da este margen
-// antes de volver a cargar para mostrar los resumenes.
-const README_ANALYSIS_WAIT_MS = 45 * 1000
+// El analisis de README corre en el servidor despues de responder, con un tope de ~52 s desde
+// que llego el pedido; se le da este margen antes de volver a cargar.
+const README_ANALYSIS_WAIT_MS = 55 * 1000
+// Cada cuanto mira otra pantalla si ya respondio la sincronizacion en curso, y hasta cuando.
+const IN_FLIGHT_POLL_MS = 2000
+const IN_FLIGHT_MAX_MS = 60 * 1000
+
+function readTime(key: string) {
+  try {
+    return Number(window.sessionStorage.getItem(key) ?? 0) || 0
+  } catch {
+    return 0
+  }
+}
+
+function writeTime(key: string, value: number) {
+  try {
+    window.sessionStorage.setItem(key, String(value))
+  } catch {
+    // Sin sessionStorage se sigue igual.
+  }
+}
 
 // Pide al servidor que traiga los repos nuevos y complete los datos que da GitHub, y llama a
 // onChange cuando conviene recargar: enseguida si se crearon o completaron proyectos, y otra
-// vez al rato si quedo un analisis de README en curso. Devuelve una funcion para cancelar.
-// Como mucho una vez cada 5 minutos por pestania; el cron diario cubre los dias sin visitas.
+// vez cuando termina el analisis de README en curso. Si al montar hay una sincronizacion de
+// otra pantalla todavia sin responder, la espera y recarga igual. Devuelve una funcion para
+// cancelar. Como mucho una sincronizacion cada 5 minutos por pestania.
 export function watchGithubProjectSync(onChange: () => void) {
   let cancelled = false
-  let timer: ReturnType<typeof setTimeout> | null = null
-
-  try {
-    const last = Number(window.sessionStorage.getItem(SYNC_THROTTLE_KEY) ?? 0)
-    if (Date.now() - last < SYNC_THROTTLE_MS) return () => {}
-    window.sessionStorage.setItem(SYNC_THROTTLE_KEY, String(Date.now()))
-  } catch {
-    // Sin sessionStorage se sincroniza igual.
+  const timers: Array<ReturnType<typeof setTimeout>> = []
+  const later = (wait: number, task: () => void) => timers.push(setTimeout(() => !cancelled && task(), Math.max(0, wait)))
+  const scheduleReload = () => {
+    const reloadAt = readTime(RELOAD_AT_KEY)
+    if (reloadAt > Date.now()) later(reloadAt - Date.now(), onChange)
   }
 
-  void fetch('/api/github/sync-projects', { method: 'POST' })
-    .then((response) => (response.ok ? (response.json() as Promise<Record<string, unknown>>) : null))
-    .then((payload) => {
-      if (cancelled || !payload) return
-      const count = (value: unknown) => (typeof value === 'number' ? value : 0)
-      if (count(payload.created) + count(payload.filled) > 0) onChange()
-      if (count(payload.readmeAnalysis) > 0) {
-        timer = setTimeout(() => {
-          if (!cancelled) onChange()
-        }, README_ANALYSIS_WAIT_MS)
+  const syncAt = readTime(SYNC_AT_KEY)
+  scheduleReload()
+
+  // Una sincronizacion de otra pantalla que todavia no respondio: esta pantalla ya cargo sus
+  // datos, asi que cuando responda tiene que recargar si hubo cambios o si quedo un analisis.
+  const inFlight = syncAt > readTime(DONE_AT_KEY) && Date.now() - syncAt < IN_FLIGHT_MAX_MS
+  if (inFlight) {
+    const waitForResponse = () => {
+      if (readTime(DONE_AT_KEY) >= syncAt) {
+        if (readTime(CHANGED_AT_KEY) >= syncAt) onChange()
+        scheduleReload()
+      } else if (Date.now() - syncAt < IN_FLIGHT_MAX_MS) {
+        later(IN_FLIGHT_POLL_MS, waitForResponse)
       }
-    })
-    .catch(() => {})
+    }
+    later(IN_FLIGHT_POLL_MS, waitForResponse)
+  }
+
+  if (Date.now() - syncAt >= SYNC_THROTTLE_MS) {
+    const startedAt = Date.now()
+    writeTime(SYNC_AT_KEY, startedAt)
+    void fetch('/api/github/sync-projects', { method: 'POST' })
+      .then((response) => (response.ok ? (response.json() as Promise<Record<string, unknown>>) : null))
+      .catch(() => null)
+      .then((payload) => {
+        const count = (value: unknown) => (typeof value === 'number' ? value : 0)
+        const changed = Boolean(payload) && count(payload?.created) + count(payload?.filled) > 0
+        if (count(payload?.readmeAnalysis) > 0) writeTime(RELOAD_AT_KEY, Date.now() + README_ANALYSIS_WAIT_MS)
+        if (changed) writeTime(CHANGED_AT_KEY, startedAt)
+        writeTime(DONE_AT_KEY, Date.now())
+        if (cancelled) return
+        scheduleReload()
+        if (changed) onChange()
+      })
+  }
 
   return () => {
     cancelled = true
-    if (timer) clearTimeout(timer)
+    timers.forEach((timer) => clearTimeout(timer))
   }
 }
