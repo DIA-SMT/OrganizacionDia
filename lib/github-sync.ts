@@ -9,6 +9,8 @@ export type GithubOrgRepo = {
   html_url: string
   language: string | null
   archived: boolean
+  homepage?: string | null
+  created_at?: string | null
 }
 
 export type ExistingProjectRepo = {
@@ -24,6 +26,8 @@ export type GithubProjectInsert = {
   description: string | null
   stack: string | null
   repository_url: string
+  website_url: string | null
+  start_date: string | null
   github_repo_id: number
   status: 'En desarrollo'
   priority: 'Media'
@@ -104,6 +108,8 @@ export function planGithubProjectSync(repos: GithubOrgRepo[], existing: Existing
       description: repo.description?.trim() || null,
       stack: repo.language,
       repository_url: repo.html_url,
+      website_url: cleanHomepage(repo.homepage),
+      start_date: repoStartDate(repo.created_at),
       github_repo_id: repo.id,
       status: 'En desarrollo',
       priority: 'Media',
@@ -113,6 +119,115 @@ export function planGithubProjectSync(repos: GithubOrgRepo[], existing: Existing
   }
 
   return plan
+}
+
+// ── Datos que aporta GitHub ──────────────────────────────────────────────────────────
+
+export function cleanHomepage(homepage: string | null | undefined) {
+  const trimmed = homepage?.trim()
+  if (!trimmed) return null
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+}
+
+// La fecha de creacion del repo se toma como inicio del proyecto (YYYY-MM-DD).
+export function repoStartDate(createdAt: string | null | undefined) {
+  return createdAt && /^\d{4}-\d{2}-\d{2}/.test(createdAt) ? createdAt.slice(0, 10) : null
+}
+
+// Los tres lenguajes con mas codigo, en el orden que informa GitHub por bytes.
+export function stackFromLanguages(languages: Record<string, number> | null, fallback: string | null) {
+  const top = Object.entries(languages ?? {})
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([language]) => language)
+  return top.length > 0 ? top.join(', ') : fallback
+}
+
+const README_MAX_CHARS = 12000
+const README_MIN_CHARS = 120
+// READMEs de plantilla que no dicen nada del proyecto.
+const TEMPLATE_README = [
+  /bootstrapped with \W*create[- ]next[- ]app/i,
+  /bootstrapped with \W*create react app/i,
+  /this template provides a minimal setup to get react working in vite/i,
+  /welcome to your lovable project/i,
+]
+
+// Devuelve el README listo para mandar al modelo, o null si no aporta: vacio, demasiado
+// corto o el texto por defecto de una plantilla.
+export function usefulReadme(readme: string | null | undefined) {
+  if (!readme) return null
+  const text = readme
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/<img[^>]*>/gi, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+
+  if (text.length < README_MIN_CHARS) return null
+  // Una plantilla con contenido propio agregado sigue sirviendo; solo se descarta la pelada.
+  if (TEMPLATE_README.some((pattern) => pattern.test(text)) && text.length < 2500) return null
+  return text.slice(0, README_MAX_CHARS)
+}
+
+export const NO_SUMMARY = 'SIN_INFO'
+
+// Limpia la respuesta del modelo: sin comillas, sin markdown y con un tope de largo.
+export function cleanSummary(text: string | null | undefined) {
+  // Se mira antes de limpiar: la limpieza borra el guion bajo de SIN_INFO.
+  if (!text || text.toUpperCase().includes(NO_SUMMARY)) return null
+  const cleaned = text
+    .replace(/[*_#`>]/g, '')
+    .replace(/^["'«“\s]+|["'»”\s]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!cleaned) return null
+  if (cleaned.length <= 700) return cleaned
+  // Se corta en el ultimo punto; si no hay uno razonable, en la ultima palabra.
+  const cut = cleaned.slice(0, 700)
+  const lastStop = cut.lastIndexOf('. ')
+  if (lastStop > 300) return cut.slice(0, lastStop + 1)
+  return `${cut.slice(0, cut.lastIndexOf(' '))}…`
+}
+
+export type EnrichableProject = {
+  description: string | null
+  stack: string | null
+  start_date: string | null
+  website_url: string | null
+}
+
+// Solo completa lo vacio. La descripcion tambien se reemplaza si es la misma que trae
+// GitHub (la que se cargo sola al dar de alta el repo): el resumen del README la mejora.
+export function enrichmentPatch(
+  project: EnrichableProject,
+  repo: Pick<GithubOrgRepo, 'description' | 'language' | 'homepage' | 'created_at'>,
+  languages: Record<string, number> | null,
+  summary: string | null,
+) {
+  const patch: Partial<EnrichableProject> = {}
+  const githubDescription = repo.description?.trim() || null
+  const currentDescription = project.description?.trim() || null
+
+  if (!currentDescription || currentDescription === githubDescription) {
+    const description = summary ?? githubDescription
+    if (description && description !== currentDescription) patch.description = description
+  }
+  if (!project.stack?.trim()) {
+    const stack = stackFromLanguages(languages, repo.language)
+    if (stack) patch.stack = stack
+  }
+  if (!project.start_date) {
+    const startDate = repoStartDate(repo.created_at)
+    if (startDate) patch.start_date = startDate
+  }
+  if (!project.website_url?.trim()) {
+    const website = cleanHomepage(repo.homepage)
+    if (website) patch.website_url = website
+  }
+
+  return patch
 }
 
 const SYNC_THROTTLE_KEY = 'github-projects-sync-at'

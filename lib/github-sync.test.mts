@@ -35,7 +35,7 @@ test('normaliza la URL del repo a owner/repo en minusculas', async () => {
 test('crea un proyecto por cada repo que no esta cargado', async () => {
   const { planGithubProjectSync } = await import('./github-sync.ts')
 
-  const plan = planGithubProjectSync([repo(1, 'nuevo', { description: '  Bot nuevo  ' })], [])
+  const plan = planGithubProjectSync([repo(1, 'nuevo', { description: '  Bot nuevo  ', homepage: 'nuevo.smt.gob.ar', created_at: '2026-03-04T15:20:00Z' })], [])
 
   assert.deepEqual(plan.inserts, [
     {
@@ -43,6 +43,8 @@ test('crea un proyecto por cada repo que no esta cargado', async () => {
       description: 'Bot nuevo',
       stack: 'TypeScript',
       repository_url: 'https://github.com/DIA-SMT/nuevo',
+      website_url: 'https://nuevo.smt.gob.ar',
+      start_date: '2026-03-04',
       github_repo_id: 1,
       status: 'En desarrollo',
       priority: 'Media',
@@ -100,4 +102,63 @@ test('ignora repos archivados, ocultos y los de la lista de exclusion', async ()
     plan.inserts.map((insert) => insert.name),
     ['sirve'],
   )
+})
+
+test('arma el stack con los tres lenguajes con mas codigo', async () => {
+  const { stackFromLanguages } = await import('./github-sync.ts')
+
+  assert.equal(stackFromLanguages({ CSS: 100, TypeScript: 9000, HTML: 50, JavaScript: 300 }, 'TypeScript'), 'TypeScript, JavaScript, CSS')
+  assert.equal(stackFromLanguages({}, 'Python'), 'Python')
+  assert.equal(stackFromLanguages(null, null), null)
+})
+
+test('descarta READMEs vacios o de plantilla', async () => {
+  const { usefulReadme } = await import('./github-sync.ts')
+
+  const template = 'This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs). '.repeat(3)
+  assert.equal(usefulReadme(null), null)
+  assert.equal(usefulReadme('# Proyecto\n\nCorto.'), null)
+  assert.equal(usefulReadme(template), null)
+
+  const real = '# LluvIA\n\n<!-- comentario -->![logo](logo.png)\nTablero que avisa a Defensa Civil cuando la lluvia supera los umbrales en cada barrio de la ciudad, con alertas por WhatsApp.'
+  const cleaned = usefulReadme(real)
+  assert.ok(cleaned?.startsWith('# LluvIA'))
+  assert.ok(cleaned?.includes('Tablero que avisa a Defensa Civil'))
+  assert.ok(!cleaned?.includes('comentario') && !cleaned?.includes('logo.png'))
+})
+
+test('limpia el resumen del modelo y reconoce cuando no hay informacion', async () => {
+  const { cleanSummary } = await import('./github-sync.ts')
+
+  assert.equal(cleanSummary('  "**LluvIA** es un tablero."  '), 'LluvIA es un tablero.')
+  assert.equal(cleanSummary('SIN_INFO'), null)
+  assert.equal(cleanSummary(''), null)
+
+  const long = `${'Primera oracion bastante larga para el resumen. '.repeat(10)}Ultima.`
+  const cut = cleanSummary(long)
+  assert.ok(cut && cut.length <= 700 && cut.endsWith('.'))
+})
+
+test('solo completa lo vacio y mejora la descripcion que vino de GitHub', async () => {
+  const { enrichmentPatch } = await import('./github-sync.ts')
+
+  const githubRepo = { description: 'Bot de turismo', language: 'TypeScript', homepage: 'turismo.smt.gob.ar', created_at: '2025-11-02T10:00:00Z' }
+  const languages = { TypeScript: 10, CSS: 2 }
+  const empty = { description: null, stack: null, start_date: null, website_url: null }
+
+  assert.deepEqual(enrichmentPatch(empty, githubRepo, languages, 'Asistente para turistas.'), {
+    description: 'Asistente para turistas.',
+    stack: 'TypeScript, CSS',
+    start_date: '2025-11-02',
+    website_url: 'https://turismo.smt.gob.ar',
+  })
+
+  // La descripcion igual a la de GitHub se reemplaza por el resumen; sin resumen queda la de GitHub.
+  assert.deepEqual(enrichmentPatch({ ...empty, description: 'Bot de turismo' }, githubRepo, null, 'Resumen.').description, 'Resumen.')
+  assert.equal(enrichmentPatch({ ...empty, description: 'Bot de turismo' }, githubRepo, null, null).description, undefined)
+  assert.equal(enrichmentPatch(empty, githubRepo, null, null).description, 'Bot de turismo')
+
+  // Lo cargado a mano no se toca.
+  const manual = { description: 'Escrita por el equipo', stack: 'Next.js', start_date: '2025-01-01', website_url: 'https://otro.gob.ar' }
+  assert.deepEqual(enrichmentPatch(manual, githubRepo, languages, 'Resumen.'), {})
 })

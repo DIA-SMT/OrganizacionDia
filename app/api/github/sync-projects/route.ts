@@ -1,11 +1,27 @@
-import { parseIgnoredRepos, planGithubProjectSync, type ExistingProjectRepo, type GithubOrgRepo } from '@/lib/github-sync'
+import { fetchRepoDetails, summarizeReadme } from '@/lib/github-enrich'
+import {
+  enrichmentPatch,
+  githubRepoKey,
+  parseIgnoredRepos,
+  planGithubProjectSync,
+  type EnrichableProject,
+  type ExistingProjectRepo,
+  type GithubOrgRepo,
+} from '@/lib/github-sync'
 import { getSupabaseAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export const runtime = 'nodejs'
+// El analisis de READMEs con IA puede tardar unos segundos por proyecto.
+export const maxDuration = 60
 
 const NO_STORE = { 'Cache-Control': 'no-store' }
 const MAX_PAGES = 10
+// Proyectos que se completan con datos de GitHub por corrida; el resto queda para la
+// siguiente (cron de cada hora o la proxima vez que alguien abre el tablero).
+const ENRICH_PER_RUN = 8
+const ENRICH_CONCURRENCY = 4
 
 const reply = (body: Record<string, unknown>, status = 200) => Response.json(body, { status, headers: NO_STORE })
 
@@ -50,14 +66,18 @@ async function reposPath(owner: string, headers: HeadersInit, token: string | un
   return `/users/${encodeURIComponent(owner)}/repos?type=owner`
 }
 
-async function fetchOrgRepos(org: string, token: string | undefined) {
-  const headers: HeadersInit = {
+function githubHeaders(token: string | undefined) {
+  const headers: Record<string, string> = {
     Accept: 'application/vnd.github+json',
     'User-Agent': 'Organizacion-DIA',
     'X-GitHub-Api-Version': '2022-11-28',
   }
   if (token) headers.Authorization = `Bearer ${token}`
+  return headers
+}
 
+async function fetchOrgRepos(org: string, token: string | undefined) {
+  const headers = githubHeaders(token)
   const path = await reposPath(org, headers, token)
   const repos: GithubOrgRepo[] = []
   for (let page = 1; page <= MAX_PAGES; page += 1) {
@@ -107,19 +127,71 @@ export async function POST(request: Request) {
     await admin.from('projects').update({ github_repo_id: link.githubRepoId }).eq('id', link.projectId).is('github_repo_id', null)
   }
 
-  if (plan.inserts.length === 0) return reply({ created: 0, projects: [], configured: Boolean(token) })
+  let created: Array<{ id: string; name: string; repository_url: string }> = []
+  if (plan.inserts.length > 0) {
+    const { data: team, error: teamError } = await admin.from('teams').select('id').eq('slug', 'dia').maybeSingle()
+    if (teamError || !team) return reply({ error: 'No existe el equipo DIA en la tabla teams.' }, 500)
 
-  const { data: team, error: teamError } = await admin.from('teams').select('id').eq('slug', 'dia').maybeSingle()
-  if (teamError || !team) return reply({ error: 'No existe el equipo DIA en la tabla teams.' }, 500)
+    const { data, error: insertError } = await admin
+      .from('projects')
+      .upsert(
+        plan.inserts.map((insert) => ({ ...insert, team_id: team.id })),
+        { onConflict: 'github_repo_id', ignoreDuplicates: true },
+      )
+      .select('id, name, repository_url')
+    if (insertError) return reply({ error: `No se pudieron crear los proyectos: ${insertError.message}` }, 500)
+    created = data ?? []
+  }
 
-  const { data: created, error: insertError } = await admin
+  const enrichment = await enrichProjects(admin, repos, githubHeaders(token))
+
+  return reply({ created: created.length, projects: created, ...enrichment, configured: Boolean(token) })
+}
+
+type EnrichCandidate = EnrichableProject & { id: string; github_repo_id: number }
+
+// Completa con datos de GitHub los proyectos que todavia no se analizaron: fecha de inicio,
+// sitio, tecnologias y un resumen del README. Solo llena lo vacio (ver enrichmentPatch).
+async function enrichProjects(admin: SupabaseClient, repos: GithubOrgRepo[], headers: Record<string, string>) {
+  const { data, error } = await admin
     .from('projects')
-    .upsert(
-      plan.inserts.map((insert) => ({ ...insert, team_id: team.id })),
-      { onConflict: 'github_repo_id', ignoreDuplicates: true },
-    )
-    .select('id, name, repository_url')
-  if (insertError) return reply({ error: `No se pudieron crear los proyectos: ${insertError.message}` }, 500)
+    .select('id, description, stack, start_date, website_url, github_repo_id')
+    .eq('active', true)
+    .not('github_repo_id', 'is', null)
+    .is('github_enriched_at', null)
+    .order('created_at', { ascending: false })
+  // Sin la columna (falta supabase/add_project_github_enrichment.sql) se sigue sin completar.
+  if (error) return { enriched: 0, pendingEnrichment: null }
 
-  return reply({ created: created?.length ?? 0, projects: created ?? [], configured: Boolean(token) })
+  const repoById = new Map(repos.map((repo) => [repo.id, repo]))
+  // Un repo que el token no ve (privado sin acceso) queda esperando, sin ocupar lugar.
+  const candidates = ((data ?? []) as EnrichCandidate[]).filter((project) => repoById.has(project.github_repo_id))
+  const batch = candidates.slice(0, ENRICH_PER_RUN)
+  let enriched = 0
+
+  for (let start = 0; start < batch.length; start += ENRICH_CONCURRENCY) {
+    const results = await Promise.all(
+      batch.slice(start, start + ENRICH_CONCURRENCY).map(async (project) => {
+        const repo = repoById.get(project.github_repo_id)!
+        const repoKey = githubRepoKey(repo.html_url)
+        if (!repoKey) return false
+
+        const details = await fetchRepoDetails(repoKey, headers)
+        const currentDescription = project.description?.trim() || null
+        const wantsSummary = !currentDescription || currentDescription === (repo.description?.trim() || null)
+        const summary = wantsSummary ? await summarizeReadme(repo.name, repo.description, details.readme) : null
+        const patch = enrichmentPatch(project, repo, details.languages, summary)
+
+        // Si GitHub no respondio, se guarda lo que haya y se reintenta en la proxima corrida.
+        const finished = !details.failed
+        const update = { ...patch, ...(finished ? { github_enriched_at: new Date().toISOString() } : {}) }
+        if (Object.keys(update).length === 0) return false
+        const { error: updateError } = await admin.from('projects').update(update).eq('id', project.id)
+        return !updateError && finished
+      }),
+    )
+    enriched += results.filter(Boolean).length
+  }
+
+  return { enriched, pendingEnrichment: candidates.length - enriched }
 }
