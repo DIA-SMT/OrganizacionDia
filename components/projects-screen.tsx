@@ -4,12 +4,12 @@ import { AppShell } from '@/components/app-shell'
 import { MemberMultiSelect } from '@/components/member-multi-select'
 import { ProjectCreateButton } from '@/components/project-create-button'
 import { useAuth } from '@/context/AuthContext'
-import { requestGithubProjectSync } from '@/lib/github-sync'
+import { watchGithubProjectSync } from '@/lib/github-sync'
 import { filterAndSortProjects, type ProjectFilter } from '@/lib/project-filters'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
 import { Check, ChevronDown, ExternalLink, FileText, Funnel, GitCommitHorizontal, Globe2, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
 import { motion, type Variants } from 'framer-motion'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 type ProjectRow = {
   id: string
@@ -68,6 +68,41 @@ type ProjectParticipant = {
 }
 
 const priorities = ['Baja', 'Media', 'Alta', 'Critica']
+
+// Un UPDATE que no afecta filas no da error: pasa con la sesion vencida o si la RLS lo filtra
+const projectNotSavedMessage = 'No se pudo guardar: la sesion expiro o no tenes permiso para editar este proyecto.'
+
+// Textos que la sincronizacion tambien escribe o que son largos: se guardan solo si la base sigue con el ultimo valor
+// confirmado y, si no se guardan, no se revierten porque se perderia lo escrito
+type GuardedTextField = 'description' | 'note' | 'website_url'
+const GUARDED_TEXT_MAX = 1000
+
+// Texto condicionado que no se guardo: draft es lo que escribio el usuario, server el valor actual de la base (undefined
+// si no se pudo leer) y changed si la base tenia otro valor que el esperado. Vive aparte del error general para que otro
+// guardado no lo borre y la recarga no pise el borrador
+type TextConflict = { projectId: string; field: GuardedTextField; draft: string | null; server?: string | null; changed: boolean }
+type TextSave = { kind: 'blur'; value: string | null; valueOnFocus: string | null } | { kind: 'keep' }
+
+const textChangedMessage = 'El valor cambio en el servidor mientras editabas y tu texto no se guardo.'
+const textNotSavedMessage = 'Tu texto no se guardo: la sesion expiro, no tenes permiso o fallo la conexion.'
+
+// El error de un guardado lleva su proyecto para no aparecer en el modal de otro; null es un error general
+type ScreenError = { message: string; projectId: string | null }
+
+function confirmedKey(projectId: string, field: string) {
+  return `${projectId}:${field}`
+}
+
+function withoutKey<T>(record: Record<string, T>, key: string) {
+  const next = { ...record }
+  delete next[key]
+  return next
+}
+
+// Valores tal como los devolvio la base, por proyecto y campo
+function confirmedValuesOf(rows: ProjectRow[]) {
+  return new Map<string, unknown>(rows.flatMap((project) => Object.entries(project).map(([field, value]) => [confirmedKey(project.id, field), value] as const)))
+}
 
 const projectFilterGroups: Array<{
   label: string
@@ -304,8 +339,23 @@ export function ProjectsScreen({
   const [projectMemberIds, setProjectMemberIds] = useState<Record<string, string[]>>({})
   const [projectMembersAvailable, setProjectMembersAvailable] = useState(false)
   const [savingProjectMembersId, setSavingProjectMembersId] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<ScreenError | null>(null)
   const [githubSyncTick, setGithubSyncTick] = useState(0)
+  // Guardados en vuelo (campos, progreso y responsables): savingField guarda uno solo y no alcanza para esperar a todos
+  const [pendingSaves, setPendingSaves] = useState(0)
+  // Recarga ya aplicada: si difiere de githubSyncTick hay una pendiente
+  const loadedSyncTick = useRef<number | null>(null)
+  // Valor del campo de texto al tomar el foco: se compara en el blur y los textos condicionados exigen que la base lo siga teniendo
+  const fieldValueOnFocus = useRef<string | null>(null)
+  // Ultimo valor confirmado por la base (carga o guardado exitoso): si un guardado falla se vuelve a este y no al render
+  // anterior, que puede ser un paso intermedio (un digito del anio de una fecha, un punto del arrastre del slider)
+  const confirmedValues = useRef(new Map<string, unknown>())
+  // Textos condicionados sin guardar, por proyecto y campo (confirmedKey)
+  const [textConflicts, setTextConflicts] = useState<Record<string, TextConflict>>({})
+  // Copia de textConflicts para la recarga y los guardados, que corren async y necesitan los ultimos
+  const textConflictsRef = useRef<Record<string, TextConflict>>({})
+  // Ultima tarea de cada texto condicionado: la siguiente la espera y se condiciona a lo que esa confirmo
+  const textSaveChains = useRef(new Map<string, Promise<void>>())
   const { teamSlug } = useAuth()
   const theme = useStoredTheme()
   const isDark = theme === 'dark'
@@ -332,7 +382,40 @@ export function ProjectsScreen({
   const labelClass = isDark ? 'text-slate-500' : 'text-slate-400'
   const inputClass = isDark ? 'border-slate-700 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-900'
 
+  // Sin proyecto abierto no hay nada en edicion aunque el flag haya quedado prendido (por ejemplo al eliminar)
+  const editingOpenProject = selectedProjectEditing && selectedProjectId !== null
+
+  // Reemplazar la lista mientras se edita (o con guardados en vuelo) borraria lo escrito o mostraria valores viejos: la recarga espera
   useEffect(() => {
+    if (editingOpenProject || pendingSaves > 0 || loadedSyncTick.current === githubSyncTick) return
+
+    let cancelled = false
+
+    // Los textos en conflicto conservan el borrador en pantalla; confirmedValues y el aviso si toman el valor de la base
+    function showLoadedRows(rows: ProjectRow[]) {
+      confirmedValues.current = confirmedValuesOf(rows)
+      const conflicts = Object.entries(textConflictsRef.current)
+      if (conflicts.length === 0) {
+        setProjects(rows)
+        return
+      }
+
+      const rowsById = new Map(rows.map((row) => [row.id, row]))
+      const refreshed = Object.fromEntries(
+        conflicts.flatMap(([key, conflict]): Array<[string, TextConflict]> => {
+          const row = rowsById.get(conflict.projectId)
+          if (!row) return [[key, conflict]]
+          // La base ya tiene el borrador (por ejemplo lo guardo otra sesion): no queda nada que resolver
+          if (row[conflict.field] === conflict.draft) return []
+          return [[key, { ...conflict, server: row[conflict.field] }]]
+        }),
+      )
+      textConflictsRef.current = refreshed
+      setTextConflicts(refreshed)
+      const drafts = Object.values(refreshed)
+      setProjects(rows.map((row) => drafts.reduce((shown, conflict) => (conflict.projectId === row.id ? { ...shown, [conflict.field]: conflict.draft } : shown), row)))
+    }
+
     async function fetchProjects() {
       const supabase = getSupabaseBrowserClient()
       if (!supabase) {
@@ -345,6 +428,7 @@ export function ProjectsScreen({
         .select('id, name, description, requester_area, stack, repository_url, repository_url_secondary, website_url, status, priority, progress, start_date, estimated_delivery, note')
         .eq('active', true)
         .order('created_at', { ascending: false })
+      if (cancelled) return
 
       if (projectsError) {
         const { data: fallbackData, error: fallbackError } = await supabase
@@ -352,36 +436,37 @@ export function ProjectsScreen({
           .select('id, name, description, requester_area, stack, repository_url, status, priority, progress, estimated_delivery')
           .eq('active', true)
           .order('created_at', { ascending: false })
+        if (cancelled) return
 
         if (fallbackError) {
-          setError(fallbackError.message)
+          setError({ message: fallbackError.message, projectId: null })
           setProjects([])
+          confirmedValues.current = new Map()
         } else {
-          setError('Falta actualizar Supabase con columnas nuevas. Ejecuta las migraciones de nota, Repo 2 y website_url.')
-          setProjects(((fallbackData ?? []) as Omit<ProjectRow, 'note' | 'repository_url_secondary' | 'website_url' | 'start_date'>[]).map((project) => ({ ...project, note: null, repository_url_secondary: null, website_url: null, start_date: null })))
+          setError({ message: 'Falta actualizar Supabase con columnas nuevas. Ejecuta las migraciones de nota, Repo 2 y website_url.', projectId: null })
+          const rows = ((fallbackData ?? []) as Omit<ProjectRow, 'note' | 'repository_url_secondary' | 'website_url' | 'start_date'>[]).map((project) => ({ ...project, note: null, repository_url_secondary: null, website_url: null, start_date: null }))
+          showLoadedRows(rows)
         }
       } else {
-        setProjects((data ?? []) as ProjectRow[])
+        showLoadedRows((data ?? []) as ProjectRow[])
       }
 
+      loadedSyncTick.current = githubSyncTick
       setLoading(false)
     }
 
     fetchProjects()
-  }, [githubSyncTick])
 
-  // Los repos nuevos de GitHub se dan de alta solos; si aparecio alguno, se recarga la lista.
-  useEffect(() => {
-    if (teamSlug !== 'dia') return
-
-    let cancelled = false
-    void requestGithubProjectSync().then((created) => {
-      if (!cancelled && created > 0) setGithubSyncTick((tick) => tick + 1)
-    })
-
+    // Si se entra en edicion o empieza un guardado con la carga en curso se descarta y queda pendiente
     return () => {
       cancelled = true
     }
+  }, [githubSyncTick, editingOpenProject, pendingSaves])
+
+  // Los repos nuevos de GitHub se dan de alta y se completan solos; si cambio algo, se recarga la lista.
+  useEffect(() => {
+    if (teamSlug !== 'dia') return
+    return watchGithubProjectSync(() => setGithubSyncTick((tick) => tick + 1))
   }, [teamSlug])
 
   useEffect(() => {
@@ -421,7 +506,7 @@ export function ProjectsScreen({
 
       if (projectMembersError) {
         setProjectMembersAvailable(false)
-        setError('Falta configurar responsables de proyectos en Supabase. Ejecuta supabase/add_project_members.sql.')
+        setError({ message: 'Falta configurar responsables de proyectos en Supabase. Ejecuta supabase/add_project_members.sql.', projectId: null })
         return
       }
 
@@ -470,24 +555,25 @@ export function ProjectsScreen({
     void fetchProjectDocuments()
   }, [projectDocumentSourceSignature])
 
-  const projectCommitSources = useMemo(
+  // Los repos de cada proyecto como texto: la lista de proyectos cambia con cada tecla que se
+  // escribe en el modal, pero esto solo cambia si cambian los repos. Asi los commits no se
+  // vuelven a pedir (unas 70 consultas a GitHub) por cada letra.
+  const projectCommitSourceSignature = useMemo(
     () =>
-      projects
-        .filter((project) => project.repository_url || project.repository_url_secondary)
-        .map((project) => ({
-          id: project.id,
-          repositoryUrl: project.repository_url,
-          repositoryUrlSecondary: project.repository_url_secondary,
-        })),
+      JSON.stringify(
+        projects
+          .filter((project) => project.repository_url || project.repository_url_secondary)
+          .map((project) => ({
+            id: project.id,
+            repositoryUrl: project.repository_url,
+            repositoryUrlSecondary: project.repository_url_secondary,
+          })),
+      ),
     [projects],
   )
 
-  const projectCommitSourceSignature = useMemo(
-    () => projectCommitSources.map((project) => `${project.id}:${project.repositoryUrl ?? ''}:${project.repositoryUrlSecondary ?? ''}`).join('|'),
-    [projectCommitSources],
-  )
-
   useEffect(() => {
+    const projectCommitSources = JSON.parse(projectCommitSourceSignature) as Array<{ id: string; repositoryUrl: string | null; repositoryUrlSecondary: string | null }>
     if (projectCommitSources.length === 0) return
 
     let cancelled = false
@@ -517,7 +603,7 @@ export function ProjectsScreen({
     return () => {
       cancelled = true
     }
-  }, [projectCommitSourceSignature, projectCommitSources])
+  }, [projectCommitSourceSignature])
 
   const memberIdentityMap = useMemo(() => {
     const map = new Map<string, TeamMember>()
@@ -582,29 +668,159 @@ export function ProjectsScreen({
     [members],
   )
 
-  async function updateProject<K extends keyof Pick<ProjectRow, 'name' | 'description' | 'status' | 'priority' | 'start_date' | 'estimated_delivery' | 'note' | 'repository_url' | 'repository_url_secondary' | 'website_url'>>(projectId: string, field: K, value: ProjectRow[K]) {
+  async function updateProject<K extends keyof Pick<ProjectRow, 'name' | 'status' | 'priority' | 'start_date' | 'estimated_delivery' | 'repository_url' | 'repository_url_secondary'>>(projectId: string, field: K, value: ProjectRow[K]) {
+    const confirmed = confirmedKey(projectId, field)
+    // Vuelve al ultimo valor confirmado, y solo si el campo no se volvio a editar mientras se guardaba
+    const restore = () => {
+      if (!confirmedValues.current.has(confirmed)) return
+      const restoredValue = confirmedValues.current.get(confirmed) as ProjectRow[K]
+      setProjects((current) => current.map((project) => (project.id === projectId && project[field] === value ? { ...project, [field]: restoredValue } : project)))
+    }
+
     setError(null)
     setProjects((current) => current.map((project) => (project.id === projectId ? { ...project, [field]: value } : project)))
 
     const supabase = getSupabaseBrowserClient()
     if (!supabase) {
-      setError('Supabase no esta configurado.')
+      restore()
+      setError({ message: 'Supabase no esta configurado.', projectId })
       return
     }
 
     const key = `${projectId}-${String(field)}`
     setSavingField(key)
-    const nullableFields: Array<keyof ProjectRow> = ['description', 'start_date', 'estimated_delivery', 'note', 'repository_url', 'repository_url_secondary', 'website_url']
+    setPendingSaves((count) => count + 1)
+    const nullableFields: Array<keyof ProjectRow> = ['start_date', 'estimated_delivery', 'repository_url', 'repository_url_secondary']
     const persistedValue = nullableFields.includes(field) ? value || null : value
-    const { error: updateError } = await supabase.from('projects').update({ [field]: persistedValue }).eq('id', projectId)
-    setSavingField(null)
 
-    if (updateError) setError(updateError.message)
+    try {
+      // Se piden las filas tocadas para detectar el UPDATE que no guardo nada
+      const { data: updatedRows, error: updateError } = await supabase.from('projects').update({ [field]: persistedValue }).eq('id', projectId).select('id')
+
+      if (!updateError && updatedRows?.length) {
+        confirmedValues.current.set(confirmed, persistedValue)
+      } else {
+        restore()
+        setError({ message: updateError?.message ?? projectNotSavedMessage, projectId })
+      }
+    } finally {
+      setSavingField(null)
+      setPendingSaves((count) => count - 1)
+    }
+  }
+
+  function changeTextConflicts(change: (current: Record<string, TextConflict>) => Record<string, TextConflict>) {
+    textConflictsRef.current = change(textConflictsRef.current)
+    setTextConflicts(textConflictsRef.current)
+  }
+
+  // Las tareas de un mismo texto van en fila: dos guardados seguidos con el primero en vuelo se condicionarian al mismo
+  // valor y el segundo daria un conflicto falso
+  function enqueueTextTask(key: string, task: () => Promise<void>) {
+    const next = (textSaveChains.current.get(key) ?? Promise.resolve()).then(task, task)
+    textSaveChains.current.set(key, next)
+    const release = () => {
+      if (textSaveChains.current.get(key) === next) textSaveChains.current.delete(key)
+    }
+    void next.then(release, release)
+    return next
+  }
+
+  // Descripcion, nota y web: el UPDATE exige que la base siga con el ultimo valor confirmado para no pisar lo que escribio
+  // la sincronizacion. Si no guarda, el texto queda como conflicto del campo hasta que se guarde bien o se descarte.
+  // 'blur' guarda lo escrito y 'keep' (Guardar mi version) el borrador del conflicto sobre el valor actual de la base
+  async function saveGuardedText(projectId: string, field: GuardedTextField, save: TextSave) {
+    const key = confirmedKey(projectId, field)
+    setError(null)
+    if (save.kind === 'blur') setProjects((current) => current.map((project) => (project.id === projectId ? { ...project, [field]: save.value } : project)))
+
+    const supabase = getSupabaseBrowserClient()
+    if (!supabase) {
+      setError({ message: 'Supabase no esta configurado.', projectId })
+      return
+    }
+
+    // Se cuenta antes de entrar en la fila para que la recarga espere tambien a los guardados encolados
+    setPendingSaves((count) => count + 1)
+
+    try {
+      await enqueueTextTask(key, async () => {
+        const conflict = textConflictsRef.current[key]
+        let draft: string | null
+        if (save.kind === 'blur') {
+          if (conflict) {
+            // Con un conflicto abierto el blur solo actualiza el borrador: guardarlo o descartarlo lo decide el usuario
+            changeTextConflicts((current) => ({ ...current, [key]: { ...conflict, draft: save.value } }))
+            return
+          }
+          draft = save.value
+        } else {
+          // Ya resuelto por un clic anterior
+          if (!conflict) return
+          draft = conflict.draft
+        }
+
+        setSavingField(`${projectId}-${field}`)
+        try {
+          // Se compara contra lo ultimo que confirmo la base (carga, guardado anterior o lectura tras un conflicto), no
+          // contra la pantalla. La sincronizacion solo escribe sobre textos vacios o cortos: con uno largo no hace falta
+          // la condicion, que viaja en la URL
+          const expected = confirmedValues.current.has(key) ? (confirmedValues.current.get(key) as string | null) : save.kind === 'blur' ? save.valueOnFocus : undefined
+          const conditioned = expected === null || (typeof expected === 'string' && expected.length <= GUARDED_TEXT_MAX)
+          let update = supabase.from('projects').update({ [field]: draft }).eq('id', projectId)
+          if (conditioned) update = expected === null ? update.is(field, null) : update.eq(field, expected)
+          const { data: updatedRows, error: updateError } = await update.select('id')
+
+          if (!updateError && updatedRows?.length) {
+            confirmedValues.current.set(key, draft)
+            if (textConflictsRef.current[key]) changeTextConflicts((current) => withoutKey(current, key))
+            return
+          }
+
+          let server: string | null | undefined
+          if (!updateError) {
+            // 0 filas: se lee el valor actual para mostrarlo y para que Guardar mi version se condicione a el
+            const { data: currentRows } = await supabase.from('projects').select(`id, ${field}`).eq('id', projectId)
+            const currentRow = (currentRows as Array<Partial<Record<GuardedTextField, string | null>>> | null)?.[0]
+            if (currentRow) {
+              server = currentRow[field] ?? null
+              confirmedValues.current.set(key, server)
+            }
+          }
+
+          // La base ya tiene este mismo texto: no hay nada que resolver
+          if (server !== undefined && server === draft) {
+            if (textConflictsRef.current[key]) changeTextConflicts((current) => withoutKey(current, key))
+            return
+          }
+
+          if (updateError) setError({ message: updateError.message, projectId })
+          const changed = conditioned && server !== undefined && server !== expected
+          changeTextConflicts((current) => ({ ...current, [key]: { projectId, field, draft, server, changed } }))
+        } finally {
+          setSavingField(null)
+        }
+      })
+    } finally {
+      setPendingSaves((count) => count - 1)
+    }
+  }
+
+  // Descartar mi texto: el campo vuelve al valor de la base. Va en la fila del campo para quedar despues de un blur previo
+  function discardTextDraft(projectId: string, field: GuardedTextField) {
+    const key = confirmedKey(projectId, field)
+    void enqueueTextTask(key, async () => {
+      const conflict = textConflictsRef.current[key]
+      if (!conflict) return
+      const serverValue = confirmedValues.current.has(key) ? (confirmedValues.current.get(key) as string | null) : conflict.server ?? null
+      setProjects((current) => current.map((project) => (project.id === projectId ? { ...project, [field]: serverValue } : project)))
+      changeTextConflicts((current) => withoutKey(current, key))
+    })
   }
 
   async function updateProjectMembers(projectId: string, nextMemberIds: string[]) {
     if (!projectMembersAvailable) {
-      setError('Falta configurar responsables de proyectos en Supabase. Ejecuta supabase/add_project_members.sql.')
+      setError({ message: 'Falta configurar responsables de proyectos en Supabase. Ejecuta supabase/add_project_members.sql.', projectId })
       return
     }
 
@@ -615,26 +831,31 @@ export function ProjectsScreen({
     const supabase = getSupabaseBrowserClient()
     if (!supabase) {
       setProjectMemberIds((current) => ({ ...current, [projectId]: previousMemberIds }))
-      setError('Supabase no esta configurado.')
+      setError({ message: 'Supabase no esta configurado.', projectId })
       return
     }
 
     setSavingProjectMembersId(projectId)
+    setPendingSaves((count) => count + 1)
     const removedIds = previousMemberIds.filter((memberId) => !nextMemberIds.includes(memberId))
     const addedIds = nextMemberIds.filter((memberId) => !previousMemberIds.includes(memberId))
 
-    const removeResult = removedIds.length > 0
-      ? await supabase.from('project_members').delete().eq('project_id', projectId).in('member_id', removedIds)
-      : { error: null }
-    const addResult = !removeResult.error && addedIds.length > 0
-      ? await supabase.from('project_members').insert(addedIds.map((memberId) => ({ project_id: projectId, member_id: memberId })))
-      : { error: null }
+    try {
+      const removeResult = removedIds.length > 0
+        ? await supabase.from('project_members').delete().eq('project_id', projectId).in('member_id', removedIds)
+        : { error: null }
+      const addResult = !removeResult.error && addedIds.length > 0
+        ? await supabase.from('project_members').insert(addedIds.map((memberId) => ({ project_id: projectId, member_id: memberId })))
+        : { error: null }
 
-    setSavingProjectMembersId(null)
-    const persistenceError = removeResult.error || addResult.error
-    if (persistenceError) {
-      setProjectMemberIds((current) => ({ ...current, [projectId]: previousMemberIds }))
-      setError(`${persistenceError.message}. Si falta la tabla, ejecuta supabase/add_project_members.sql.`)
+      const persistenceError = removeResult.error || addResult.error
+      if (persistenceError) {
+        setProjectMemberIds((current) => ({ ...current, [projectId]: previousMemberIds }))
+        setError({ message: `${persistenceError.message}. Si falta la tabla, ejecuta supabase/add_project_members.sql.`, projectId })
+      }
+    } finally {
+      setSavingProjectMembersId(null)
+      setPendingSaves((count) => count - 1)
     }
   }
 
@@ -644,15 +865,30 @@ export function ProjectsScreen({
 
     const supabase = getSupabaseBrowserClient()
     if (!supabase) {
-      setError('Supabase no esta configurado.')
+      setError({ message: 'Supabase no esta configurado.', projectId })
       return
     }
 
     setSavingProgressId(projectId)
-    const { error: updateError } = await supabase.from('projects').update({ progress }).eq('id', projectId)
-    setSavingProgressId(null)
+    setPendingSaves((count) => count + 1)
+    const confirmed = confirmedKey(projectId, 'progress')
 
-    if (updateError) setError(updateError.message)
+    try {
+      const { data: updatedRows, error: updateError } = await supabase.from('projects').update({ progress }).eq('id', projectId).select('id')
+      if (!updateError && updatedRows?.length) {
+        confirmedValues.current.set(confirmed, progress)
+      } else {
+        setError({ message: updateError?.message ?? projectNotSavedMessage, projectId })
+        // Vuelve al ultimo valor confirmado (el render anterior es un punto del arrastre), salvo que el usuario ya haya movido la barra de nuevo
+        const confirmedProgress = confirmedValues.current.get(confirmed)
+        if (typeof confirmedProgress === 'number') {
+          setProjects((current) => current.map((project) => (project.id === projectId && project.progress === progress ? { ...project, progress: confirmedProgress } : project)))
+        }
+      }
+    } finally {
+      setSavingProgressId(null)
+      setPendingSaves((count) => count - 1)
+    }
   }
 
   async function deleteProject(project: ProjectRow) {
@@ -662,7 +898,7 @@ export function ProjectsScreen({
     setError(null)
     const supabase = getSupabaseBrowserClient()
     if (!supabase) {
-      setError('Supabase no esta configurado.')
+      setError({ message: 'Supabase no esta configurado.', projectId: project.id })
       return
     }
 
@@ -671,7 +907,7 @@ export function ProjectsScreen({
     setDeletingId(null)
 
     if (deleteError) {
-      setError(deleteError.message)
+      setError({ message: deleteError.message, projectId: project.id })
       return
     }
 
@@ -683,13 +919,13 @@ export function ProjectsScreen({
     if (!file) return
 
     if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
-      setError('Solo se pueden subir archivos PDF.')
+      setError({ message: 'Solo se pueden subir archivos PDF.', projectId })
       return
     }
 
     const supabase = getSupabaseBrowserClient()
     if (!supabase) {
-      setError('Supabase no esta configurado.')
+      setError({ message: 'Supabase no esta configurado.', projectId })
       return
     }
 
@@ -731,10 +967,17 @@ export function ProjectsScreen({
       }))
     } catch (uploadError) {
       const message = uploadError instanceof Error ? uploadError.message : 'No se pudo subir el PDF.'
-      setError(`${message}. Si falta configurar Supabase, ejecuta supabase/add_project_documents.sql.`)
+      setError({ message: `${message}. Si falta configurar Supabase, ejecuta supabase/add_project_documents.sql.`, projectId })
     } finally {
       setUploadingDocumentId(null)
     }
+  }
+
+  // Blur sin cambios: se repone el valor del foco para que el estado siga igual a la base (el proximo guardado exige ese
+  // valor) y para que la web no quede sin https armando un enlace relativo
+  function restoreFieldValueOnFocus(projectId: string, field: 'description' | 'note' | 'website_url') {
+    const valueOnFocus = fieldValueOnFocus.current
+    setProjects((current) => current.map((project) => (project.id === projectId ? { ...project, [field]: valueOnFocus } : project)))
   }
 
   function openProjectCard(event: React.MouseEvent<HTMLElement>, projectId: string) {
@@ -754,6 +997,40 @@ export function ProjectsScreen({
   }, [projectFilter, projects, search])
   const selectedProject = selectedProjectId ? projects.find((project) => project.id === selectedProjectId) ?? null : null
   const selectedProjectDocuments = selectedProject ? projectDocuments[selectedProject.id] ?? [] : []
+  // El modal muestra los errores de su proyecto y los generales (el fondo tapa el aviso de arriba), no los de otro proyecto
+  const selectedProjectError = selectedProject && error && (error.projectId === null || error.projectId === selectedProject.id) ? error.message : null
+  // La tarjeta marca los proyectos con un texto sin guardar para que el borrador no quede olvidado al cerrar el modal
+  const projectIdsWithTextConflict = useMemo(() => new Set(Object.values(textConflicts).map((conflict) => conflict.projectId)), [textConflicts])
+
+  // Aviso de un texto que no se guardo: el borrador sigue en el campo y el usuario elige guardarlo sobre la base o descartarlo
+  function textConflictNotice(projectId: string, field: GuardedTextField) {
+    const conflict = textConflicts[confirmedKey(projectId, field)]
+    if (!conflict) return null
+    const saving = savingField === `${projectId}-${field}`
+    const actionClass = `inline-flex h-8 items-center rounded-md border px-2.5 text-xs font-semibold transition disabled:opacity-60 ${
+      isDark ? 'border-amber-800/70 hover:bg-amber-950/60' : 'border-amber-300 bg-white hover:bg-amber-100'
+    }`
+
+    return (
+      <div data-text-conflict={field} className={`mt-3 rounded-md border px-3 py-2 text-xs ${isDark ? 'border-amber-800/70 bg-amber-950/30 text-amber-200' : 'border-amber-300 bg-amber-50 text-amber-800'}`}>
+        <p role="alert" className="font-semibold">{conflict.changed ? textChangedMessage : textNotSavedMessage}</p>
+        {conflict.server !== undefined && (
+          <p className="mt-1 line-clamp-4 whitespace-pre-wrap break-words">
+            <span className="font-semibold">Valor actual en el servidor: </span>
+            {conflict.server || 'vacio'}
+          </p>
+        )}
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button type="button" className={actionClass} disabled={saving} onClick={() => void saveGuardedText(projectId, field, { kind: 'keep' })}>
+            Guardar mi version
+          </button>
+          <button type="button" className={actionClass} disabled={saving} onClick={() => discardTextDraft(projectId, field)}>
+            Descartar mi texto
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <AppShell title="Proyectos" subtitle="Informacion cargada de cada proyecto" search={search} onSearchChange={setSearch}>
@@ -763,7 +1040,7 @@ export function ProjectsScreen({
         viewport={{ once: true, amount: 0.12 }}
         variants={staggerContainerVariants}
       >
-      {error && <motion.div variants={fadeInUpVariants} className={`mb-4 rounded-lg border p-3 text-sm ${isDark ? 'border-red-900/60 bg-red-950/30 text-red-300' : 'border-red-200 bg-red-50 text-red-700'}`}>{error}</motion.div>}
+      {error && <motion.div variants={fadeInUpVariants} className={`mb-4 rounded-lg border p-3 text-sm ${isDark ? 'border-red-900/60 bg-red-950/30 text-red-300' : 'border-red-200 bg-red-50 text-red-700'}`}>{error.message}</motion.div>}
 
       <motion.div variants={fadeInUpVariants} className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="relative z-30">
@@ -873,6 +1150,14 @@ export function ProjectsScreen({
                   <p className={`mt-1 text-sm ${mutedClass}`}>{project.requester_area ?? 'Sin area'} - {project.stack ?? 'Sin stack'}</p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
+                  {projectIdsWithTextConflict.has(project.id) && (
+                    <span
+                      className={`inline-flex h-9 items-center rounded-md border px-3 text-xs font-semibold ${isDark ? 'border-amber-800/70 bg-amber-950/30 text-amber-200' : 'border-amber-300 bg-amber-50 text-amber-800'}`}
+                      title="Hay un texto que no se guardo: abri el proyecto para guardarlo o descartarlo"
+                    >
+                      Sin guardar
+                    </span>
+                  )}
                   <span className={`inline-flex h-9 items-center rounded-md border px-3 text-xs font-semibold ${statusTone(project.status, isDark)}`}>{project.status}</span>
                 </div>
               </div>
@@ -971,6 +1256,11 @@ export function ProjectsScreen({
                     </span>
                   </div>
                 )}
+                {selectedProjectError && (
+                  <p role="alert" className={`mt-3 rounded-md border px-3 py-2 text-xs font-semibold ${isDark ? 'border-red-900/60 bg-red-950/30 text-red-300' : 'border-red-200 bg-red-50 text-red-700'}`}>
+                    {selectedProjectError}
+                  </p>
+                )}
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 {selectedProject.website_url && !selectedProjectEditing && (
@@ -1065,13 +1355,22 @@ export function ProjectsScreen({
                       placeholder="Que es el proyecto, para que area y que problema resuelve..."
                       value={selectedProject.description ?? ''}
                       onChange={(event) => setProjects((current) => current.map((item) => (item.id === selectedProject.id ? { ...item, description: event.target.value } : item)))}
-                      onBlur={(event) => updateProject(selectedProject.id, 'description', event.target.value.trim() || null)}
+                      onFocus={() => {
+                        fieldValueOnFocus.current = selectedProject.description
+                      }}
+                      onBlur={(event) => {
+                        // Sin cambios no se guarda: la lista puede estar vieja y pisaria el resumen que escribio la sincronizacion
+                        const description = event.target.value.trim() || null
+                        if (description !== (fieldValueOnFocus.current?.trim() || null)) void saveGuardedText(selectedProject.id, 'description', { kind: 'blur', value: description, valueOnFocus: fieldValueOnFocus.current })
+                        else restoreFieldValueOnFocus(selectedProject.id, 'description')
+                      }}
                     />
                   ) : (
                     <p className={`mt-3 text-sm leading-7 ${selectedProject.description ? bodyClass : mutedClass}`}>
                       {selectedProject.description || 'Sin descripcion cargada.'}
                     </p>
                   )}
+                  {textConflictNotice(selectedProject.id, 'description')}
                 </div>
 
                 <div className={`block rounded-lg border p-4 ${panelClass}`}>
@@ -1085,13 +1384,21 @@ export function ProjectsScreen({
                       placeholder="Estado corto, mantenimiento pendiente, observaciones del equipo..."
                       value={selectedProject.note ?? ''}
                       onChange={(event) => setProjects((current) => current.map((item) => (item.id === selectedProject.id ? { ...item, note: event.target.value } : item)))}
-                      onBlur={(event) => updateProject(selectedProject.id, 'note', event.target.value.trim() || null)}
+                      onFocus={() => {
+                        fieldValueOnFocus.current = selectedProject.note
+                      }}
+                      onBlur={(event) => {
+                        const note = event.target.value.trim() || null
+                        if (note !== (fieldValueOnFocus.current?.trim() || null)) void saveGuardedText(selectedProject.id, 'note', { kind: 'blur', value: note, valueOnFocus: fieldValueOnFocus.current })
+                        else restoreFieldValueOnFocus(selectedProject.id, 'note')
+                      }}
                     />
                   ) : (
                     <p className={`mt-3 text-sm leading-7 ${selectedProject.note ? bodyClass : mutedClass}`}>
                       {selectedProject.note || 'Sin nota cargada.'}
                     </p>
                   )}
+                  {textConflictNotice(selectedProject.id, 'note')}
                 </div>
 
                 <div className={`rounded-lg border p-4 ${panelClass}`}>
@@ -1106,7 +1413,15 @@ export function ProjectsScreen({
                         placeholder="https://proyecto.vercel.app"
                         value={selectedProject.website_url ?? ''}
                         onChange={(event) => setProjects((current) => current.map((item) => (item.id === selectedProject.id ? { ...item, website_url: event.target.value } : item)))}
-                        onBlur={(event) => updateProject(selectedProject.id, 'website_url', normalizeWebsiteUrl(event.target.value))}
+                        onFocus={() => {
+                          fieldValueOnFocus.current = selectedProject.website_url
+                        }}
+                        onBlur={(event) => {
+                          // La sincronizacion tambien completa el sitio: sin cambios no se guarda
+                          const websiteUrl = normalizeWebsiteUrl(event.target.value)
+                          if (websiteUrl !== normalizeWebsiteUrl(fieldValueOnFocus.current ?? '')) void saveGuardedText(selectedProject.id, 'website_url', { kind: 'blur', value: websiteUrl, valueOnFocus: fieldValueOnFocus.current })
+                          else restoreFieldValueOnFocus(selectedProject.id, 'website_url')
+                        }}
                       />
                       {selectedProject.website_url && (
                         <a
@@ -1133,6 +1448,7 @@ export function ProjectsScreen({
                   ) : (
                     <p className={`mt-3 text-sm ${mutedClass}`}>Sin pagina web cargada.</p>
                   )}
+                  {textConflictNotice(selectedProject.id, 'website_url')}
                 </div>
 
                 <div className={`rounded-lg border p-4 ${panelClass}`}>

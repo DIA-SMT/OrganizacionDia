@@ -7,7 +7,7 @@ import { TaskCreateButton } from '@/components/task-create-button'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
 import { type DashboardProject } from '@/lib/dashboard-data'
 import { expedientePriorityWeight, formatExpedienteDate } from '@/lib/expedientes'
-import { requestGithubProjectSync } from '@/lib/github-sync'
+import { watchGithubProjectSync } from '@/lib/github-sync'
 import { animate, motion, useMotionValue, useTransform } from 'framer-motion'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -306,18 +306,10 @@ export function DashboardView() {
     })
   }, [authConfigured, loading, user, githubSyncTick])
 
-  // Los repos nuevos de GitHub se dan de alta solos; si aparecio alguno, se recarga el tablero.
+  // Los repos nuevos de GitHub se dan de alta y se completan solos; si cambio algo, se recarga el tablero.
   useEffect(() => {
     if (teamSlug !== 'dia') return
-
-    let cancelled = false
-    void requestGithubProjectSync().then((created) => {
-      if (!cancelled && created > 0) setGithubSyncTick((tick) => tick + 1)
-    })
-
-    return () => {
-      cancelled = true
-    }
+    return watchGithubProjectSync(() => setGithubSyncTick((tick) => tick + 1))
   }, [teamSlug])
 
   const projectCommitSources = useMemo(

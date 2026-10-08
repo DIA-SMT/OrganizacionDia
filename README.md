@@ -98,11 +98,20 @@ supabase/import_dia_projects.sql
    Para que cada repo nuevo de la organizacion de GitHub aparezca solo como proyecto,
    ejecutar `supabase/add_project_github_sync.sql` y configurar en Vercel `GITHUB_TOKEN`,
    `SUPABASE_SERVICE_ROLE_KEY` y `PROJECTS_SYNC_SECRET` (este ultimo tambien como secret
-   del repo en GitHub Actions). La sincronizacion corre cada hora
-   (`.github/workflows/github-projects-sync.yml`) y cada vez que alguien de DIA abre el
-   tablero o la lista de proyectos. Los proyectos nuevos entran al equipo DIA como
+   del repo en GitHub Actions). La sincronizacion corre cada vez que alguien de DIA abre el
+   tablero o la lista de proyectos, y una vez por dia a las 07:17 (hora argentina) desde
+   `.github/workflows/github-projects-sync.yml`. Los proyectos nuevos entran al equipo DIA como
    "En desarrollo"; si un repo no es un proyecto, borrarlo del dashboard alcanza para
    que no vuelva a crearse.
+
+   Para que ademas se completen solos la fecha de inicio, el sitio, las tecnologias y un
+   resumen del README, ejecutar `supabase/add_project_github_enrichment.sql` (se puede
+   correr de nuevo cuando cambie) y tener `OPENROUTER_API_KEY` en Vercel. Solo se llenan
+   campos vacios: lo que alguien carga a mano no se pisa. La fecha de inicio y el sitio se
+   completan una sola vez, asi que si alguien los vacia quedan vacios. La descripcion y las
+   tecnologias, en cambio, se vuelven a completar desde el README cuando el repo recibe
+   cambios (como mucho una vez por dia) si siguen vacias o con el texto de GitHub; para
+   dejarlas en blanco a proposito, escribir un guion.
 
 7. Iniciar desarrollo:
 
