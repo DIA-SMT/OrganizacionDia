@@ -125,6 +125,16 @@ npm run dev
 http://localhost:3000
 ```
 
+## Bandeja IA
+
+Módulo para la casilla institucional compartida (`/bandeja-ia`): panel de correos
+importantes y vencimientos, con gestiones, reglas e historial guardados en Supabase.
+Gmail sigue deshabilitado, así que la bandeja queda vacía hasta conectarlo. Requiere
+permiso específico (ser DIA no alcanza).
+Migraciones: `supabase/add_bandeja_ia.sql` y, para bases que ya la tenían,
+`supabase/update_bandeja_ia_v2.sql` (reversión en `supabase/rollback_bandeja_ia.sql`).
+Ver `docs/bandeja-ia.md`.
+
 ## Orden recomendado de desarrollo
 
 1. Conectar dashboard a Supabase.
