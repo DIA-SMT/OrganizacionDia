@@ -74,13 +74,16 @@ test('las reglas guardadas pisan a las del codigo y se agregan las nuevas', asyn
   const { mergeRules, ruleToRow } = await import('./db.ts')
   const { DEFAULT_RULES } = await import('./rules.ts')
 
-  const urgente = { ...ruleToRow(DEFAULT_RULES[0], 0), id: 'x1', active: false }
+  const urgenteRule = DEFAULT_RULES.find((rule) => rule.id === 'urgente')!
+  const urgente = { ...ruleToRow(urgenteRule, 0), id: 'x1', active: false }
   const nueva = { ...ruleToRow({ ...DEFAULT_RULES[1], id: 'propia', name: 'Regla propia' }, 20), id: 'x2' }
   const merged = mergeRules([nueva, urgente])
 
   assert.equal(merged.length, DEFAULT_RULES.length + 1)
-  assert.equal(merged[0].id, 'urgente')
-  assert.equal(merged[0].active, false)
+  const urgenteGuardada = merged.find((rule) => rule.id === 'urgente')!
+  assert.equal(urgenteGuardada.active, false)
+  // La regla de Supabase sigue primera: su categoria gana sobre las demas.
+  assert.equal(merged[0].id, 'supabase_pausa')
   assert.equal(merged.at(-1)?.name, 'Regla propia')
   assert.deepEqual(mergeRules([]), DEFAULT_RULES)
 })

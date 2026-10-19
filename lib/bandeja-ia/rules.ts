@@ -15,7 +15,8 @@ export const PRIORITY_LABELS: Record<BandejaPriority, string> = {
 }
 
 export const CATEGORY_LABELS: Record<BandejaCategory, string> = {
-  invitacion: 'Invitación',
+  base_pausa: 'Base por pausarse',
+  invitacion: 'Posible evento',
   reunion: 'Reunión',
   fecha_limite: 'Fecha límite',
   solicitud_respuesta: 'Requiere respuesta',
@@ -40,6 +41,33 @@ export function normalizeText(value: string): string {
 
 // Reglas por defecto. El orden importa solo para la categoria: gana la primera que aplica.
 export const DEFAULT_RULES: ClassificationRule[] = [
+  {
+    // Primera a proposito: todas las bases del equipo estan en Supabase y una base pausada
+    // tira abajo el proyecto. Exige que el aviso venga de Supabase.
+    id: 'supabase_pausa',
+    name: 'Supabase: base por pausarse',
+    description: 'Avisos de Supabase de que un proyecto se va a pausar (o ya se pausó) por inactividad.',
+    field: 'subject_snippet',
+    keywords: [
+      'pause',
+      'paused',
+      'pausing',
+      'will be paused',
+      'inactive',
+      'inactivity',
+      'pausar',
+      'pausado',
+      'pausada',
+      'pausará',
+      'inactividad',
+      'inactivo',
+    ],
+    fromKeywords: ['supabase'],
+    category: 'base_pausa',
+    priority: 'critica',
+    requiresResponse: true,
+    active: true,
+  },
   {
     id: 'urgente',
     name: 'Urgencia explícita',
@@ -72,12 +100,12 @@ export const DEFAULT_RULES: ClassificationRule[] = [
   },
   {
     id: 'invitacion',
-    name: 'Invitación',
-    description: 'Invitaciones a eventos, jornadas o actos.',
+    name: 'Posible evento',
+    description: 'Invitaciones a eventos, jornadas, actos o capacitaciones. Se muestran aparte en el panel.',
     field: 'subject_snippet',
     keywords: ['invitación', 'invita', 'invitamos', 'invitarlos', 'invitarles', 'jornada', 'acto', 'congreso', 'evento', 'capacitación'],
     category: 'invitacion',
-    priority: 'normal',
+    priority: 'alta',
     requiresResponse: true,
     active: true,
   },
@@ -258,6 +286,7 @@ export function classifyMessage(
     const text = ruleText(rule, message)
     const keyword = matchedKeyword(text, rule.keywords)
     if (!keyword || (rule.excludeKeywords && matchedKeyword(text, rule.excludeKeywords))) continue
+    if (rule.fromKeywords?.length && !matchedKeyword(`${message.fromName} ${message.fromAddress}`, rule.fromKeywords)) continue
 
     reasons.push(`${rule.name}: menciona "${keyword}"`)
     if (rule.priority) {

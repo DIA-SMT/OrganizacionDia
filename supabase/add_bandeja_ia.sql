@@ -113,7 +113,9 @@ create table if not exists public.bandeja_ia_rules (
   field text not null check (field in ('subject', 'from', 'snippet', 'subject_snippet')),
   keywords text[] not null default '{}',
   exclude_keywords text[] not null default '{}',
-  category text check (category in ('invitacion', 'reunion', 'fecha_limite', 'solicitud_respuesta', 'documentacion', 'informativo')),
+  -- Condicion extra sobre el remitente (ej: la regla de Supabase solo aplica si viene de Supabase).
+  from_keywords text[] not null default '{}',
+  category text check (category in ('base_pausa', 'invitacion', 'reunion', 'fecha_limite', 'solicitud_respuesta', 'documentacion', 'informativo')),
   priority text check (priority in ('critica', 'alta', 'normal', 'informativa')),
   requires_response boolean not null default false,
   sort_order integer not null default 0,
@@ -195,7 +197,7 @@ create table if not exists public.bandeja_ia_asuntos (
   gmail_thread_id text unique,                    -- un asunto por conversacion
   title text not null,
   summary text,
-  category text not null default 'informativo' check (category in ('invitacion', 'reunion', 'fecha_limite', 'solicitud_respuesta', 'documentacion', 'informativo')),
+  category text not null default 'informativo' check (category in ('base_pausa', 'invitacion', 'reunion', 'fecha_limite', 'solicitud_respuesta', 'documentacion', 'informativo')),
   priority text not null default 'normal' check (priority in ('critica', 'alta', 'normal', 'informativa')),
   suggested_priority text check (suggested_priority in ('critica', 'alta', 'normal', 'informativa')),
   priority_reasons text[] not null default '{}',
