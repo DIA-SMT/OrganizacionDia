@@ -43,9 +43,19 @@ export function StatusBadge({ status }: { status: BandejaStatus }) {
   return <span className={`inline-flex shrink-0 items-center rounded-md px-2 py-0.5 text-xs font-semibold ${STATUS_CLASSES[status]}`}>{STATUS_LABELS[status]}</span>
 }
 
+// Las dos categorias que se muestran aparte en el panel tienen color propio.
+const CATEGORY_CLASSES: Partial<Record<BandejaCategory, string>> = {
+  base_pausa: 'bg-red-600 text-white ring-1 ring-red-600 dark:bg-red-500/80 dark:ring-red-500/80',
+  invitacion: 'bg-violet-100 text-violet-700 ring-1 ring-violet-200 dark:bg-violet-500/15 dark:text-violet-200 dark:ring-violet-500/30',
+}
+
 export function CategoryBadge({ category }: { category: BandejaCategory }) {
   return (
-    <span className="inline-flex shrink-0 items-center rounded-md bg-white px-2 py-0.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:ring-slate-700">
+    <span
+      className={`inline-flex shrink-0 items-center rounded-md px-2 py-0.5 text-xs font-semibold ${
+        CATEGORY_CLASSES[category] ?? 'bg-white text-slate-600 ring-1 ring-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:ring-slate-700'
+      }`}
+    >
       {CATEGORY_LABELS[category]}
     </span>
   )

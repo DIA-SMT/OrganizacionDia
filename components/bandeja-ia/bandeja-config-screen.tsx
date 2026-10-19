@@ -251,6 +251,39 @@ function Flag({ on, label }: { on: boolean; label: string }) {
   )
 }
 
+function ReclassifyButton({ onDone }: { onDone: (text: string, ok: boolean) => void }) {
+  const [running, setRunning] = useState(false)
+
+  async function run() {
+    setRunning(true)
+    try {
+      const response = await fetch('/api/bandeja-ia/reclasificar', { method: 'POST', cache: 'no-store' })
+      const payload = (await response.json()) as { ok?: boolean; reviewed?: number; updated?: number; failed?: number; basesPorPausarse?: number; posiblesEventos?: number; error?: string }
+      if (!response.ok && response.status !== 207) {
+        onDone(payload.error ?? 'No se pudo reclasificar.', false)
+      } else {
+        const parts = [`${payload.updated ?? 0} de ${payload.reviewed ?? 0} asuntos actualizados`]
+        if (payload.basesPorPausarse) parts.push(`${payload.basesPorPausarse} avisos de Supabase`)
+        if (payload.posiblesEventos) parts.push(`${payload.posiblesEventos} posibles eventos`)
+        if (payload.failed) parts.push(`${payload.failed} no se pudieron guardar`)
+        onDone(`Reclasificación: ${parts.join(', ')}.`, !payload.failed)
+      }
+    } catch {
+      onDone('No se pudo contactar al servidor.', false)
+    } finally {
+      setRunning(false)
+      void refreshBandeja()
+    }
+  }
+
+  return (
+    <button type="button" className={secondaryButtonClass} disabled={running} onClick={() => void run()}>
+      <RefreshCw className={`h-4 w-4 ${running ? 'animate-spin' : ''}`} />
+      {running ? 'Reclasificando...' : 'Reclasificar asuntos'}
+    </button>
+  )
+}
+
 type RunAction = (action: () => Promise<unknown>, success: string) => Promise<boolean>
 
 function ConfigContent() {
@@ -324,9 +357,13 @@ function ConfigContent() {
             </li>
           ))}
         </ul>
-        <p className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
-          Los cambios se aplican a los mensajes nuevos; no reclasifican los asuntos que ya existen.
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-5 py-3 dark:border-slate-800">
+          <p className="min-w-0 flex-1 text-xs text-slate-500 dark:text-slate-400">
+            Los cambios se aplican solos a los correos nuevos. Para aplicarlos a los asuntos que ya existen, usá “Reclasificar”: cambia la categoría de
+            todos y la prioridad solo de los que nadie confirmó a mano.
+          </p>
+          {admin && <ReclassifyButton onDone={(text, ok) => setFeedback({ ok, text })} />}
+        </div>
       </SectionCard>
 
       <div className="grid gap-5 xl:grid-cols-2">

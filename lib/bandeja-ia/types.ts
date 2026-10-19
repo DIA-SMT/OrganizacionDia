@@ -4,6 +4,7 @@
 export type BandejaPriority = 'critica' | 'alta' | 'normal' | 'informativa'
 
 export type BandejaCategory =
+  | 'base_pausa'
   | 'invitacion'
   | 'reunion'
   | 'fecha_limite'
@@ -114,6 +115,8 @@ export type ClassificationRule = {
   keywords: string[]
   // Si aparece alguna de estas frases la regla no aplica (ej: "no responder").
   excludeKeywords?: string[]
+  // Ademas el remitente tiene que contener alguna de estas (ej: "supabase").
+  fromKeywords?: string[]
   category?: BandejaCategory
   priority?: BandejaPriority
   requiresResponse?: boolean

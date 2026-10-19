@@ -1,10 +1,11 @@
-// Cliente minimo de Gmail API, SOLO SERVIDOR y SOLO LECTURA. Preparado para cuando se
-// autorice la integracion; hoy nadie lo invoca porque readGmailCredentials devuelve null.
+// Cliente minimo de Gmail API, SOLO SERVIDOR y SOLO LECTURA. Lo usan la sincronizacion y la
+// vista del correo del detalle; solo existe si readGmailCredentials devuelve credenciales.
 // A proposito no tiene metodos para enviar, responder, borrar, mover ni etiquetar correos.
 // El unico POST a Gmail es users.watch, que registra la suscripcion de Pub/Sub y no
 // modifica mensajes. El token de acceso vive solo en memoria del servidor.
 
 import type { GmailCredentials } from './config.ts'
+import type { GmailFullMessage } from './message-body.ts'
 import type { GmailMetadataMessage } from './sync-plan.ts'
 
 const GMAIL_API = 'https://gmail.googleapis.com/gmail/v1/users/me'
@@ -109,6 +110,16 @@ export function createGmailReader(credentials: GmailCredentials) {
       const params = new URLSearchParams({ format: 'metadata' })
       for (const header of METADATA_HEADERS) params.append('metadataHeaders', header)
       return request<GmailMetadataMessage>(`/messages/${encodeURIComponent(id)}?${params}`)
+    },
+
+    // Conversacion completa, para mostrarla en el detalle del asunto. No se guarda.
+    getThread(threadId: string) {
+      return request<{ id: string; messages?: GmailFullMessage[] }>(`/threads/${encodeURIComponent(threadId)}?format=full`)
+    },
+
+    // Contenido de una imagen incrustada (cid:) de un mensaje.
+    getAttachment(messageId: string, attachmentId: string) {
+      return request<{ size: number; data: string }>(`/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`)
     },
 
     getProfile() {

@@ -13,6 +13,7 @@ import {
   selectClass,
   textareaClass,
 } from '@/components/bandeja-ia/bandeja-ui'
+import { EmailView } from '@/components/bandeja-ia/email-view'
 import { canOperate } from '@/lib/bandeja-ia/access'
 import { STATUS_LABELS, isOpen, personName, receivedAt } from '@/lib/bandeja-ia/asuntos'
 import {
@@ -37,7 +38,6 @@ import {
   MessageSquareText,
   Paperclip,
   RotateCcw,
-  ScrollText,
 } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
@@ -145,20 +145,13 @@ function AsuntoContent({ id }: { id: string }) {
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <div className="space-y-5">
-          <SectionCard title="Resumen" icon={ScrollText} description="A partir de metadatos. El cuerpo y los adjuntos no se procesan con IA.">
-            <div className="space-y-3 px-5 py-4 text-sm">
-              <p className="leading-6 text-slate-700 dark:text-slate-200">{current.summary || 'Sin resumen.'}</p>
-              {current.message?.snippet && (
-                <blockquote className="rounded-md border-l-4 border-slate-200 bg-slate-50 px-3 py-2 text-slate-500 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-400">
-                  <span className="mb-1 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide">
-                    <Mail className="h-3 w-3" />
-                    Extracto
-                  </span>
-                  {current.message.snippet}
-                </blockquote>
-              )}
-            </div>
-          </SectionCard>
+          {current.message ? (
+            <EmailView asuntoId={current.id} summary={current.summary} />
+          ) : (
+            <SectionCard title="Correo" icon={Mail}>
+              <EmptyState>Este asunto no tiene un correo vinculado.</EmptyState>
+            </SectionCard>
+          )}
 
           <SectionCard
             title="Motivo de la prioridad"

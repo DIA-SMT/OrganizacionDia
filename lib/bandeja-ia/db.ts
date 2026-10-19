@@ -37,6 +37,8 @@ export type RuleRow = {
   field: string
   keywords: string[]
   exclude_keywords: string[]
+  // Columna de update_bandeja_ia_v3.sql: puede faltar si no se aplico.
+  from_keywords?: string[] | null
   category: string | null
   priority: string | null
   requires_response: boolean
@@ -90,7 +92,7 @@ export type AuditRow = {
 
 const ROLES: BandejaRole[] = ['admin', 'operador', 'lector']
 const PRIORITIES: BandejaPriority[] = ['critica', 'alta', 'normal', 'informativa']
-const CATEGORIES: BandejaCategory[] = ['invitacion', 'reunion', 'fecha_limite', 'solicitud_respuesta', 'documentacion', 'informativo']
+const CATEGORIES: BandejaCategory[] = ['base_pausa', 'invitacion', 'reunion', 'fecha_limite', 'solicitud_respuesta', 'documentacion', 'informativo']
 const STATUSES: BandejaStatus[] = ['nuevo', 'en_revision', 'asignado', 'esperando_respuesta', 'resuelto', 'descartado']
 const CLOSED: BandejaStatus[] = ['resuelto', 'descartado']
 
@@ -200,6 +202,7 @@ function mapRule(row: RuleRow): ClassificationRule {
     field: oneOf(row.field, ['subject', 'from', 'snippet', 'subject_snippet'] as const, 'subject_snippet'),
     keywords: row.keywords ?? [],
     excludeKeywords: row.exclude_keywords?.length ? row.exclude_keywords : undefined,
+    fromKeywords: row.from_keywords?.length ? row.from_keywords : undefined,
     category: row.category ? oneOf<BandejaCategory>(row.category, CATEGORIES, 'informativo') : undefined,
     priority: row.priority ? oneOf<BandejaPriority>(row.priority, PRIORITIES, 'normal') : undefined,
     requiresResponse: row.requires_response || undefined,
@@ -226,6 +229,7 @@ export function ruleToRow(rule: ClassificationRule, order: number): Omit<RuleRow
     field: rule.field,
     keywords: rule.keywords,
     exclude_keywords: rule.excludeKeywords ?? [],
+    from_keywords: rule.fromKeywords ?? [],
     category: rule.category ?? null,
     priority: rule.priority ?? null,
     requires_response: Boolean(rule.requiresResponse),

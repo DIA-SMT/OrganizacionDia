@@ -1,7 +1,7 @@
 // Arma el cliente de Gmail y el store de Supabase y corre la sincronizacion. SOLO SERVIDOR.
 
 import { getSupabaseAdminClient } from '@/lib/supabase/admin'
-import { createGmailReader } from './client'
+import { createGmailReader, type GmailReader } from './client'
 import { readGmailCredentials, readGmailStatus, type GmailCredentials } from './config'
 import { createSupabaseSyncStore } from './supabase-store'
 import { runGmailSync, type SyncStore, type SyncSummary, type SyncTrigger } from './sync'
@@ -27,6 +27,15 @@ export function syncContext(): SyncContext | DisabledReason {
   return { credentials, store: createSupabaseSyncStore(db), db }
 }
 
+// Un lector por instancia del servidor: reutiliza el access token mientras siga vigente.
+let reader: { key: string; value: GmailReader } | null = null
+
+export function gmailReader(credentials: GmailCredentials): GmailReader {
+  const key = `${credentials.clientId}:${credentials.refreshToken}`
+  if (!reader || reader.key !== key) reader = { key, value: createGmailReader(credentials) }
+  return reader.value
+}
+
 // Evita dos sincronizaciones a la vez en la misma instancia (push y cron juntos). Si igual
 // coinciden en instancias distintas, las restricciones unique de la base evitan duplicados.
 let running: Promise<SyncSummary> | null = null
@@ -34,7 +43,7 @@ let running: Promise<SyncSummary> | null = null
 export function syncNow(context: SyncContext, trigger: SyncTrigger, options: { ignoreBackoff?: boolean } = {}): Promise<SyncSummary> {
   if (running) return running
   running = runGmailSync({
-    reader: createGmailReader(context.credentials),
+    reader: gmailReader(context.credentials),
     store: context.store,
     mailbox: context.credentials.mailbox,
     trigger,

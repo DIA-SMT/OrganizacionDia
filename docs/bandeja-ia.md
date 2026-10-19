@@ -17,9 +17,9 @@ permisos por persona: muestra el panel y la bandeja, igual para todos.
 
 | Ruta | Vista |
 | --- | --- |
-| `/bandeja-ia` | Panel principal: importantes, pendientes, vencimientos, prioridades sin confirmar, lista de atención |
+| `/bandeja-ia` | Panel principal: cartel de bases de Supabase por pausarse, importantes, pendientes, vencimientos, prioridades sin confirmar, lista de atención y posibles eventos aparte |
 | `/bandeja-ia/bandeja` | Bandeja inteligente: tabla (escritorio) o tarjetas (mobile), búsqueda y filtros |
-| `/bandeja-ia/asunto/[id]` | Detalle: resumen, motivo de prioridad, fechas, notas, historial; cambiar estado, confirmar prioridad, resolver |
+| `/bandeja-ia/asunto/[id]` | Detalle: el correo completo (leído de Gmail en el momento) con enlace a Gmail, motivo de prioridad, fechas, notas, historial; cambiar estado, confirmar prioridad, resolver |
 | `/bandeja-ia/historial` | Registro de acciones y asuntos cerrados |
 | `/bandeja-ia/configuracion` | Reglas de clasificación, estado de Gmail y notificaciones |
 
@@ -29,6 +29,8 @@ Rutas de API (todas requieren sesión):
 - `GET /api/bandeja-ia/gmail/status`: estado de la integración y de las sincronizaciones (qué variables están cargadas, nunca sus valores).
 - `POST /api/bandeja-ia/gmail/push`: avisos de Pub/Sub. Pública, autenticada con el JWT firmado por Google.
 - `POST /api/bandeja-ia/gmail/cron`: respaldo horario y "Sincronizar ahora". Pública, autenticada con `BANDEJA_IA_CRON_SECRET` o sesión admin.
+- `GET /api/bandeja-ia/asuntos/[id]/correo`: la conversación completa de un asunto, leída de Gmail en el momento. No se guarda.
+- `POST /api/bandeja-ia/reclasificar`: aplica las reglas actuales a los asuntos existentes (solo admin).
 
 ## Acceso
 
@@ -115,8 +117,9 @@ un stub de Supabase Auth. Se verificó:
 ### Aplicarla
 
 1. Hacer un backup de la base.
-2. Instalación nueva: ejecutar `supabase/add_bandeja_ia.sql` (ya incluye la v2).
-   Base que ya corrió la versión anterior: ejecutar `supabase/update_bandeja_ia_v2.sql`.
+2. Instalación nueva: ejecutar `supabase/add_bandeja_ia.sql` (ya incluye la v2 y la v3).
+   Base que ya corrió la versión anterior: ejecutar `supabase/update_bandeja_ia_v2.sql` y
+   después `supabase/update_bandeja_ia_v3.sql`.
 3. Dar de alta el primer admin, a mano:
 
    ```sql
@@ -204,20 +207,55 @@ integración.
 - qué variables están cargadas (nunca sus valores);
 - el botón **Sincronizar ahora** (solo admin).
 
-**Lo que no hace, a propósito:** no responde, no envía, no borra, no mueve ni etiqueta
-correos; el cliente no tiene métodos para eso. No descarga cuerpos ni adjuntos. El
-extracto se usa en memoria para clasificar y solo se guarda si
-`bandeja_ia_settings.store_snippets` está en `true` (por defecto, no). No manda contenido
-a ninguna IA externa.
+**Ver el correo completo.** Al abrir un asunto, el servidor le pide a Gmail la
+conversación entera (`threads.get`, solo lectura) y la manda al navegador sin guardarla
+en la base ni en caches (`Cache-Control: no-store`). Solo la ve quien tiene permiso de
+Bandeja IA y puede ver ese asunto (RLS).
+
+Se muestra en un iframe aislado:
+- `sandbox` sin `allow-scripts`: el correo no puede ejecutar código ni tocar el Dashboard;
+- CSP que bloquea todo lo externo;
+- links que abren en otra pestaña.
+
+Las imágenes:
+- las incrustadas (logos, firmas, `cid:`) se embeben y se ven siempre;
+- las externas quedan ocultas hasta tocar "Mostrar imágenes", porque suelen ser píxeles
+  de rastreo.
+
+El botón **Abrir en Gmail** lleva a la conversación en la cuenta de la casilla.
+
+**Lo que no hace, a propósito:**
+- No responde, no envía, no borra, no mueve ni etiqueta correos; el cliente no tiene
+  métodos para eso.
+- No guarda cuerpos ni adjuntos. Los adjuntos se listan con nombre y tamaño, y se abren
+  desde Gmail.
+- El extracto se usa en memoria para clasificar y solo se guarda si
+  `bandeja_ia_settings.store_snippets` está en `true` (por defecto, no).
+- No manda contenido a ninguna IA externa.
 
 ## Reglas y notificaciones
 
 - **Prioridades:**
-  - crítica (urgencia explícita, o plazo/reunión alta dentro de las 48 h);
-  - alta (autoridades, plazos, reuniones);
+  - crítica (aviso de pausa de Supabase, urgencia explícita, o plazo/reunión alta dentro de las 48 h);
+  - alta (autoridades, plazos, reuniones, posibles eventos);
   - normal;
   - informativa (boletines y avisos automáticos).
-- **Categorías:** invitación, reunión, fecha límite, requiere respuesta, documentación, informativo.
+- **Categorías:** base por pausarse, posible evento, reunión, fecha límite, requiere
+  respuesta, documentación, informativo.
+- **Base por pausarse** (regla `supabase_pausa`, la primera de todas). Son los avisos de
+  Supabase de que un proyecto se va a pausar o ya se pausó por inactividad: todas las
+  bases del equipo están ahí y una base pausada tira abajo el proyecto.
+  - Exige que el remitente sea de Supabase (`from_keywords`) y busca "pause", "paused",
+    "inactivity", "pausar", etc.
+  - Quedan con prioridad crítica y aparecen en un cartel rojo arriba del panel hasta que
+    se resuelven.
+- **Posible evento** (regla `invitacion`): invitaciones a eventos, jornadas, actos o
+  capacitaciones. Prioridad alta, y en el panel van en su propia sección, separadas de
+  "Requieren atención".
+- **Reclasificar:** las reglas se aplican solas a los correos nuevos. Para los asuntos que
+  ya existen, Configuración tiene el botón **Reclasificar asuntos**. Cambia la categoría
+  de todos y la prioridad solo de los que nadie confirmó a mano. Escribe con service
+  role, así que en el historial figura como "Sistema".
 - **Fechas:** detecta `15/10`, `15-10-2026`, `15 de octubre`, `hoy`, `mañana`,
   `el viernes` y horarios como `10:30 hs`. Todo se interpreta en
   `America/Argentina/Tucuman` (UTC-3, sin horario de verano).
@@ -254,31 +292,23 @@ corresponda.
 
 ## Puesta en marcha de Gmail
 
-Ya hecho:
-- en la base, `add_bandeja_ia.sql`, `update_bandeja_ia_v2.sql` y el permiso de la cuenta de la DIA;
+Ya hecho (2026-10-19):
+- en la base, `add_bandeja_ia.sql` y `update_bandeja_ia_v2.sql`, y el permiso de la cuenta de la DIA;
 - en Google Cloud, el proyecto, Gmail API, la pantalla de consentimiento (interna), el
-  cliente OAuth, el refresh token y el tema `bandeja-ia-gmail` con permiso para
-  `gmail-api-push@system.gserviceaccount.com`.
+  cliente OAuth, el refresh token, el tema `bandeja-ia-gmail` y la suscripción push con
+  la cuenta de servicio `bandeja-ia-push`;
+- el deploy en producción, con la sincronización funcionando.
 
-Falta:
+Para la versión con avisos de Supabase y posibles eventos:
 
-1. **Probar en local.** En `.env.local`, agregar:
+1. **Antes del deploy**, correr `supabase/update_bandeja_ia_v3.sql`. Agrega la categoría
+   `base_pausa` y la columna `from_keywords`. Si se despliega sin esto, los avisos de
+   Supabase no se pueden guardar.
+2. Desplegar y, en Configuración, tocar **Reclasificar asuntos** para aplicar las reglas
+   nuevas a lo que ya está.
 
-   ```env
-   BANDEJA_IA_GMAIL_ENABLED=true
-   BANDEJA_IA_PUBSUB_AUDIENCE=https://organizacion-dia.vercel.app/api/bandeja-ia/gmail/push
-   ```
-
-   Después ir a Configuración → **Sincronizar ahora**. La primera corrida es la inicial.
-2. **Desplegar** los cambios en Vercel, con las mismas variables (incluidas las dos de arriba).
-3. **Cuenta de servicio** `bandeja-ia-push` (IAM → Cuentas de servicio), sin roles.
-4. **Suscripción push** (Pub/Sub → Suscripciones → Crear):
-   - tema `bandeja-ia-gmail`, entrega **Push**;
-   - endpoint `https://organizacion-dia.vercel.app/api/bandeja-ia/gmail/push`;
-   - **Habilitar autenticación** con `bandeja-ia-push`, audiencia igual al endpoint.
-5. **Variable recomendada:** `BANDEJA_IA_PUBSUB_SERVICE_ACCOUNT` = email de
-   `bandeja-ia-push`, en Vercel. Restringe el push a esa cuenta.
-6. **Secret del repo en GitHub:** `BANDEJA_IA_CRON_SECRET` (Settings → Secrets and
-   variables → Actions), con el mismo valor que en Vercel, para el cron horario.
-7. **Alertas:** siguen apagadas. Se encienden de forma explícita
-   (`BANDEJA_IA_ALERTS_ENABLED` y `bandeja_ia_settings.alerts_enabled`) cuando se decida.
+Pendiente:
+- **Secret del repo en GitHub:** `BANDEJA_IA_CRON_SECRET` (Settings → Secrets and
+  variables → Actions), con el mismo valor que en Vercel, para el cron horario.
+- **Alertas:** siguen apagadas. Se encienden de forma explícita
+  (`BANDEJA_IA_ALERTS_ENABLED` y `bandeja_ia_settings.alerts_enabled`) cuando se decida.
