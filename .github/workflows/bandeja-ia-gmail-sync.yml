@@ -1,0 +1,46 @@
+name: Bandeja IA - sincronizar Gmail
+
+# Respaldo de los avisos push de Gmail (app/api/bandeja-ia/gmail/cron): renueva el aviso
+# de Gmail antes de que venza (dura 7 dias) y trae lo que haya quedado sin procesar.
+# Lo normal es que los correos lleguen solos por Pub/Sub; esto es la red.
+# Cada hora en el minuto 23 (los minutos no redondos los demora menos GitHub).
+# Si la integracion esta deshabilitada, la ruta responde 200 sin hacer nada.
+
+on:
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bandeja-ia-gmail-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Sincronizar casilla
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      DASHBOARD_URL: ${{ vars.DASHBOARD_URL || 'https://organizacion-dia.vercel.app' }}
+      BANDEJA_IA_CRON_SECRET: ${{ secrets.BANDEJA_IA_CRON_SECRET }}
+
+    steps:
+      - name: Sincronizar
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$BANDEJA_IA_CRON_SECRET" ]; then
+            echo "::notice::Falta el secret BANDEJA_IA_CRON_SECRET en el repo: no se sincroniza."
+            exit 0
+          fi
+          curl --fail-with-body --silent --show-error \
+            --retry 2 \
+            --retry-all-errors \
+            --connect-timeout 10 \
+            --max-time 70 \
+            --request POST \
+            "${DASHBOARD_URL%/}/api/bandeja-ia/gmail/cron" \
+            --header "x-sync-secret: $BANDEJA_IA_CRON_SECRET"

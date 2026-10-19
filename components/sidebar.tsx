@@ -1,6 +1,10 @@
 'use client'
 
+import { useBandejaAccess } from '@/components/bandeja-ia/use-bandeja-access'
 import { useAuth } from '@/context/AuthContext'
+import { BANDEJA_ROUTE } from '@/lib/bandeja-ia/access'
+import { countImportantPendingInDb } from '@/lib/bandeja-ia/repository'
+import { BANDEJA_UPDATED_EVENT } from '@/lib/bandeja-ia/store'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
 import { canAccessRoute, filterNavItemsForTeam, isTeamRestricted } from '@/lib/team-access'
 import {
@@ -12,6 +16,7 @@ import {
   GitPullRequest,
   History,
   LayoutDashboard,
+  Mail,
   Radar,
   Trash2,
   Users,
@@ -33,6 +38,8 @@ const navItems: NavItem[] = [
   { href: '/tasks', label: 'Tareas', icon: GitPullRequest },
   { href: '/team', label: 'Equipo', icon: Users },
   { href: '/expedientes', label: 'Expedientes', icon: FileText },
+  // Solo visible con permiso especifico de Bandeja IA (ver useBandejaAccess).
+  { href: BANDEJA_ROUTE, label: 'Bandeja IA', icon: Mail },
   { href: '/cuentas-supabase', label: 'Cuentas Supabase', icon: Database },
   { href: '/commit-history', label: 'Historial', icon: History },
   { href: '/papelera', label: 'Papelera', icon: Trash2 },
@@ -43,9 +50,14 @@ export function Sidebar({ isDark }: { isDark: boolean }) {
   const { user, teamSlug, teamName } = useAuth()
   const [collapsed, setCollapsed] = useState(true)
   const [pendingOverlaps, setPendingOverlaps] = useState(0)
+  const bandejaAccess = useBandejaAccess()
+  const bandejaAllowed = bandejaAccess.status === 'allowed'
+  const [pendingBandeja, setPendingBandeja] = useState(0)
 
   const isExternalTeam = isTeamRestricted(teamSlug)
-  const visibleNavItems = filterNavItemsForTeam(teamSlug, navItems)
+  const visibleNavItems = filterNavItemsForTeam(teamSlug, navItems).filter(
+    (item) => item.href !== BANDEJA_ROUTE || bandejaAllowed,
+  )
   const textStrongClass = isDark ? 'text-white' : 'text-slate-950'
 
   // Aviso de cruces entre equipos: contador de pendientes en el item Radar.
@@ -73,6 +85,31 @@ export function Sidebar({ isDark }: { isDark: boolean }) {
       cancelled = true
     }
   }, [user, pathname])
+
+  // Bandeja IA: asuntos importantes pendientes. Se actualiza al navegar y despues de cada
+  // accion del modulo (evento BANDEJA_UPDATED_EVENT).
+  useEffect(() => {
+    if (!bandejaAllowed) return
+
+    let cancelled = false
+
+    async function fetchPendingBandeja() {
+      try {
+        const count = await countImportantPendingInDb()
+        if (!cancelled) setPendingBandeja(count)
+      } catch {
+        // Sin badge si la consulta falla.
+      }
+    }
+
+    void fetchPendingBandeja()
+    window.addEventListener(BANDEJA_UPDATED_EVENT, fetchPendingBandeja)
+
+    return () => {
+      cancelled = true
+      window.removeEventListener(BANDEJA_UPDATED_EVENT, fetchPendingBandeja)
+    }
+  }, [bandejaAllowed, pathname])
 
   return (
     <aside
@@ -103,24 +140,32 @@ export function Sidebar({ isDark }: { isDark: boolean }) {
       <nav className="space-y-1">
         {visibleNavItems.map((item) => {
           const Icon = item.icon
-          const active = pathname === item.href || (item.href === '/expedientes' && pathname.startsWith('/expedientes/'))
+          const active =
+            pathname === item.href ||
+            ((item.href === '/expedientes' || item.href === BANDEJA_ROUTE) && pathname.startsWith(`${item.href}/`))
           const activeClass = isDark ? 'bg-blue-500/15 text-blue-300' : 'dia-surface-raised-bg dia-primary-text'
           const idleClass = isDark ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-100' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
           const itemClass = `flex w-full items-center rounded-lg py-2 text-sm font-medium transition ${collapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${active ? activeClass : idleClass}`
 
           const showOverlapsBadge = item.href === '/radar' && pendingOverlaps > 0
+          const showBandejaBadge = item.href === BANDEJA_ROUTE && bandejaAllowed && pendingBandeja > 0
+          const label = showBandejaBadge ? `${item.label} (${pendingBandeja} importantes pendientes)` : item.label
 
           return (
-            <Link key={item.href} href={item.href} className={itemClass} title={collapsed ? item.label : undefined} aria-label={item.label}>
+            <Link key={item.href} href={item.href} className={itemClass} title={collapsed ? label : undefined} aria-label={label}>
               <span className="relative shrink-0">
                 <Icon className="h-4 w-4 shrink-0" />
                 {showOverlapsBadge && collapsed && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-500" />}
+                {showBandejaBadge && collapsed && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-red-500" />}
               </span>
               {!collapsed && (
                 <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
                   <span className="truncate">{item.label}</span>
                   {showOverlapsBadge && (
                     <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">{pendingOverlaps}</span>
+                  )}
+                  {showBandejaBadge && (
+                    <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">{pendingBandeja}</span>
                   )}
                 </span>
               )}

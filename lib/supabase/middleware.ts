@@ -17,7 +17,10 @@ export async function updateSession(request: NextRequest) {
     // Los bots se autentican con su propia clave, no con sesion.
     url.pathname === '/api/migue/conversaciones' ||
     // El cron entra con PROJECTS_SYNC_SECRET; la ruta valida sesion o secreto por su cuenta.
-    url.pathname === '/api/github/sync-projects'
+    url.pathname === '/api/github/sync-projects' ||
+    // Bandeja IA: Pub/Sub entra con su JWT firmado por Google y el cron con BANDEJA_IA_CRON_SECRET.
+    url.pathname === '/api/bandeja-ia/gmail/push' ||
+    url.pathname === '/api/bandeja-ia/gmail/cron'
 
   if (!supabaseUrl || !supabaseAnonKey) {
     if (publicPath) return NextResponse.next({ request })
