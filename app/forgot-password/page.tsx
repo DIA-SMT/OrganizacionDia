@@ -1,5 +1,6 @@
 'use client'
 
+import { AUTH_INPUT_CLASS, AUTH_LINK_BUTTON_CLASS, AUTH_PRIMARY_BUTTON_CLASS, AuthLayout } from '@/components/auth-layout'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
 import { ArrowLeft, CheckCircle2, Loader2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -38,36 +39,30 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center dia-bg px-4">
-      <form onSubmit={handleSubmit} className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
-        <h1 className="text-2xl font-bold text-slate-950">Recuperar contrasena</h1>
-        <p className="mt-2 text-sm text-slate-500">Te enviaremos un enlace para crear una nueva contrasena.</p>
+    <AuthLayout>
+      <form onSubmit={handleSubmit}>
+        <h2 className="text-[26px] font-bold text-[var(--brand-navy)]">Recuperar contraseña</h2>
+        <p className="mt-1.5 text-sm text-slate-500">Te enviamos un enlace para crear una nueva contraseña.</p>
         {success && (
-          <div className="mt-5 flex gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
-            <CheckCircle2 className="h-4 w-4" />
-            Correo enviado. Revisa tu bandeja de entrada.
+          <div className="mt-5 flex gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800" role="status">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            Correo enviado. Revisá tu bandeja de entrada.
           </div>
         )}
-        {error && <div className="mt-5 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+        {error && <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{error}</div>}
         <label className="mt-6 block">
-          <span className="text-sm font-medium text-slate-700">Correo electronico</span>
-          <input
-            className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
+          <span className="text-[13px] font-semibold text-[#2f4566]">Correo electrónico</span>
+          <input className={AUTH_INPUT_CLASS} type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
         </label>
-        <button className="mt-6 flex h-10 w-full items-center justify-center gap-2 rounded-md dia-primary-bg text-sm font-semibold text-white" disabled={loading}>
+        <button className={`mt-6 ${AUTH_PRIMARY_BUTTON_CLASS}`} disabled={loading}>
           {loading && <Loader2 className="h-4 w-4 animate-spin" />}
           Enviar enlace
         </button>
-        <button type="button" onClick={() => router.push('/login')} className="mt-4 flex w-full items-center justify-center gap-2 text-sm font-medium text-slate-500">
+        <button type="button" onClick={() => router.push('/login')} className={`mt-3 ${AUTH_LINK_BUTTON_CLASS}`}>
           <ArrowLeft className="h-4 w-4" />
           Volver al login
         </button>
       </form>
-    </main>
+    </AuthLayout>
   )
 }
