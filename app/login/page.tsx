@@ -1,7 +1,8 @@
 'use client'
 
+import { AUTH_INPUT_CLASS, AUTH_LINK_BUTTON_CLASS, AUTH_PRIMARY_BUTTON_CLASS, AuthLayout } from '@/components/auth-layout'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
-import { ArrowRight, Code2, Loader2 } from 'lucide-react'
+import { ArrowRight, Loader2, LogIn } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useEffect, useState } from 'react'
 
@@ -15,11 +16,9 @@ export default function LoginPage() {
 
 function LoginShell() {
   return (
-    <main className="flex min-h-screen items-center justify-center dia-bg px-4">
-      <section className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
-        <Loader2 className="h-5 w-5 animate-spin dia-primary-text" />
-      </section>
-    </main>
+    <AuthLayout>
+      <Loader2 className="mx-auto h-6 w-6 animate-spin dia-primary-text" />
+    </AuthLayout>
   )
 }
 
@@ -69,67 +68,51 @@ function LoginForm() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center dia-bg px-4">
-      <section className="grid w-full max-w-5xl overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm md:grid-cols-[1fr_0.85fr]">
-        <div className="hidden bg-[#0e1630] p-10 text-white md:block">
-          <div className="flex h-11 w-11 items-center justify-center rounded-md bg-white/10">
-            <Code2 className="h-6 w-6" />
-          </div>
-          <h1 className="mt-10 text-3xl font-bold">Organizacion DIA</h1>
-          <p className="mt-3 text-sm leading-6 text-blue-50/80">
-            Gestion interna para proyectos de programacion, revision, testing y entregas del equipo.
-          </p>
+    <AuthLayout>
+      <form onSubmit={handleLogin}>
+        <span className="grid h-11 w-11 place-items-center rounded-xl bg-[var(--tint-blue)] text-[var(--brand-blue)]" aria-hidden="true">
+          <LogIn className="h-5 w-5" />
+        </span>
+        <h2 className="mt-5 text-[26px] font-bold text-[var(--brand-navy)]">Iniciar sesión</h2>
+        <p className="mt-1.5 text-sm text-slate-500">Ingresá tus credenciales para entrar al dashboard.</p>
+
+        {error && <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{error}</div>}
+
+        <div className="mt-6 space-y-4">
+          <label className="block">
+            <span className="text-[13px] font-semibold text-[#2f4566]">Correo electrónico</span>
+            <input
+              className={AUTH_INPUT_CLASS}
+              type="email"
+              autoComplete="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="dev@municipio.gob.ar"
+            />
+          </label>
+          <label className="block">
+            <span className="text-[13px] font-semibold text-[#2f4566]">Contraseña</span>
+            <input
+              className={AUTH_INPUT_CLASS}
+              type="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </label>
         </div>
 
-        <form onSubmit={handleLogin} className="p-8 md:p-10">
-          <p className="text-xs font-semibold uppercase dia-primary-text">Acceso interno</p>
-          <h2 className="mt-2 text-2xl font-bold text-slate-950">Iniciar sesion</h2>
-          <p className="mt-2 text-sm text-slate-500">Ingresa tus credenciales para entrar al dashboard.</p>
+        <button className={`mt-6 ${AUTH_PRIMARY_BUTTON_CLASS}`} type="submit" disabled={loading}>
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+          {loading ? 'Conectando...' : 'Ingresar'}
+        </button>
 
-          {error && <div className="mt-5 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
-
-          <div className="mt-6 space-y-4">
-            <label className="block">
-              <span className="text-sm font-medium text-slate-700">Correo electronico</span>
-              <input
-                className="mt-2 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="dev@municipio.gob.ar"
-              />
-            </label>
-            <label className="block">
-              <span className="text-sm font-medium text-slate-700">Contrasena</span>
-              <input
-                className="mt-2 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </label>
-          </div>
-
-          <button
-            className="mt-6 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md dia-primary-bg px-4 text-sm font-semibold text-white shadow-sm disabled:opacity-60"
-            type="submit"
-            disabled={loading}
-          >
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-            {loading ? 'Conectando...' : 'Ingresar'}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => router.push('/forgot-password')}
-            className="mt-4 w-full text-center text-sm font-medium dia-primary-text"
-          >
-            Olvide mi contrasena
-          </button>
-        </form>
-      </section>
-    </main>
+        <button type="button" onClick={() => router.push('/forgot-password')} className={`mt-3 ${AUTH_LINK_BUTTON_CLASS}`}>
+          Olvidé mi contraseña
+        </button>
+      </form>
+    </AuthLayout>
   )
 }

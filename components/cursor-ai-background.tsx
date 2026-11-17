@@ -2,7 +2,17 @@
 
 import { useEffect, useRef } from 'react'
 
-export function CursorAiBackground({ isDark }: { isDark: boolean }) {
+type CursorAiBackgroundProps = {
+  isDark: boolean
+  /**
+   * page: fondo de pantalla con grilla y la cabeza detras del contenido.
+   * hero: solo la cabeza, en trazo claro, dentro de la portada azul del dashboard.
+   */
+  variant?: 'page' | 'hero'
+}
+
+/** Cabeza de IA que sigue al cursor (solo escritorio y sin "reducir movimiento"). */
+export function CursorAiBackground({ isDark, variant = 'page' }: CursorAiBackgroundProps) {
   const faceRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -56,18 +66,23 @@ export function CursorAiBackground({ isDark }: { isDark: boolean }) {
     }
   }, [])
 
+  const isHero = variant === 'hero'
+  const shellTone = isHero ? 'ai-face-shell-hero' : isDark ? 'ai-face-shell-dark' : 'ai-face-shell-light'
+  const glow = isHero ? 'bg-sky-300/20' : isDark ? 'bg-blue-500/18' : 'bg-blue-400/22'
+
   return (
-    <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden="true">
-      <div className={`absolute inset-0 ${isDark ? 'ai-grid-dark' : 'ai-grid-light'}`} />
+    <div className={`pointer-events-none absolute inset-0 overflow-hidden ${isHero ? 'z-[1]' : 'z-0'}`} aria-hidden="true">
+      {!isHero && <div className={`absolute inset-0 ${isDark ? 'ai-grid-dark' : 'ai-grid-light'}`} />}
 
       <div
         ref={faceRef}
-        className={`absolute left-1/2 top-14 hidden h-[650px] w-[540px] transition-opacity duration-500 lg:block ${
-          isDark ? 'opacity-70' : 'opacity-80'
+        className={`absolute hidden h-[650px] w-[540px] transition-opacity duration-500 lg:block ${
+          isHero ? 'ai-face-hero left-[66%] top-[-90px] opacity-90' : `left-1/2 top-40 ${isDark ? 'opacity-70' : 'opacity-80'}`
         }`}
+        style={{ transform: 'translate3d(-50%, 0, 0)' }}
       >
-        <div className={`absolute inset-8 rounded-full blur-3xl ${isDark ? 'bg-blue-500/18' : 'bg-blue-400/22'}`} />
-        <div className={`ai-face-shell ${isDark ? 'ai-face-shell-dark' : 'ai-face-shell-light'}`}>
+        <div className={`absolute inset-8 rounded-full blur-3xl ${glow}`} />
+        <div className={`ai-face-shell ${shellTone}`}>
           <div className="ai-face-scanline" />
           <div className="ai-face-brow ai-face-brow-left" />
           <div className="ai-face-brow ai-face-brow-right" />

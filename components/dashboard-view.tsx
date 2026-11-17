@@ -1,26 +1,29 @@
 'use client'
 
 import { useAuth } from '@/context/AuthContext'
+import { useDiaTheme } from '@/components/app-shell'
 import { CursorAiBackground } from '@/components/cursor-ai-background'
-import { Sidebar } from '@/components/sidebar'
+import { SiteHeader } from '@/components/site-header'
 import { TaskCreateButton } from '@/components/task-create-button'
 import { getSupabaseBrowserClient } from '@/lib/supabase'
 import { type DashboardProject } from '@/lib/dashboard-data'
 import { expedientePriorityWeight, formatExpedienteDate } from '@/lib/expedientes'
 import { watchGithubProjectSync } from '@/lib/github-sync'
+import { canAccessRoute, isTeamRestricted } from '@/lib/team-access'
 import { animate, motion, useMotionValue, useTransform } from 'framer-motion'
+import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
+  ArrowRight,
   Check,
+  Code2,
   ExternalLink,
   FileText,
   GitPullRequest,
   History,
-  LogOut,
-  Moon,
-  Search,
-  Sun,
+  Radar,
+  type LucideIcon,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
@@ -157,12 +160,12 @@ function projectPriorityWeight(priority: string | null | undefined) {
 
 
 export function DashboardView() {
-  const { user, loading, authConfigured, signOut, teamSlug } = useAuth()
+  const { user, loading, authConfigured, teamSlug, teamName } = useAuth()
   const router = useRouter()
+  const { isDark, toggleTheme } = useDiaTheme()
   const [projects, setProjects] = useState<DashboardProject[]>([])
   const [githubSyncTick, setGithubSyncTick] = useState(0)
   const [searchQuery, setSearchQuery] = useState('')
-  const [theme, setTheme] = useState<'light' | 'dark'>('light')
   const [pendingTasks, setPendingTasks] = useState<PendingTask[]>([])
   const [recentExpedientes, setRecentExpedientes] = useState<DashboardExpediente[]>([])
   const [commitsByProject, setCommitsByProject] = useState<Record<string, ProjectCommitActivity[]>>({})
@@ -173,8 +176,6 @@ export function DashboardView() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      const savedTheme = window.localStorage.getItem('organizacion-dia-theme')
-      if (savedTheme === 'dark' || savedTheme === 'light') setTheme(savedTheme)
       const savedSeenCommitIds = window.localStorage.getItem(seenCommitsStorageKey)
       if (savedSeenCommitIds) setSeenCommitIds(JSON.parse(savedSeenCommitIds) as string[])
     }, 0)
@@ -202,14 +203,6 @@ export function DashboardView() {
 
     return () => listeners.forEach((removeListener) => removeListener())
   }, [])
-
-  function toggleTheme() {
-    setTheme((current) => {
-      const next = current === 'dark' ? 'light' : 'dark'
-      window.localStorage.setItem('organizacion-dia-theme', next)
-      return next
-    })
-  }
 
   async function refreshPendingTasks() {
     const supabase = getSupabaseBrowserClient()
@@ -444,8 +437,14 @@ export function DashboardView() {
     window.localStorage.setItem(commitHistoryStorageKey, JSON.stringify(nextHistory))
   }
 
-  const isDark = theme === 'dark'
-  const shellClass = isDark ? 'bg-slate-950 text-slate-100' : 'dia-bg text-slate-950'
+  const isExternalTeam = isTeamRestricted(teamSlug)
+  const quickLinks: { href: string; label: string; detail: string; icon: LucideIcon; tone: string }[] = [
+    { href: '/projects', label: 'Proyectos', detail: `${metrics.totalProjects} en curso`, icon: Code2, tone: 'tone-blue' },
+    { href: '/tasks', label: 'Tareas', detail: `${pendingTasks.length}${pendingTasks.length >= 30 ? '+' : ''} pendientes`, icon: GitPullRequest, tone: 'tone-yellow' },
+    { href: '/expedientes', label: 'Expedientes', detail: 'PDFs desde Drive', icon: FileText, tone: 'tone-sky' },
+    { href: '/radar', label: 'Radar', detail: 'Cruces entre equipos', icon: Radar, tone: 'tone-green' },
+  ].filter((item) => canAccessRoute(teamSlug, item.href))
+  const shellClass = isDark ? 'dark bg-slate-950 text-slate-100' : 'dia-bg text-slate-950'
   const surfaceClass = isDark ? 'border-slate-800 bg-slate-900 shadow-slate-950/20' : 'border-slate-200 dia-surface-bg shadow-sm'
   const textStrongClass = isDark ? 'text-white' : 'text-slate-950'
   const textMutedClass = isDark ? 'text-slate-400' : 'text-slate-500'
@@ -464,57 +463,84 @@ export function DashboardView() {
 
   return (
     <main className={`relative isolate min-h-screen overflow-x-hidden transition-colors ${shellClass}`}>
-      <CursorAiBackground isDark={isDark} />
-      <div className="relative z-10 flex min-h-screen">
-        <Sidebar isDark={isDark} />
+      <SiteHeader
+        isDark={isDark}
+        onToggleTheme={toggleTheme}
+        search={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Buscar proyecto o tarea"
+      />
 
-        <section className="flex min-w-0 flex-1 flex-col">
-          <header className={`border-b backdrop-blur ${isDark ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 dia-surface-glass'}`}>
-            <div className="flex items-center justify-between gap-4 px-5 py-4">
-              <div>
-                <h1 className={`text-xl font-bold ${textStrongClass}`}>Gestion de proyectos</h1>
-                <p className={`text-sm ${textMutedClass}`}>Seguimiento operativo del equipo interno DIA</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <label className={`hidden h-10 items-center gap-2 rounded-md border px-3 text-sm md:flex ${isDark ? 'border-slate-700 bg-slate-950 text-slate-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
-                  <Search className="h-4 w-4" />
-                  <input
-                    className="w-56 bg-transparent outline-none placeholder:text-inherit"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Buscar proyecto o tarea"
-                  />
-                </label>
-                <button
-                  className={`flex h-10 w-10 items-center justify-center rounded-md border ${isDark ? 'border-slate-700 bg-slate-950 text-slate-300' : 'border-slate-200 bg-white text-slate-500'}`}
-                  onClick={toggleTheme}
-                  title={isDark ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
-                >
-                  {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                </button>
-                {user && (
-                  <button
-                    className={`hidden h-10 items-center gap-2 rounded-md border px-3 text-sm md:flex ${isDark ? 'border-slate-700 bg-slate-950 text-slate-300' : 'border-slate-200 bg-white text-slate-500'}`}
-                    onClick={signOut}
-                  >
-                    <LogOut className="h-4 w-4" />
-                    Salir
-                  </button>
-                )}
-              </div>
+      {/* Portada del panel, con el lenguaje visual de Applaza / Turismo SMT. */}
+      <section className="welcome-hero">
+        {/* Cabeza de IA y Migue alineados al ancho del contenido, no a los bordes de la pantalla. */}
+        <div className="pointer-events-none absolute inset-0 z-[1]" aria-hidden="true">
+          <div className="relative mx-auto h-full max-w-[1500px]">
+            <CursorAiBackground isDark={isDark} variant="hero" />
+            <Image
+              className="absolute bottom-[40px] right-6 z-[1] hidden h-[380px] w-auto drop-shadow-[0_16px_26px_rgb(4_20_50/40%)] lg:block xl:right-10 xl:h-[400px]"
+              src="/migue/dashboard-dia/0.webp"
+              alt=""
+              width={440}
+              height={938}
+              priority
+            />
+          </div>
+        </div>
+        <div className="relative z-[2] mx-auto max-w-[1500px] px-4 pb-28 pt-12 sm:px-6 lg:px-10 lg:pb-32 lg:pt-14">
+          <div className="max-w-[640px] lg:max-w-[min(640px,62%)]">
+            <p className="eyebrow">{isExternalTeam ? teamName ?? 'Equipo' : 'Dirección de Inteligencia Artificial'}</p>
+            <h1 className="mt-4 text-[clamp(2.6rem,5.4vw,4.5rem)] font-extrabold leading-[0.98]">
+              Gestión de
+              <span className="block text-[var(--brand-sky)]">proyectos DIA</span>
+            </h1>
+            <p className="mt-4 max-w-[540px] text-[17px] leading-relaxed text-[#e4efff]">
+              Proyectos, tareas, expedientes y cambios en los repositorios del equipo, en un solo lugar.
+            </p>
+            <div className="mt-7 flex flex-wrap gap-3">
+              <Link href="/projects" className="hero-button hero-button-primary">
+                Ver proyectos
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </Link>
+              {canAccessRoute(teamSlug, '/tasks') && (
+                <Link href="/tasks" className="hero-button hero-button-secondary">
+                  <GitPullRequest className="h-4 w-4" aria-hidden="true" />
+                  Ver tareas
+                </Link>
+              )}
             </div>
-          </header>
+          </div>
+        </div>
+        <svg className="hero-waves" viewBox="0 0 1440 80" preserveAspectRatio="none" aria-hidden="true">
+          <path className="wave-sky" d="M0 34 C 260 4 520 70 820 40 S 1260 6 1440 30 L1440 80 L0 80 Z" />
+          <path className="wave-yellow" d="M0 50 C 300 22 560 80 860 54 S 1280 26 1440 46 L1440 80 L0 80 Z" />
+          <path className="wave-base" d="M0 62 C 320 40 600 88 900 66 S 1300 44 1440 60 L1440 80 L0 80 Z" />
+        </svg>
+      </section>
 
-          <div className="flex-1 px-5 py-5">
-            <label className={`mb-4 flex h-10 items-center gap-2 rounded-md border px-3 text-sm md:hidden ${isDark ? 'border-slate-700 bg-slate-900 text-slate-400' : 'border-slate-200 bg-white text-slate-500'}`}>
-              <Search className="h-4 w-4" />
-              <input
-                className="w-full bg-transparent outline-none placeholder:text-inherit"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Buscar proyecto o tarea"
-              />
-            </label>
+      <div className="mx-auto w-full max-w-[1500px] px-4 pb-10 sm:px-6 lg:px-10">
+            {quickLinks.length > 0 && (
+              <nav aria-label="Accesos rápidos" className="relative z-[4] mb-8 mt-2 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                {quickLinks.map((item) => {
+                  const Icon = item.icon
+                  return (
+                    <Link key={item.href} href={item.href} className={`quick-card ${item.tone}`}>
+                      <span className="quick-icon" aria-hidden="true">
+                        <Icon className="h-8 w-8" strokeWidth={1.7} />
+                      </span>
+                      <span className="relative z-[1] min-w-0 flex-1">
+                        <strong className="block font-[family-name:var(--font-display)] text-lg font-bold leading-tight">{item.label}</strong>
+                        <small className={`mt-1 block text-[13px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{item.detail}</small>
+                      </span>
+                      <span className="quick-arrow" aria-hidden="true">
+                        <ArrowRight className="h-4 w-4" />
+                      </span>
+                      <Icon className="quick-ghost" strokeWidth={1.5} aria-hidden="true" />
+                    </Link>
+                  )
+                })}
+              </nav>
+            )}
 
             <motion.section
               className={`mb-5 rounded-lg border p-5 ${surfaceClass}`}
@@ -526,7 +552,7 @@ export function DashboardView() {
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <motion.p
-                    className="text-xs font-semibold uppercase dia-primary-text"
+                    className="eyebrow"
                     initial={{ opacity: 0, y: 12 }}
                     whileInView={{ opacity: 1, y: 0 }}
                     viewport={{ once: true, amount: 0.8 }}
@@ -636,7 +662,7 @@ export function DashboardView() {
             >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <p className="text-xs font-semibold uppercase dia-primary-text">Trabajo pendiente</p>
+                  <p className="eyebrow">Trabajo pendiente</p>
                   <h2 className={`mt-1 text-xl font-bold ${textStrongClass}`}>Tareas por resolver</h2>
                   <p className={`mt-2 text-sm ${textMutedClass}`}>Tareas activas ordenadas por la modificacion mas reciente.</p>
                 </div>
@@ -693,7 +719,7 @@ export function DashboardView() {
             >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <p className="text-xs font-semibold uppercase dia-primary-text">Expedientes</p>
+                  <p className="eyebrow">Expedientes</p>
                   <h2 className={`mt-1 text-xl font-bold ${textStrongClass}`}>PDFs recientes desde Drive</h2>
                   <p className={`mt-2 text-sm ${textMutedClass}`}>Pantallazo rapido de los ultimos expedientes detectados.</p>
                 </div>
@@ -755,7 +781,7 @@ export function DashboardView() {
             >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <p className="text-xs font-semibold uppercase dia-primary-text">Distribución operativa</p>
+                  <p className="eyebrow">Distribución operativa</p>
                   <h2 className={`mt-1 text-xl font-bold ${textStrongClass}`}>Proyectos por estado</h2>
                   <p className={`mt-2 text-sm ${textMutedClass}`}>Vista rápida del trabajo en marcha, detenido y finalizado.</p>
                 </div>
@@ -818,11 +844,7 @@ export function DashboardView() {
                 </div>
               </div>
             </motion.section>
-
-          </div>
-        </section>
       </div>
-
     </main>
   )
 }
