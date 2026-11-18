@@ -41,11 +41,11 @@ export function AuthLayout({ children }: { children: React.ReactNode }) {
         </div>
 
         <Image
-          className="pointer-events-none absolute bottom-[-30px] right-[3%] z-[1] hidden h-[min(54vh,500px)] w-auto drop-shadow-[0_16px_24px_rgb(9_35_76/18%)] xl:block"
-          src="/migue/dashboard-dia/0.webp"
+          className="pointer-events-none absolute bottom-[8px] right-[5%] z-[1] hidden h-[min(54vh,500px)] w-auto drop-shadow-[0_16px_24px_rgb(9_35_76/18%)] xl:block"
+          src="/migue/portada-dia.webp"
           alt=""
-          width={440}
-          height={938}
+          width={320}
+          height={869}
           priority
         />
         <svg className="hero-waves" viewBox="0 0 1440 80" preserveAspectRatio="none" aria-hidden="true">

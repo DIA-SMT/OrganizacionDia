@@ -2,7 +2,8 @@
 
 import { useAuth } from '@/context/AuthContext'
 import { isTeamRestricted } from '@/lib/team-access'
-import { Bot, Database, ExternalLink, MessageCircle, Search, Send, X } from 'lucide-react'
+import { Database, ExternalLink, Search, Send, X } from 'lucide-react'
+import Image from 'next/image'
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 
@@ -38,6 +39,19 @@ type AssistantResponse = {
   updatedAt?: string
 }
 
+// Migue es la identidad del asistente: su cara va en el boton, el encabezado y cada respuesta.
+function MigueAvatar({ size }: { size: number }) {
+  return (
+    <span
+      className="relative block shrink-0 overflow-hidden rounded-full bg-[var(--tint-blue)] ring-2 ring-white"
+      style={{ width: size, height: size }}
+      aria-hidden="true"
+    >
+      <Image className="h-full w-full object-cover" src="/migue/avatar-dia.webp" alt="" width={192} height={192} />
+    </span>
+  )
+}
+
 export function VirtualAssistant() {
   const { user, teamSlug } = useAuth()
   const [open, setOpen] = useState(false)
@@ -49,7 +63,7 @@ export function VirtualAssistant() {
   const [messages, setMessages] = useState<AssistantMessage[]>([
     {
       role: 'assistant',
-      text: 'Hola, soy el asistente DIA. Puedo consultar proyectos, tareas, commits, responsables, expedientes, documentos, prioridades y entregas.',
+      text: 'Hola, soy Migue, el asistente de la Dirección de IA. Puedo consultar proyectos, tareas, commits, responsables, expedientes, documentos, prioridades y entregas.',
     },
   ])
 
@@ -122,36 +136,41 @@ export function VirtualAssistant() {
     <>
       <button
         type="button"
-        className="fixed bottom-5 right-5 z-40 flex h-12 w-12 items-center justify-center rounded-full dia-primary-bg text-white shadow-lg shadow-blue-900/20 transition hover:-translate-y-0.5 hover:shadow-xl"
+        className="fixed bottom-5 right-5 z-40 rounded-full p-1 dia-primary-bg shadow-[0_12px_28px_rgb(0_102_255/30%)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgb(0_102_255/38%)]"
         onClick={() => setOpen(true)}
-        title="Abrir asistente"
+        title="Hablar con Migue"
+        aria-label="Abrir el chat con Migue, el asistente de la Dirección de IA"
       >
-        <MessageCircle className="h-5 w-5" />
+        <MigueAvatar size={56} />
+        <span className="absolute bottom-1 right-1 h-3.5 w-3.5 rounded-full bg-[var(--brand-yellow)] ring-2 ring-white" aria-hidden="true" />
       </button>
 
       {open && (
-        <section data-lenis-prevent className="fixed bottom-20 right-5 z-50 flex h-[min(680px,calc(100vh-7rem))] w-[min(440px,calc(100vw-2rem))] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl shadow-slate-900/20">
+        <section
+          data-lenis-prevent
+          aria-label="Chat con Migue"
+          className="fixed bottom-24 right-5 z-50 flex h-[min(680px,calc(100vh-8rem))] w-[min(440px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[22px] border border-slate-200 border-t-[5px] border-t-[var(--brand-yellow)] bg-white shadow-2xl shadow-slate-900/20"
+        >
           <header className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-md dia-primary-bg text-white shadow-lg shadow-blue-500/20">
-                <Bot className="h-4 w-4" />
-              </div>
+              <MigueAvatar size={44} />
               <div>
-                <p className="text-sm font-bold text-slate-950">Asistente DIA</p>
+                <p className="font-[family-name:var(--font-display)] text-base font-bold leading-tight text-[var(--brand-navy)]">Migue</p>
                 <p className="text-xs text-slate-500">
                   {thinking
                     ? 'Consultando motor DIA...'
                     : projectCount === null
-                      ? 'Motor interno conectado'
-                      : `${projectCount} proyectos conectados`}
+                      ? 'Asistente de la Dirección de IA'
+                      : `Asistente de la DIA · ${projectCount} proyectos conectados`}
                 </p>
               </div>
             </div>
             <button
               type="button"
-              className="rounded-md p-2 text-slate-500 hover:bg-slate-100"
+              className="rounded-full p-2 text-slate-500 hover:bg-slate-100"
               onClick={() => setOpen(false)}
-              title="Cerrar asistente"
+              title="Cerrar el chat"
+              aria-label="Cerrar el chat con Migue"
             >
               <X className="h-4 w-4" />
             </button>
@@ -166,13 +185,15 @@ export function VirtualAssistant() {
             {messages.map((message, index) => (
               <div
                 key={`${message.role}-${index}`}
-                className={message.role === 'user' ? 'ml-auto max-w-[86%]' : 'mr-auto max-w-[92%]'}
+                className={message.role === 'user' ? 'ml-auto max-w-[86%]' : 'mr-auto flex max-w-[94%] items-start gap-2'}
               >
+                {message.role === 'assistant' && <MigueAvatar size={30} />}
+                <div className="min-w-0 flex-1">
                 <div
-                  className={`rounded-lg px-3 py-2 text-sm leading-6 ${
+                  className={`rounded-2xl px-3 py-2 text-sm leading-6 ${
                     message.role === 'user'
-                      ? 'dia-primary-bg text-white'
-                      : 'border border-slate-200 bg-white text-slate-700'
+                      ? 'rounded-br-md dia-primary-bg text-white'
+                      : 'rounded-tl-md border border-slate-200 bg-white text-slate-700'
                   }`}
                 >
                   {message.text}
@@ -221,6 +242,7 @@ export function VirtualAssistant() {
                     ))}
                   </div>
                 )}
+                </div>
               </div>
             ))}
           </div>
