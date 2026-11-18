@@ -65,7 +65,7 @@ export function AuthLayout({ children }: { children: React.ReactNode }) {
         </div>
 
         <p className="flex items-center gap-2.5 text-xs text-slate-500">
-          <Image className="h-7 w-auto" src="/informe/logo-ia.png" alt="" width={526} height={220} />
+          <Image className="h-7 w-auto" src="/informe/logo-ia.webp" alt="" width={526} height={220} />
           Desarrollado por la Dirección de Inteligencia Artificial
         </p>
       </section>

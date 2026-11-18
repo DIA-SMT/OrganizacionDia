@@ -16,7 +16,7 @@ export function BrandLockup({ appName, appSubtitle, logoOnly = false, isDark = f
       <span className={`flex shrink-0 items-center ${isDark ? 'rounded-lg bg-white px-1.5 py-1' : ''}`}>
         <Image
           className="h-7 w-auto sm:h-10"
-          src="/informe/logo-ia.png"
+          src="/informe/logo-ia.webp"
           alt="Dirección de IA"
           width={526}
           height={220}
