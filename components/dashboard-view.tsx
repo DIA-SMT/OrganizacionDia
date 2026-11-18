@@ -477,12 +477,13 @@ export function DashboardView() {
         <div className="pointer-events-none absolute inset-0 z-[1]" aria-hidden="true">
           <div className="relative mx-auto h-full max-w-[1500px]">
             <CursorAiBackground isDark={isDark} variant="hero" />
+            {/* Imagen limpia (sin el piso blanco del recorte original); los pies quedan detras de las ondas. */}
             <Image
-              className="absolute bottom-[40px] right-6 z-[1] hidden h-[380px] w-auto drop-shadow-[0_16px_26px_rgb(4_20_50/40%)] lg:block xl:right-10 xl:h-[400px]"
-              src="/migue/dashboard-dia/0.webp"
+              className="absolute bottom-[10px] right-10 z-[1] hidden h-[400px] w-auto drop-shadow-[0_16px_26px_rgb(4_20_50/40%)] lg:block xl:right-14 xl:h-[420px]"
+              src="/migue/portada-dia.webp"
               alt=""
-              width={440}
-              height={938}
+              width={320}
+              height={869}
               priority
             />
           </div>
